@@ -1,0 +1,6 @@
+{
+  "name": "Sasori Admin",
+  "description": "Enterprise-grade high-tech administration panel for Sasorilabs.io focusing on branding, game rules, CRM, and game client HUD configurations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
