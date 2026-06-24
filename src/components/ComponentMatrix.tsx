@@ -434,16 +434,37 @@ export const ComponentMatrix: React.FC = () => {
             return (
               <div key={currentId} className="bg-black/40 border border-zinc-900 p-4 rounded-xl flex flex-col justify-between space-y-4 hover:border-zinc-800 transition-all relative">
                 <div className="space-y-2.5">
-                  <div className="w-full h-36 bg-zinc-950/60 rounded-xl border border-zinc-850 flex items-center justify-center overflow-hidden relative select-none">
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={currentName} loading="lazy" decoding="async" className="w-full h-full object-contain scale-95" />
+                  <div className="w-full h-36 bg-zinc-950/60 rounded-xl border border-zinc-850 flex items-center justify-center overflow-hidden relative select-none group cursor-pointer">
+                    <input 
+                      type="file" 
+                      accept="image/webp,image/png,image/jpeg"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                      title="Subir imagen WebP"
+                      onChange={(e) => handleImageUploadToStorage(e, currentId)}
+                      disabled={uploadingId === currentId}
+                    />
+
+                    {uploadingId === currentId ? (
+                      <div className="text-center text-cyan-500 flex flex-col items-center gap-1.5 animate-pulse font-mono z-10">
+                        <RefreshCw size={22} className="animate-spin" />
+                        <span className="text-[10px]">Subiendo...</span>
+                      </div>
+                    ) : item.image_url ? (
+                      <>
+                        <img src={item.image_url} alt={currentName} loading="lazy" decoding="async" className="w-full h-full object-contain scale-95 z-0" />
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                          <UploadCloud size={24} className="text-white mb-1" />
+                          <span className="text-white text-[10px] font-bold">Reemplazar Asset</span>
+                        </div>
+                      </>
                     ) : (
-                      <div className="text-center text-zinc-700 flex flex-col items-center gap-1.5 animate-pulse font-mono">
-                        <Camera size={22} />
+                      <div className="text-center text-zinc-700 flex flex-col items-center gap-1.5 font-mono group-hover:text-zinc-400 transition-colors z-10 pointer-events-none">
+                        <Camera size={22} className={uploadingId ? '' : 'animate-pulse'} />
                         <span className="text-[10px]">Sin Imagen WebP</span>
+                        <span className="text-[8px] text-zinc-600 bg-zinc-900 px-2 py-0.5 rounded-full mt-1">Clic para subir</span>
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none z-0"></div>
                   </div>
 
                   <div className="flex justify-between items-start gap-2 pt-0.5">
