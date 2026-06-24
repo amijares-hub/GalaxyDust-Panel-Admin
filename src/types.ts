@@ -34,13 +34,13 @@ export interface WebComponent {
 
 export interface GameCondition {
   id: string;
-  field: 'user.level' | 'user.gold' | 'user.gems' | 'user.registration_days' | 'user.xp' | 'inventory.item_count';
+  field: 'user.level' | 'user.can_level' | 'user.gd_coins' | 'user.phantom_coins' | 'user.metal' | 'user.crystal' | 'user.deuterium' | 'user.dark_matter' | 'user.registration_days' | 'user.xp' | 'inventory.item_count';
   operator: 'greater_than' | 'less_than' | 'equals' | 'not_equals' | 'contains';
   value: string | number;
 }
 
 export interface GameAction {
-  type: 'grant_item' | 'add_gold' | 'add_gems' | 'multiply_xp' | 'send_custom_notification' | 'suspend_account';
+  type: 'grant_item' | 'add_gd_coins' | 'add_phantom_coins' | 'multiply_xp' | 'send_custom_notification' | 'suspend_account';
   params: {
     itemId?: string;
     itemRarity?: 'common' | 'rare' | 'epic' | 'legendary';
@@ -85,8 +85,7 @@ export interface UserProfile {
   username: string;
   email: string;
   level: number;
-  gold: number;
-  gems: number;
+  can_level: number;
   xp: number;
   role: 'user' | 'moderator' | 'admin' | 'vip';
   status: 'active' | 'banned' | 'pending';
@@ -96,16 +95,21 @@ export interface UserProfile {
   inventory: InventoryItem[];
   auditLogs?: AuditLogEntry[];
   
-  // 12 CAN specialized resources
-  metal?: number;
-  deuterium?: number;
-  dark_matter?: number;
-  organium?: number;
-  mana?: number;
-  xenoplasm?: number;
-  omniplate?: number;
-  lunar_fiber?: number;
-  infinite_core?: number;
+  // Normalización de las columnas atómicas de Postgres de la dApp
+  metal: number;
+  crystal: number;
+  deuterium: number;
+  dark_matter: number;
+  omniplate: number;
+  orichaltron: number;
+  lunar_fiber: number;
+  infinity_core: number;
+  primal_token: number;
+  xenoplasm: number;
+  organium: number;
+  mana: number;
+  gd_coins: number;
+  phantom_coins: number;
   
   // Lore Metadata
   faction?: 'Nova' | 'Osiris' | 'Alacran';
@@ -122,7 +126,7 @@ export interface SupabaseConfig {
   isConnected: boolean;
 }
 
-export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'can' | 'ships' | 'matrix' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station';
+export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'can' | 'ships' | 'matrix' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer';
 
 export type SubFunctionType = 
   | 'branding_global' | 'branding_landing' | 'branding_auth' | 'branding_lobby' | 'branding_hud'
@@ -133,9 +137,13 @@ export type SubFunctionType =
   | 'ships_atelier' | 'ships_hangar'
   | 'matrix_overview'
   | 'expediciones_dashboard' | 'expediciones_creator' | 'expediciones_rewards' | 'expediciones_events'
-  | 'vuelo_telemetria' | 'vuelo_estados' | 'vuelo_rng' | 'vuelo_skills' | 'vuelo_seguridad'
-  | 'market_items' | 'market_auctions' | 'market_rules' | 'market_audit' | 'market_inbox'
-  | 'phantom_store' | 'phantom_refresh' | 'phantom_cleansing' | 'phantom_events' | 'phantom_audit';
+  | 'vuelo_telemetria' | 'vuelo_estados' | 'vuelo_rng' | 'vuelo_skills' | 'vuelo_seguridad' | 'vuelo_alertas'
+  | 'market_items' | 'market_auctions' | 'market_rules' | 'market_audit' | 'market_inbox' | 'market_analytics'
+  | 'phantom_store' | 'phantom_refresh' | 'phantom_cleansing' | 'phantom_events' | 'phantom_audit'
+  | 'promo_main'
+  | 'alliance_main'
+  | 'security_main' | 'security_blackbox'
+  | 'sanitizer_main';
 
 export interface NavigationState {
   activeMain: MainFunction;
@@ -143,7 +151,7 @@ export interface NavigationState {
 }
 
 // ==========================================
-// NEW: GALAXYDUST GAME CLIENT CONFIG TYPE
+// GAME CLIENT CONFIG CONFIGURATOR UNIFIED
 // ==========================================
 
 export interface AuthTerminalConfig {
@@ -158,10 +166,10 @@ export interface AuthTerminalConfig {
     authorized: string;
   };
   toasts: {
-    alert: string; // Safety alert text
-    authCorrect: string; // Correct Auth
-    connEstablished: string; // Conn OK
-    activeColor: 'red' | 'emerald' | 'cyan'; // Dynamic active color bar
+    alert: string; 
+    authCorrect: string; 
+    connEstablished: string; 
+    activeColor: 'red' | 'emerald' | 'cyan'; 
   };
   passwordStrength: {
     noKey: string;
@@ -174,7 +182,7 @@ export interface AuthTerminalConfig {
     username: string;
     email: string;
     avatarUrl: string;
-    provider: string; // canal de entrada
+    provider: string; 
     authorizeDate: string;
     mfaEnabled: boolean;
     assignedToken: string;
@@ -183,8 +191,8 @@ export interface AuthTerminalConfig {
     emailPlaceholder: string;
     passwordPlaceholder: string;
     resetEmailPlaceholder: string;
-    verificationDigits: number; // 6
-    otpDigits: number; // 6
+    verificationDigits: number; 
+    otpDigits: number; 
     rememberMeDefault: boolean;
   };
   buttons: {
@@ -211,7 +219,7 @@ export interface AuthTerminalConfig {
 export interface HudEconomicConfig {
   pilot: {
     level: number;
-    rankLabel: string; // VIP 7
+    rankLabel: string; 
     avatarUrl: string;
   };
   combat: {
@@ -225,29 +233,29 @@ export interface HudEconomicConfig {
     speedActive: boolean;
   };
   currencies: {
-    gdCoin: number;
-    quantumCredit: number;
-    phantomCoin: number;
-    halloweenCoin: number;
-    xmasCoin: number;
-    valentineCoin: number;
+    gd_coins: number;
+    quantum_credits: number;
+    phantom_coins: number;
+    halloween_coins: number;
+    xmas_coins: number;
+    valentine_coins: number;
   };
   vaultResources: {
     metal: number;
-    cristal: number;
-    deuterio: number;
-    materiaOscura: number;
+    crystal: number;
+    deuterium: number;
+    dark_matter: number;
     omniplate: number;
     orichaltron: number;
-    lunarFiber: number;
-    infiniteCore: number;
-    primalToken: number;
+    lunar_fiber: number;
+    infinity_core: number;
+    primal_token: number;
     xenoplasm: number;
     organium: number;
     mana: number;
   };
-  streamTextOnClick: string; // default e.g. "+15K METAL"
-  buyCrystalsReward: number; // default +1000
+  streamTextOnClick: string; 
+  buyCrystalsReward: number; 
 }
 
 export interface HangarAsset {
@@ -256,14 +264,13 @@ export interface HangarAsset {
   category: 'Spaceships' | 'Structures' | 'Technology' | 'Badges';
   rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
   level: number;
-  stars: number; // 1 to 7
+  stars: number; 
   blueprintProgressPercent: number;
   blueprintsOwned: number;
   blueprintsRequired: number;
   hasNotification: boolean;
   avatarUrl: string;
   lore: string;
-  // Attributes
   hp: number;
   shield: number;
   vel: number;
@@ -292,20 +299,20 @@ export interface SideralShip {
   id: string;
   name: string;
   rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
-  powerBonus: number; // e.g. +POW EXP
+  powerBonus: number; 
   levelRequired: number;
   isUnlocked: boolean;
 }
 
 export interface SideralExplorationConfig {
-  propulsionSpheres: string[]; // e.g. ["Combustión", "Impulso", "Hiperespacio", "Phantom Series", "Exclusivas", "Xmas"]
+  propulsionSpheres: string[]; 
   starClusters: StarCluster[];
   deployCarouselShips: SideralShip[];
   contratarLicenciaCostCrystals: number;
-  quantumScanTimerSeconds: number; // 2 seconds
-  quantumRewardCrystals: number; // +250
-  completedPlanets: Array<{ name: string; concentration: number }>; // e.g. ["Zeta-Reticuli IV", "Astraea-B9"]
-  anomaliesPlanets: string[]; // ["Pandora Prime", "Erebus Nova"]
+  quantumScanTimerSeconds: number; 
+  quantumRewardCrystals: number; 
+  completedPlanets: Array<{ name: string; concentration: number }>; 
+  anomaliesPlanets: string[]; 
 }
 
 export interface ShopBundleItem {
@@ -319,9 +326,9 @@ export interface ShopBundle {
   id: string;
   title: string;
   category: string;
-  extraValuePercent: number; // e.g. 800
-  rarityColorClass: string; // border coloring
-  expirationHoursLeft: number; // countdown
+  extraValuePercent: number; 
+  rarityColorClass: string; 
+  expirationHoursLeft: number; 
   stockLimitMax: number;
   stockRemaining: number;
   gemsRewardBonus: number;
@@ -330,7 +337,7 @@ export interface ShopBundle {
 }
 
 export interface AcquisitionShopConfig {
-  categories: string[]; // e.g. ["Gift of Heartwarming [HOT]", "Recommended Immortals [NEW]", etc.]
+  categories: string[]; 
   bundles: ShopBundle[];
 }
 
@@ -348,7 +355,7 @@ export interface QuantumUnitShard {
 export interface QuantumSupplyItem {
   id: string;
   name: string;
-  discountPercent: number; // e.g. 10 or 20
+  discountPercent: number; 
   timeReductionSeconds: number;
 }
 
@@ -357,12 +364,11 @@ export interface PhantomStationConfig {
   recentTelemetryLogs: string[];
   autoRefreshStockTimerSeconds: number;
   refreshAttemptsUsed: number;
-  refreshAttemptsMax: number; // e.g. 90
+  refreshAttemptsMax: number; 
   autoRefreshEnabled: boolean;
   refreshCostVoidCrystals: number;
   unitsCatalog: QuantumUnitShard[];
   suppliesCatalog: QuantumSupplyItem[];
-  // Extended fields for admin station panel
   selectedBadgeDiscount?: string;
   badgeDiscountPercent?: number;
   badgeDiscountCategories?: string[];
@@ -397,6 +403,7 @@ export interface COMMessage {
 }
 
 export interface AllianceRolePermissions {
+  sidebarOpen?: boolean;
   canStartBossEvent: boolean;
   canSpendVaultFunds: boolean;
   canKickMembers: boolean;
@@ -405,16 +412,16 @@ export interface AllianceRolePermissions {
 
 export interface AllianceOperationsConfig {
   allianceName: string;
-  emblemBorderShieldColor: string; // border code
+  emblemBorderShieldColor: string; 
   activeMembersJoined: number;
-  activeMembersLimit: number; // 50
+  activeMembersLimit: number; 
   guildCoreLevel: number;
   techProgressPercent: number;
   roster: AllianceRosterMember[];
   comMessages: COMMessage[];
-  donateCrystalCost: number; // 50
-  donateProgressRateIncrement: number; // 15
-  donatePowerBonusScore: number; // 5000
+  donateCrystalCost: number; 
+  donateProgressRateIncrement: number; 
+  donatePowerBonusScore: number; 
   rolePermissions: {
     Comandante: AllianceRolePermissions;
     Oficial: AllianceRolePermissions;
@@ -423,7 +430,7 @@ export interface AllianceOperationsConfig {
 }
 
 export interface ServerSettingsConfig {
-  utcMasterResetHour: number; // 0-23 UTC
+  utcMasterResetHour: number; 
 }
 
 export interface GalaxyDustConfig {
@@ -438,7 +445,7 @@ export interface GalaxyDustConfig {
 }
 
 // ==========================================
-// NEW SYSTEM FIELDS FOR SASORILABS
+// CORE STRUCTS FOR SYSTEM COHESION
 // ==========================================
 
 export type ShipSize = 'Fighter' | 'Mighty' | 'Massive' | 'Commander' | 'Mini';
@@ -456,10 +463,55 @@ export interface StructureCostLevel {
 
 export interface BadgeDebuff {
   stat: string;
-  value: number; // usually negative
+  value: number; 
 }
 
 export interface TechPrerequisite {
   tech_id: string;
   level: number;
 }
+
+// ==========================================
+// OUTCOME CONFIG CONTRACTS (Materializers, Packs, Bundles)
+// ==========================================
+
+export interface MaterializerOutcome {
+  chance_pct: number;           // Probabilidad entera entre 1 y 100
+  asset_multiplier: number;     // Cuántos assets se crean (0 = fallo, 1 = normal, 2 = doble)
+  consume_resources: boolean;   // ¿Se cobran los materiales y GD al jugador?
+  consume_blueprint: boolean;   // ¿Se gasta/quema el Blueprint de la mochila?
+  reward_item_code: string | null; // ID de un ítem extra si se requiere
+}
+
+export interface MaterializerConfig {
+  config_type: "materializer_matrix";
+  outcomes: MaterializerOutcome[];
+}
+
+export interface DropItem {
+  chance_pct: number;          // Probabilidad de obtención (soporta decimales ej: 0.5)
+  item_code: string;           // Identificador del asset premiado
+  item_category: "ships" | "structures" | "technologies" | "astrobots" | "tools" | "badges" | "general_effects";
+  quantity_min: number;        // Cantidad mínima que puede salir
+  quantity_max: number;        // Cantidad máxima que puede salir
+}
+
+export interface DropTableConfig {
+  config_type: "weighted_drop_table";
+  is_stackable: boolean;       // Control para agrupar el pack en un solo slot
+  drops: DropItem[];
+}
+
+export interface ManifestItem {
+  item_code: string;
+  item_category: "ships" | "structures" | "technologies" | "astrobots" | "tools" | "badges" | "general_effects";
+  quantity: number;
+}
+
+export interface FixedManifestConfig {
+  config_type: "fixed_manifest";
+  is_stackable: boolean;
+  items: ManifestItem[];
+}
+
+export type OutcomeConfig = MaterializerConfig | DropTableConfig | FixedManifestConfig;

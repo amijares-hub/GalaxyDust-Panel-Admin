@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, Edit, Trash2, Search, Sliders, Shield, Zap, RefreshCw, 
@@ -7,10 +7,12 @@ import {
   Download
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { supabase } from '../lib/supabase';
 import { 
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
+import CombatSandboxTester, { CombatSandboxOverlay } from './CombatSandboxTester';
 
 interface ShipSeed {
   ship_id: string; // ID único de la nave (base)
@@ -590,7 +592,7 @@ export default function AdminShipsModule({
 }: AdminShipsModuleProps) {
 
   // Active Main Tab State
-  const [activeTab, setActiveTab] = useState<'atelier' | 'hangar' | 'fabricacion' | 'bitacora'>('atelier');
+  const [activeTab, setActiveTab] = useState<'atelier' | 'hangar' | 'fabricacion' | 'bitacora' | 'sandbox'>('atelier');
 
   // Bulk Selection State for Taller Estelar
   const [bulkSelectedShipIds, setBulkSelectedShipIds] = useState<string[]>([]);
@@ -605,7 +607,67 @@ export default function AdminShipsModule({
   // ========================================================
   // SUBPESTAÑA 1: TALLER ESTELAR (SEED CRUD) STATE
   // ========================================================
-  const [shipsList, setShipsList] = useState<ShipSeed[]>(INITIAL_SEED_SHIPS);
+  // 1. Inicializar el catálogo vacío o con un array de carga
+  const [shipsList, setShipsList] = useState<ShipSeed[]>([]);
+  const [loadingKernel, setLoadingKernel] = useState(true);
+
+  // 2. Disparar el gancho de conexión en caliente al montar el módulo
+  useEffect(() => {
+    fetchRealShipsCatalog();
+  }, []);
+
+  const fetchRealShipsCatalog = async () => {
+    try {
+      setLoadingKernel(true);
+      
+      // Consultamos la tabla real que acabamos de poblar con el éxito del SQL
+      const { data, error } = await supabase
+        .from('seed_ships')
+        .select('*')
+        .order('ship_name', { ascending: true });
+
+      if (error) throw error;
+
+      if (data) {
+        // Mapeamos los campos del backend hacia el tipado estricto que exige tu interfaz
+        const formattedShips = data.map((dbShip: any) => ({
+          ship_id: dbShip.ship_id,
+          ship_name: dbShip.ship_name,
+          description: dbShip.description,
+          rarity: dbShip.rarity,
+          avatar_url: dbShip.avatar_url || "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=200",
+          can_level_required: dbShip.can_level_required || 1,
+          blueprints_required: dbShip.blueprints_required || 10,
+          resistance: Number(dbShip.resistance),
+          shield: Number(dbShip.shield),
+          defense: Number(dbShip.defense),
+          speed_boost: dbShip.speed_boost,
+          combat_speed: dbShip.combat_speed || 200,
+          engine: dbShip.engine,
+          damage_type: dbShip.damage_type,
+          collection: dbShip.collection,
+          ship_role: dbShip.ship_role,
+          ship_size: dbShip.ship_size,
+          attack_standard: Number(dbShip.attack_standard),
+          attack_laser: Number(dbShip.attack_laser),
+          attack_ionic: Number(dbShip.attack_ionic),
+          attack_plasma: Number(dbShip.attack_plasma),
+          attack_graviton: Number(dbShip.attack_graviton),
+          cargo_capacity: Number(dbShip.cargo_capacity),
+          production_min: Number(dbShip.production_min),
+          production_max: Number(dbShip.production_max),
+          skills: dbShip.skills || [],
+          skill_requirements: dbShip.skill_requirements
+        }));
+
+        setShipsList(formattedShips);
+      }
+    } catch (err: any) {
+      console.error("Fallo de enlace con seed_ships en la dApp:", err.message);
+    } finally {
+      setLoadingKernel(false);
+    }
+  };
 
   // Fleet Average Statistics for Radar Chart comparison
   const fleetAverages = useMemo(() => {
@@ -665,6 +727,9 @@ export default function AdminShipsModule({
 
   // Selected Ship in Editor Drawer
   const [selectedShip, setSelectedShip] = useState<ShipSeed | null>(null);
+  
+  // Combat Sandbox Integration
+  const [showSandboxModal, setShowSandboxModal] = useState(false);
   
   // Bulk state actions
   const [bulkRarity, setBulkRarity] = useState<string>('no_change');
@@ -1630,8 +1695,20 @@ export default function AdminShipsModule({
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            <HardDrive size={13} />
-            Bitácora de Auditoría
+            <Clock size={16} className="mr-2" />
+            Bitácora
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('sandbox')}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center ${
+              activeTab === 'sandbox' 
+                ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' 
+                : 'border-transparent text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+            }`}
+          >
+            <Shield size={16} className="mr-2" />
+            Combat Sandbox
           </button>
         </div>
       </div>
@@ -2620,6 +2697,13 @@ export default function AdminShipsModule({
                     {/* Action Execution buttons */}
                     <div className="pt-3 border-t border-zinc-900 space-y-2">
                       <button
+                        onClick={() => setShowSandboxModal(true)}
+                        className="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/50 text-emerald-400 font-bold uppercase text-[10px] tracking-wider rounded transition-colors flex items-center justify-center gap-2 cursor-pointer mb-2"
+                      >
+                        <Shield size={13} /> TESTEAR EN COMBAT SANDBOX
+                      </button>
+
+                      <button
                         onClick={handleSaveShipKernel}
                         className="w-full py-2 bg-red-650 hover:bg-red-500 text-white font-bold uppercase text-[10px] tracking-wider rounded transition-colors flex items-center justify-center gap-2 cursor-pointer"
                       >
@@ -3200,6 +3284,38 @@ export default function AdminShipsModule({
               </div>
             </motion.div>
           </div>
+        )}
+
+        {activeTab === 'sandbox' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-6"
+          >
+            <CombatSandboxTester />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSandboxModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          >
+            <div className="relative w-full max-w-5xl max-h-screen overflow-y-auto bg-gray-900 rounded-xl border border-emerald-500/30">
+              <button 
+                onClick={() => setShowSandboxModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white p-2 z-10"
+              >
+                <X size={20} />
+              </button>
+              <CombatSandboxOverlay ship={editedShipForm as ShipSeed} />
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

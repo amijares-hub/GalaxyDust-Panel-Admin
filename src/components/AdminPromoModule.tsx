@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Megaphone, Plus, Trash2, Gift } from 'lucide-react';
+import { Megaphone, Plus, Trash2, Gift, Loader2, Radio } from 'lucide-react';
+import { adminApi } from '../lib/adminApi';
 
 interface PromoCode {
   id: string;
@@ -31,6 +32,7 @@ export const AdminPromoModule: React.FC = () => {
   const [newPromo, setNewPromo] = useState<Partial<PromoCode>>({
     rewards: { metal: 0, crystal: 0, deuterium: 0, gdCoin: 0, phantomCoin: 0, ships: '' }
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleBroadcast = () => {
     if (!broadcastMessage) return;
@@ -38,81 +40,111 @@ export const AdminPromoModule: React.FC = () => {
     setBroadcastMessage('');
   };
 
-  const handleAddPromo = () => {
+  const handleAddPromo = async () => {
     if (!newPromo.code || !newPromo.expiration || !newPromo.limit) return;
     
-    const code: PromoCode = {
-      id: Date.now().toString(),
-      code: newPromo.code,
-      expiration: newPromo.expiration,
-      limit: newPromo.limit,
-      rewards: newPromo.rewards as PromoCode['rewards']
-    };
+    setIsLoading(true);
+    try {
+      await adminApi.createPromoCode({
+        code: newPromo.code,
+        expires_at: newPromo.expiration,
+        max_claims: newPromo.limit,
+        rewards: newPromo.rewards
+      });
 
-    setPromoCodes([...promoCodes, code]);
-    setNewPromo({ rewards: { metal: 0, crystal: 0, deuterium: 0, gdCoin: 0, phantomCoin: 0, ships: '' } });
+      const code: PromoCode = {
+        id: Date.now().toString(),
+        code: newPromo.code,
+        expiration: newPromo.expiration,
+        limit: newPromo.limit,
+        rewards: newPromo.rewards as PromoCode['rewards']
+      };
+
+      setPromoCodes([...promoCodes, code]);
+      setNewPromo({ rewards: { metal: 0, crystal: 0, deuterium: 0, gdCoin: 0, phantomCoin: 0, ships: '' } });
+    } catch (error) {
+      alert('Error al crear promo code en el servidor.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDeletePromo = (id: string) => {
     setPromoCodes(promoCodes.filter(c => c.id !== id));
   };
 
+  const inputCls = "w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 text-zinc-200 text-xs font-mono focus:outline-none focus:border-red-500/50 transition-colors placeholder-zinc-700";
+  const labelCls = "block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1.5";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
+
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-zinc-900 pb-4">
+        <div className="h-10 w-10 bg-emerald-950/30 border border-emerald-500/20 rounded flex items-center justify-center text-emerald-400">
+          <Radio size={20} />
+        </div>
+        <div>
+          <h2 className="text-white font-bold text-lg font-mono tracking-wider uppercase">Promociones & Marketing</h2>
+          <p className="text-xs text-zinc-500 font-sans mt-0.5">Gestión de broadcasts globales y generación de promo codes con recompensas.</p>
+        </div>
+      </div>
+
       {/* System Broadcast */}
-      <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 p-6 rounded-lg">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Megaphone className="w-5 h-5 text-blue-400" />
+      <div className="bg-black/45 border border-zinc-900 p-5 rounded-lg">
+        <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
+          <Megaphone size={14} className="text-emerald-400" />
           System Broadcast
-        </h2>
-        <div className="space-y-4">
+        </h3>
+        <div className="space-y-3">
           <textarea
-            className="w-full bg-gray-900 border border-gray-700 rounded-md p-3 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 h-24 resize-none"
-            placeholder="Escribe un mensaje push global para todos los usuarios..."
+            className="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2.5 text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-emerald-500/40 h-24 resize-none text-xs font-mono transition-colors"
+            placeholder="Escribe un mensaje push global para todos los usuarios activos en el sistema..."
             value={broadcastMessage}
             onChange={(e) => setBroadcastMessage(e.target.value)}
           />
           <button
             onClick={handleBroadcast}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium transition-colors"
+            className="px-5 py-2 bg-emerald-950/40 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/60 text-emerald-400 font-bold text-xs uppercase tracking-wider rounded transition-all flex items-center gap-2"
           >
-            Enviar Broadcast
+            <Megaphone size={12} />
+            Enviar Broadcast Global
           </button>
         </div>
       </div>
 
       {/* Generador de Promo Codes */}
-      <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 p-6 rounded-lg">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Gift className="w-5 h-5 text-emerald-400" />
+      <div className="bg-black/45 border border-zinc-900 p-5 rounded-lg">
+        <h3 className="text-sm font-bold text-white mb-5 flex items-center gap-2 font-mono uppercase tracking-wider border-b border-zinc-900 pb-3">
+          <Gift size={14} className="text-red-500" />
           Generador de Promo Codes
-        </h2>
+        </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Código</label>
+            <label className={labelCls}>Código</label>
             <input
               type="text"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white focus:outline-none focus:border-emerald-500 uppercase"
+              className={inputCls + " uppercase"}
               placeholder="Ej: EVENTO2026"
               value={newPromo.code || ''}
               onChange={(e) => setNewPromo({...newPromo, code: e.target.value.toUpperCase()})}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Expiración</label>
+            <label className={labelCls}>Fecha Expiración</label>
             <input
               type="date"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white focus:outline-none focus:border-emerald-500"
+              className={inputCls}
               value={newPromo.expiration || ''}
               onChange={(e) => setNewPromo({...newPromo, expiration: e.target.value})}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-400 mb-1">Límite de usos</label>
+            <label className={labelCls}>Límite de usos</label>
             <input
               type="number"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white focus:outline-none focus:border-emerald-500"
+              className={inputCls}
               placeholder="Ej: 1000"
               value={newPromo.limit || ''}
               onChange={(e) => setNewPromo({...newPromo, limit: parseInt(e.target.value)})}
@@ -120,58 +152,32 @@ export const AdminPromoModule: React.FC = () => {
           </div>
         </div>
 
-        <h3 className="text-md font-medium text-gray-300 mb-3 border-b border-gray-700 pb-2">Recompensas</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-3 border-b border-zinc-900 pb-2">
+          Recompensas del Código
+        </h4>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+          {[
+            { key: 'metal', label: 'Metal' },
+            { key: 'crystal', label: 'Crystal' },
+            { key: 'deuterium', label: 'Deuterium' },
+            { key: 'gdCoin', label: 'GD Coin' },
+            { key: 'phantomCoin', label: 'Phantom Coin' },
+          ].map(({ key, label }) => (
+            <div key={key}>
+              <label className={labelCls}>{label}</label>
+              <input
+                type="number"
+                className={inputCls}
+                value={(newPromo.rewards as any)?.[key] || ''}
+                onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, [key]: parseInt(e.target.value) || 0}})}
+              />
+            </div>
+          ))}
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Metal</label>
-            <input
-              type="number"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"
-              value={newPromo.rewards?.metal || ''}
-              onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, metal: parseInt(e.target.value) || 0}})}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Crystal</label>
-            <input
-              type="number"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"
-              value={newPromo.rewards?.crystal || ''}
-              onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, crystal: parseInt(e.target.value) || 0}})}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Deuterium</label>
-            <input
-              type="number"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"
-              value={newPromo.rewards?.deuterium || ''}
-              onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, deuterium: parseInt(e.target.value) || 0}})}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">GD Coin</label>
-            <input
-              type="number"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"
-              value={newPromo.rewards?.gdCoin || ''}
-              onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, gdCoin: parseInt(e.target.value) || 0}})}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Phantom Coin</label>
-            <input
-              type="number"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"
-              value={newPromo.rewards?.phantomCoin || ''}
-              onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, phantomCoin: parseInt(e.target.value) || 0}})}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Naves (Ej: "10x Fighter")</label>
+            <label className={labelCls}>Naves (Ej: "10x Fighter")</label>
             <input
               type="text"
-              className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-white text-sm"
+              className={inputCls}
               value={newPromo.rewards?.ships || ''}
               onChange={(e) => setNewPromo({...newPromo, rewards: {...newPromo.rewards!, ships: e.target.value}})}
             />
@@ -180,47 +186,48 @@ export const AdminPromoModule: React.FC = () => {
 
         <button
           onClick={handleAddPromo}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-md font-medium transition-colors flex items-center gap-2"
+          disabled={isLoading}
+          className="px-5 py-2 bg-red-950/30 hover:bg-[#ff1e1e]/20 border border-[#ff1e1e]/30 hover:border-[#ff1e1e]/60 text-[#ff1e1e] font-bold text-xs uppercase tracking-wider rounded transition-all flex items-center gap-2 disabled:opacity-40"
         >
-          <Plus className="w-4 h-4" />
-          Crear Promo Code
+          {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+          {isLoading ? 'Creando...' : 'Crear Promo Code'}
         </button>
 
-        {/* Tabla Inferior */}
-        <div className="mt-8 overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-300">
-            <thead className="text-xs text-gray-400 uppercase bg-gray-900/50">
-              <tr>
-                <th className="px-4 py-3">Código</th>
-                <th className="px-4 py-3">Expiración</th>
-                <th className="px-4 py-3">Límite</th>
-                <th className="px-4 py-3">Recompensas Principales</th>
-                <th className="px-4 py-3 text-right">Acciones</th>
+        {/* Tabla de códigos activos */}
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-zinc-900">
+                <th className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código</th>
+                <th className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Expiración</th>
+                <th className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Límite</th>
+                <th className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Recompensas</th>
+                <th className="px-3 py-2.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider text-right">Acción</th>
               </tr>
             </thead>
             <tbody>
               {promoCodes.map((code) => (
-                <tr key={code.id} className="border-b border-gray-800 bg-gray-800/20 hover:bg-gray-800/40">
-                  <td className="px-4 py-3 font-mono text-emerald-400 font-bold">{code.code}</td>
-                  <td className="px-4 py-3">{code.expiration}</td>
-                  <td className="px-4 py-3">{code.limit} usos</td>
-                  <td className="px-4 py-3 text-xs">
+                <tr key={code.id} className="border-b border-zinc-900/60 hover:bg-zinc-900/20 transition-colors">
+                  <td className="px-3 py-2.5 font-mono text-emerald-400 font-bold tracking-wider">{code.code}</td>
+                  <td className="px-3 py-2.5 text-zinc-400 font-mono">{code.expiration}</td>
+                  <td className="px-3 py-2.5 text-zinc-400">{code.limit.toLocaleString()} usos</td>
+                  <td className="px-3 py-2.5 text-zinc-500 font-mono text-[10px]">
                     M:{code.rewards.metal} C:{code.rewards.crystal} D:{code.rewards.deuterium} GD:{code.rewards.gdCoin}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-2.5 text-right">
                     <button
                       onClick={() => handleDeletePromo(code.id)}
-                      className="text-red-400 hover:text-red-300 transition-colors p-1"
+                      className="text-zinc-600 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-950/20"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 size={13} />
                     </button>
                   </td>
                 </tr>
               ))}
               {promoCodes.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                    No hay promo codes activos
+                  <td colSpan={5} className="px-3 py-8 text-center text-zinc-600 text-xs font-mono">
+                    — Sin promo codes activos —
                   </td>
                 </tr>
               )}

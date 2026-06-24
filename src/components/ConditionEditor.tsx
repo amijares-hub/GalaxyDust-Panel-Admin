@@ -113,8 +113,8 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
   const fieldsList = [
     { key: 'user.level', name: 'Nivel del Jugador (user.level)' },
-    { key: 'user.gold', name: 'Oro en Balance (user.gold)' },
-    { key: 'user.gems', name: 'Gemas en Balance (user.gems)' },
+    { key: 'user.gd_coins', name: 'Oro en Balance (user.gd_coins)' },
+    { key: 'user.phantom_coins', name: 'Gemas en Balance (user.phantom_coins)' },
     { key: 'user.registration_days', name: 'Dias desde Registro (user.registration_days)' },
     { key: 'user.xp', name: 'Experiencia Acumulada (user.xp)' },
   ];
@@ -127,8 +127,8 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
   ];
 
   const actionsList = [
-    { key: 'add_gold', name: 'Otorgar Oro (add_gold)' },
-    { key: 'add_gems', name: 'Otorgar Gemas (add_gems)' },
+    { key: 'add_gd_coins', name: 'Otorgar Oro (add_gd_coins)' },
+    { key: 'add_phantom_coins', name: 'Otorgar Gemas (add_phantom_coins)' },
     { key: 'grant_item', name: 'Otorgar Item Inventario (grant_item)' },
     { key: 'multiply_xp', name: 'Multiplicar Experiencia (multiply_xp)' },
     { key: 'suspend_account', name: 'Baneo Temporal (suspend_account)' },
@@ -232,7 +232,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
   const handleActionTypeChange = (type: GameAction['type']) => {
     setNewActionType(type);
-    if (type === 'add_gold' || type === 'add_gems') {
+    if (type === 'add_gd_coins' || type === 'add_phantom_coins') {
       setNewActionParams({ amount: 100, message: 'Premio por cumplir condiciones' });
     } else if (type === 'grant_item') {
       setNewActionParams({ itemId: 'inv_1', itemRarity: 'epic', quantity: 1, message: '¡Has recibido un objeto formidable!' } as any);
@@ -392,7 +392,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
     const log: typeof simLog = [];
     log.push({ type: 'info', text: `INICIANDO EVALUACIÓN: [Regla: ${rule.name}] vs [Usuario: ${user.username}]` });
     log.push({ type: 'info', text: `Verificando disparador: ${rule.trigger.toUpperCase()}` });
-    log.push({ type: 'info', text: `Atributos usuario: Lvl:${user.level} | Gold:${user.gold} | Gems:${user.gems} | Rol:${user.role} | Estatus:${user.status}` });
+    log.push({ type: 'info', text: `Atributos usuario: Lvl:${user.level} | Gold:${user.gd_coins} | Gems:${user.phantom_coins} | Rol:${user.role} | Estatus:${user.status}` });
 
     let allConditionsMet = true;
 
@@ -401,8 +401,8 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
       let attributeVal: any = null;
 
       if (cond.field === 'user.level') attributeVal = user.level;
-      else if (cond.field === 'user.gold') attributeVal = user.gold;
-      else if (cond.field === 'user.gems') attributeVal = user.gems;
+      else if (cond.field === 'user.gd_coins') attributeVal = user.gd_coins;
+      else if (cond.field === 'user.phantom_coins') attributeVal = user.phantom_coins;
       else if (cond.field === 'user.xp') attributeVal = user.xp;
       else if (cond.field === 'user.registration_days') {
         const regDate = new Date(user.created_at).getTime();
@@ -429,9 +429,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
       log.push({ type: 'success', text: `>>> COMPILACIÓN DE REGLA EXITOSA. Disparando acción: [${rule.action.type}]` });
       
       const p = rule.action.params;
-      if (rule.action.type === 'add_gold') {
+      if (rule.action.type === 'add_gd_coins') {
         log.push({ type: 'success', text: `RECOMPENSA: Se otorgó +${p.amount} Oro a ${user.username}. Mensaje: "${p.message}"` });
-      } else if (rule.action.type === 'add_gems') {
+      } else if (rule.action.type === 'add_phantom_coins') {
         log.push({ type: 'success', text: `RECOMPENSA: Se otorgó +${p.amount} Gemas Escarlata a ${user.username}.` });
       } else if (rule.action.type === 'grant_item') {
         log.push({ type: 'success', text: `INVENTARIO: Objeto inyectado [ID: ${p.itemId || 'objeto'}] rareza [${p.itemRarity || 'rare'}].` });
@@ -743,18 +743,21 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                       <input
                         type="text"
                         id="newAlertName"
+                        aria-label="Nombre Alerta"
                         placeholder="Nombre Alerta"
                         className="p-1 px-2 bg-black border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 h-7 text-[10px]"
                       />
                       <input
                         type="text"
                         id="newAlertMetric"
+                        aria-label="Métrica"
                         placeholder="Métrica"
                         className="p-1 px-2 bg-black border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 h-7 text-[10px]"
                       />
                       <input
                         type="text"
                         id="newAlertThreshold"
+                        aria-label="Umbral"
                         placeholder="Umbral"
                         className="p-1 px-2 bg-black border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 h-7 text-[10px] col-span-2"
                       />
@@ -842,8 +845,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Disparador del Servidor (Trigger)</label>
+                  <label htmlFor="newRuleTrigger" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Disparador del Servidor (Trigger)</label>
                   <select
+                    id="newRuleTrigger"
                     value={newRuleTrigger}
                     onChange={(e) => setNewRuleTrigger(e.target.value as any)}
                     className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500 font-sans"
@@ -873,6 +877,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                     {newConditions.map((cond, idx) => (
                       <div key={idx} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center bg-zinc-900/60 border border-zinc-850 p-2.5 rounded-lg">
                         <select
+                          aria-label="Campo de condición"
                           value={cond.field}
                           onChange={(e) => handleUpdateConditionRow(idx, 'field', e.target.value)}
                           className="flex-1 px-2 py-1 text-xs bg-black text-zinc-300 rounded border border-zinc-800 focus:outline-none"
@@ -883,6 +888,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         </select>
 
                         <select
+                          aria-label="Operador de condición"
                           value={cond.operator}
                           onChange={(e) => handleUpdateConditionRow(idx, 'operator', e.target.value)}
                           className="w-28 px-2 py-1 text-xs bg-black text-zinc-300 rounded border border-zinc-800 focus:outline-none"
@@ -893,6 +899,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         </select>
 
                         <input
+                          aria-label="Valor de condición"
                           type="text"
                           required
                           value={cond.value}
@@ -903,6 +910,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         {newConditions.length > 1 && (
                           <button
                             type="button"
+                            aria-label="Eliminar condición"
                             onClick={() => handleRemoveConditionRow(idx)}
                             className="p-1 px-2.5 bg-zinc-950 hover:bg-zinc-800 rounded border border-zinc-850 hover:border-red-500/30 text-zinc-500 hover:text-red-500 transition-colors cursor-pointer text-xs"
                           >
@@ -922,8 +930,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Tipo de Acción</label>
+                      <label htmlFor="newActionType" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Tipo de Acción</label>
                       <select
+                        id="newActionType"
                         value={newActionType}
                         onChange={(e) => handleActionTypeChange(e.target.value as any)}
                         className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
@@ -938,8 +947,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                     <div className="space-y-1.5">
                       {newActionType === 'add_gold' || newActionType === 'add_gems' ? (
                         <>
-                          <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Cantidad numérica</label>
+                          <label htmlFor="actionAmount" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Cantidad numérica</label>
                           <input
+                            id="actionAmount"
                             type="number"
                             min={1}
                             required
@@ -950,8 +960,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         </>
                       ) : newActionType === 'grant_item' ? (
                         <>
-                          <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">ID de Item e Inventario</label>
+                          <label htmlFor="actionItemId" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">ID de Item e Inventario</label>
                           <select
+                            id="actionItemId"
                             value={newActionParams.itemId || 'inv_1'}
                             onChange={(e) => handleActionParamChange('itemId', e.target.value)}
                             className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
@@ -963,8 +974,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         </>
                       ) : newActionType === 'multiply_xp' ? (
                         <>
-                          <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Factor multiplicador</label>
+                          <label htmlFor="actionMultiplier" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Factor multiplicador</label>
                           <input
+                            id="actionMultiplier"
                             type="number"
                             step={0.1}
                             min={1}
@@ -977,8 +989,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         </>
                       ) : (
                         <>
-                          <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Días de bann</label>
+                          <label htmlFor="actionDuration" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Días de bann</label>
                           <input
+                            id="actionDuration"
                             type="number"
                             min={1}
                             required
@@ -992,8 +1005,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Mensaje de Alerta al Jugador (Log de Inyectores)</label>
+                    <label htmlFor="actionMessage" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Mensaje de Alerta al Jugador (Log de Inyectores)</label>
                     <input
+                      id="actionMessage"
                       type="text"
                       placeholder="Ej. ¡Felicidades! Se inyectó +500 Gold"
                       value={newActionParams.message || ''}
@@ -1042,10 +1056,11 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
               {/* User Picker */}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                <label htmlFor="selectedSimUser" className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
                   1. Seleccionar Jugador Evaluado
                 </label>
                 <select
+                  id="selectedSimUser"
                   value={selectedSimUser}
                   onChange={(e) => setSelectedSimUser(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white font-sans text-xs focus:outline-none focus:border-red-500"
@@ -1060,10 +1075,11 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
               {/* Rule Picker */}
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                <label htmlFor="selectedSimRule" className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
                   2. Seleccionar Regla a auditar
                 </label>
                 <select
+                  id="selectedSimRule"
                   value={selectedSimRule}
                   onChange={(e) => setSelectedSimRule(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white font-sans text-xs focus:outline-none focus:border-red-500"

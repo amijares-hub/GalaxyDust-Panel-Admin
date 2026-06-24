@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Shield, Search, Users, AlertTriangle, MicOff, Snowflake, Flame } from 'lucide-react';
+import { Shield, Search, Users, AlertTriangle, MicOff, Snowflake, Flame, RefreshCw } from 'lucide-react';
+import { adminApi } from '../lib/adminApi';
 
 interface AllianceMember {
   id: string;
@@ -23,7 +24,6 @@ export const AdminAllianceCRM: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAlliance, setSelectedAlliance] = useState<Alliance | null>(null);
 
-  // Mock Data
   const mockAlliances: Alliance[] = [
     {
       id: 'a1',
@@ -56,12 +56,27 @@ export const AdminAllianceCRM: React.FC = () => {
     }
   };
 
+  const handleMutateLeader = async () => {
+    if (selectedAlliance) {
+      const newLeaderId = prompt('Ingrese el ID del nuevo líder (Ej. u102):');
+      if (newLeaderId) {
+        try {
+          await adminApi.mutateAllianceLeader({
+            alliance_id: selectedAlliance.id,
+            new_leader_id: newLeaderId
+          });
+          alert(`[ACCIÓN EJECUTADA]\n\nPrivilegios transferidos al nuevo líder ${newLeaderId}.`);
+          setSelectedAlliance({ ...selectedAlliance, leaderId: newLeaderId });
+        } catch (error) {
+          alert('Error al mutar el líder en el servidor.');
+        }
+      }
+    }
+  };
+
   const handleToggleMatchmaking = () => {
     if (selectedAlliance) {
-      setSelectedAlliance({
-        ...selectedAlliance,
-        matchmakingFrozen: !selectedAlliance.matchmakingFrozen
-      });
+      setSelectedAlliance({ ...selectedAlliance, matchmakingFrozen: !selectedAlliance.matchmakingFrozen });
       alert(`[ACCIÓN EJECUTADA]\n\nMatchmaking de Guerra para ${selectedAlliance.name} está ahora ${!selectedAlliance.matchmakingFrozen ? 'CONGELADO' : 'DESCONGELADO'}.`);
     }
   };
@@ -77,20 +92,28 @@ export const AdminAllianceCRM: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 p-6 rounded-lg">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <Shield className="w-5 h-5 text-purple-400" />
-          Alliance CRM (Buscador de Gremios)
-        </h2>
-        
-        <div className="flex gap-4">
+    <div className="space-y-6 font-sans">
+
+      {/* Header */}
+      <div className="flex items-center gap-3 border-b border-zinc-900 pb-4">
+        <div className="h-10 w-10 bg-purple-950/30 border border-purple-500/20 rounded flex items-center justify-center text-purple-400">
+          <Shield size={20} />
+        </div>
+        <div>
+          <h2 className="text-white font-bold text-lg font-mono tracking-wider uppercase">Alliance CRM</h2>
+          <p className="text-xs text-zinc-500 font-sans mt-0.5">Buscador de corporaciones. Gestión de mando, matchmaking y disolución.</p>
+        </div>
+      </div>
+
+      {/* Search bar */}
+      <div className="bg-black/45 border border-zinc-900 p-5 rounded-lg">
+        <div className="flex gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
             <input
               type="text"
-              className="w-full pl-10 pr-4 py-2 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:border-purple-500"
-              placeholder="Buscar por nombre o TAG (ej. VANG)"
+              className="w-full pl-9 pr-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-200 text-xs font-mono focus:outline-none focus:border-purple-500/50 transition-colors placeholder-zinc-700"
+              placeholder="Buscar corporación por nombre o TAG (ej. VANG)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -98,59 +121,64 @@ export const AdminAllianceCRM: React.FC = () => {
           </div>
           <button
             onClick={handleSearch}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-md font-medium transition-colors"
+            className="px-5 py-2 bg-purple-950/40 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-500/60 text-purple-400 font-bold text-xs uppercase tracking-wider rounded transition-all"
           >
             Buscar
           </button>
         </div>
       </div>
 
+      {/* Alliance details */}
       {selectedAlliance && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
           {/* Ficha Corporativa */}
-          <div className="lg:col-span-2 bg-gray-800/50 backdrop-blur-sm border border-gray-700 p-6 rounded-lg">
-            <h3 className="text-lg font-bold text-purple-300 mb-4 flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Ficha Técnica: {selectedAlliance.name} <span className="text-gray-400 text-sm">{selectedAlliance.tag}</span>
+          <div className="lg:col-span-2 bg-black/45 border border-zinc-900 p-5 rounded-lg">
+            <h3 className="text-sm font-bold text-purple-300 mb-4 flex items-center gap-2 font-mono uppercase tracking-wider border-b border-zinc-900 pb-3">
+              <Users size={14} />
+              Ficha Técnica: {selectedAlliance.name} <span className="text-zinc-500 text-xs font-sans normal-case">{selectedAlliance.tag}</span>
             </h3>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gray-900/80 p-3 rounded border border-gray-700">
-                <p className="text-xs text-gray-500">Nivel de Núcleo</p>
-                <p className="text-xl font-bold text-white">Lvl {selectedAlliance.coreLevel}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              <div className="bg-zinc-950 p-3 rounded border border-zinc-900">
+                <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider mb-1">Nivel de Núcleo</p>
+                <p className="text-xl font-bold text-white font-mono">Lvl {selectedAlliance.coreLevel}</p>
               </div>
-              <div className="bg-gray-900/80 p-3 rounded border border-gray-700">
-                <p className="text-xs text-gray-500">Miembros</p>
-                <p className="text-xl font-bold text-white">{selectedAlliance.members.length}/50</p>
+              <div className="bg-zinc-950 p-3 rounded border border-zinc-900">
+                <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider mb-1">Miembros</p>
+                <p className="text-xl font-bold text-white font-mono">{selectedAlliance.members.length}<span className="text-zinc-600 text-sm">/50</span></p>
               </div>
-              <div className="bg-gray-900/80 p-3 rounded border border-gray-700 md:col-span-2">
-                <p className="text-xs text-gray-500 mb-1">Fondos del Vault</p>
-                <div className="flex gap-3 text-sm font-mono">
-                  <span className="text-gray-300">M: {selectedAlliance.vaultFunds.metal.toLocaleString()}</span>
-                  <span className="text-cyan-300">C: {selectedAlliance.vaultFunds.crystal.toLocaleString()}</span>
-                  <span className="text-green-300">D: {selectedAlliance.vaultFunds.deuterium.toLocaleString()}</span>
+              <div className="bg-zinc-950 p-3 rounded border border-zinc-900 md:col-span-2">
+                <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-wider mb-2">Fondos del Vault</p>
+                <div className="flex gap-3 text-xs font-mono">
+                  <span className="text-zinc-300">M: {selectedAlliance.vaultFunds.metal.toLocaleString()}</span>
+                  <span className="text-cyan-400">C: {selectedAlliance.vaultFunds.crystal.toLocaleString()}</span>
+                  <span className="text-emerald-400">D: {selectedAlliance.vaultFunds.deuterium.toLocaleString()}</span>
                 </div>
               </div>
             </div>
 
-            <h4 className="text-sm font-bold text-gray-400 mb-3 border-b border-gray-700 pb-2">Roster de Miembros</h4>
+            <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-3 border-b border-zinc-900 pb-2">Roster de Miembros</h4>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-gray-300">
-                <thead className="text-xs text-gray-500 bg-gray-900/50">
-                  <tr>
-                    <th className="px-4 py-2">Nombre</th>
-                    <th className="px-4 py-2">Rol</th>
-                    <th className="px-4 py-2 text-right">Power Score</th>
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-900">
+                    <th className="px-3 py-2 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Nombre</th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Rol</th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-zinc-600 uppercase tracking-wider text-right">Power Score</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedAlliance.members.map(member => (
-                    <tr key={member.id} className="border-b border-gray-800 hover:bg-gray-800/40">
-                      <td className="px-4 py-2 font-medium">
-                        {member.name} {member.id === selectedAlliance.leaderId && <span className="text-yellow-500 text-xs ml-1">(Líder)</span>}
+                    <tr key={member.id} className="border-b border-zinc-900/50 hover:bg-zinc-900/20 transition-colors">
+                      <td className="px-3 py-2 font-medium text-zinc-300">
+                        {member.name}
+                        {member.id === selectedAlliance.leaderId && (
+                          <span className="text-yellow-500 text-[9px] ml-2 font-bold bg-yellow-950/30 border border-yellow-500/20 px-1 py-0.5 rounded uppercase tracking-wide">Líder</span>
+                        )}
                       </td>
-                      <td className="px-4 py-2">{member.role}</td>
-                      <td className="px-4 py-2 text-right font-mono">{member.powerScore.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-zinc-500">{member.role}</td>
+                      <td className="px-3 py-2 text-right font-mono text-zinc-300">{member.powerScore.toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -159,50 +187,61 @@ export const AdminAllianceCRM: React.FC = () => {
           </div>
 
           {/* Mando Supremo */}
-          <div className="bg-gray-800/50 backdrop-blur-sm border border-red-900/30 p-6 rounded-lg relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <AlertTriangle className="w-24 h-24 text-red-500" />
+          <div className="bg-black/45 border border-red-950/40 p-5 rounded-lg relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5">
+              <AlertTriangle size={80} className="text-red-500" />
             </div>
-            <h3 className="text-lg font-bold text-red-400 mb-6 flex items-center gap-2 relative z-10">
-              <AlertTriangle className="w-5 h-5" />
+            <h3 className="text-sm font-bold text-red-400 mb-5 flex items-center gap-2 font-mono uppercase tracking-wider border-b border-red-950/40 pb-3 relative z-10">
+              <AlertTriangle size={14} />
               Mando Supremo
             </h3>
             
-            <div className="space-y-4 relative z-10">
+            <div className="space-y-3 relative z-10">
               <button
                 onClick={handleMuteLeader}
-                className="w-full bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-gray-500 text-gray-300 px-4 py-3 rounded-md font-medium transition-colors flex items-center gap-3"
+                className="w-full bg-zinc-950 hover:bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700 text-zinc-300 px-4 py-3 rounded font-medium text-xs transition-all flex items-center gap-3"
               >
-                <MicOff className="w-5 h-5 text-gray-500" />
+                <MicOff size={14} className="text-zinc-500 shrink-0" />
                 <div className="text-left">
-                  <div className="text-sm">[MUTAR_LIDER_MAESTRO]</div>
-                  <div className="text-xs text-gray-500">Restringe chat global</div>
+                  <div className="font-bold font-mono tracking-wide">[MUTAR_LIDER_MAESTRO]</div>
+                  <div className="text-[10px] text-zinc-600 mt-0.5">Restringe chat global por 24h</div>
+                </div>
+              </button>
+
+              <button
+                onClick={handleMutateLeader}
+                className="w-full bg-zinc-950 hover:bg-yellow-950/20 border border-zinc-800 hover:border-yellow-500/30 text-yellow-400 px-4 py-3 rounded font-medium text-xs transition-all flex items-center gap-3"
+              >
+                <RefreshCw size={14} className="text-yellow-500 shrink-0" />
+                <div className="text-left">
+                  <div className="font-bold font-mono tracking-wide">[TRANSFERIR_MANDO]</div>
+                  <div className="text-[10px] text-zinc-600 mt-0.5">Promover nuevo líder de corporación</div>
                 </div>
               </button>
 
               <button
                 onClick={handleToggleMatchmaking}
-                className={`w-full border px-4 py-3 rounded-md font-medium transition-colors flex items-center gap-3 ${
+                className={`w-full border px-4 py-3 rounded text-xs font-medium transition-all flex items-center gap-3 ${
                   selectedAlliance.matchmakingFrozen 
-                    ? 'bg-blue-900/40 hover:bg-blue-900/60 border-blue-500 text-blue-200' 
-                    : 'bg-gray-900 hover:bg-gray-800 border-gray-700 hover:border-blue-700 text-gray-300'
+                    ? 'bg-blue-950/30 hover:bg-blue-950/50 border-blue-500/40 text-blue-300' 
+                    : 'bg-zinc-950 hover:bg-zinc-900/80 border-zinc-800 hover:border-blue-500/30 text-zinc-400'
                 }`}
               >
-                <Snowflake className={`w-5 h-5 ${selectedAlliance.matchmakingFrozen ? 'text-blue-400' : 'text-gray-500'}`} />
+                <Snowflake size={14} className={selectedAlliance.matchmakingFrozen ? 'text-blue-400 shrink-0' : 'text-zinc-600 shrink-0'} />
                 <div className="text-left">
-                  <div className="text-sm">[CONGELAR_MATCHMAKING]</div>
-                  <div className="text-xs text-gray-500 opacity-80">
-                    {selectedAlliance.matchmakingFrozen ? 'Guerra pausada (Click para resumir)' : 'Pausar guerras de alianza'}
+                  <div className="font-bold font-mono tracking-wide">[CONGELAR_MATCHMAKING]</div>
+                  <div className="text-[10px] text-zinc-600 mt-0.5">
+                    {selectedAlliance.matchmakingFrozen ? 'PAUSADO — Click para reanudar' : 'Pausar guerras de alianza'}
                   </div>
                 </div>
               </button>
 
-              <div className="pt-4 mt-4 border-t border-red-900/30">
+              <div className="pt-3 mt-3 border-t border-red-950/40">
                 <button
                   onClick={handleDissolveAlliance}
-                  className="w-full bg-red-950/50 hover:bg-red-900 border border-red-800 hover:border-red-500 text-red-200 px-4 py-3 rounded-md font-bold transition-colors flex items-center justify-center gap-2"
+                  className="w-full bg-red-950/30 hover:bg-red-950/60 border border-red-800/50 hover:border-red-500/60 text-red-400 px-4 py-3 rounded font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
                 >
-                  <Flame className="w-5 h-5" />
+                  <Flame size={14} />
                   [DISOLVER_CORPORACION_CRÍTICA]
                 </button>
               </div>

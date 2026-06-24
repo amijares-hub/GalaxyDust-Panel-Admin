@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Ghost, RefreshCw, Hammer, Trash2, Plus, Sliders, Database, 
-  Shield, TrendingUp, DollarSign, Calendar, FileText, CheckCircle, 
-  Flame, ToggleLeft, ToggleRight, Sparkles, AlertTriangle, ShieldCheck, 
+import {
+  Ghost, RefreshCw, Hammer, Trash2, Plus, Sliders, Database,
+  Shield, TrendingUp, DollarSign, Calendar, FileText, CheckCircle,
+  Flame, ToggleLeft, ToggleRight, Sparkles, AlertTriangle, ShieldCheck,
   Settings, Info, Power, LineChart as ChartIcon, RefreshCcw, HelpCircle
 } from 'lucide-react';
-import { 
+import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 import { GalaxyDustConfig, UserProfile, QuantumUnitShard, QuantumSupplyItem, PhantomStationConfig } from '../types';
@@ -46,11 +46,11 @@ const RarityBadge = ({ rank }: { rank: string }) => {
   else if (normRank === 'A') normRank = 'Epic';
   else if (normRank === 'C') normRank = 'Rare';
   else if (normRank === 'E') normRank = 'Common';
-  
+
   const conf = RARITY_STATS[normRank as keyof typeof RARITY_STATS] || RARITY_STATS.Common;
 
   return (
-    <div 
+    <div
       className="relative inline-flex items-center justify-center cursor-help mx-1"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -346,9 +346,9 @@ export default function AdminPhantomStationModule({
     const nextState = !eventStoreActive;
     setEventStoreActive(nextState);
     localStorage.setItem('phantom_event_store_active', String(nextState));
-    
+
     // Aesthetic notification banner
-    alertTrigger(nextState ? 'success' : 'warning', 
+    alertTrigger(nextState ? 'success' : 'warning',
       nextState ? '🎄 ¡MODO EVENTO DE TEMPORADA ACTIVADO! Estética de la Estación encriptada al evento de invierno.' : '🚫 Modo Evento desactivado. Devolviendo estética de la tienda a la órbita estándar.'
     );
   };
@@ -406,7 +406,7 @@ export default function AdminPhantomStationModule({
 
   return (
     <div className="space-y-6">
-      
+
       {/* PHANTOM HEAD SUMMARY AND CORES STATUS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-5 bg-zinc-950 border border-zinc-900 rounded-lg gap-4 shadow-lg shadow-black/80">
         <div className="space-y-1">
@@ -471,42 +471,38 @@ export default function AdminPhantomStationModule({
       <div className="flex border-b border-zinc-900 overflow-x-auto gap-1">
         <button
           onClick={() => setActiveTab('store_manager')}
-          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'store_manager'
+          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${activeTab === 'store_manager'
               ? 'text-[#ff1e1e] border-[#ff1e1e] bg-zinc-900/40'
               : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-950/20'
-          }`}
+            }`}
         >
           1) Inventario Curado
         </button>
         <button
           onClick={() => setActiveTab('refresh_engine')}
-          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'refresh_engine'
+          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${activeTab === 'refresh_engine'
               ? 'text-[#ff1e1e] border-[#ff1e1e] bg-zinc-900/40'
               : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-950/20'
-          }`}
+            }`}
         >
           2) Motor de Refrescos
         </button>
 
         <button
           onClick={() => setActiveTab('events_ops')}
-          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'events_ops'
+          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${activeTab === 'events_ops'
               ? 'text-[#ff1e1e] border-[#ff1e1e] bg-zinc-900/40'
               : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-950/20'
-          }`}
+            }`}
         >
           4) Eventos & LiveOps
         </button>
         <button
           onClick={() => setActiveTab('economy_audit')}
-          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${
-            activeTab === 'economy_audit'
+          className={`px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 whitespace-nowrap transition-all ${activeTab === 'economy_audit'
               ? 'text-[#ff1e1e] border-[#ff1e1e] bg-zinc-900/40'
               : 'text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-zinc-950/20'
-          }`}
+            }`}
         >
           5) Auditoría "GD"
         </button>
@@ -514,7 +510,7 @@ export default function AdminPhantomStationModule({
 
       {/* CORE MODULES RENDERING PANEL */}
       <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-5">
-        
+
         {/* TAB 1: CURATED STORE MANAGER */}
         {activeTab === 'store_manager' && (
           <div className="space-y-6">
@@ -543,11 +539,10 @@ export default function AdminPhantomStationModule({
                 type="button"
                 disabled={!phantomStation.terminalStateOnline}
                 onClick={() => setShowAddOfferForm(!showAddOfferForm)}
-                className={`px-3.5 py-1.5 text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded border shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer self-start ${
-                  !phantomStation.terminalStateOnline 
-                    ? 'bg-zinc-805 border-zinc-800 text-zinc-500 cursor-not-allowed opacity-50' 
+                className={`px-3.5 py-1.5 text-white font-sans font-bold text-[10px] uppercase tracking-wider rounded border shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer self-start ${!phantomStation.terminalStateOnline
+                    ? 'bg-zinc-805 border-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
                     : 'bg-[#ff1e1e] hover:bg-red-700 border-[#ff1e1e]/40'
-                }`}
+                  }`}
               >
                 <Plus size={13} />
                 {showAddOfferForm ? 'Cerrar Formulario' : 'Crear Oferta de Suministro'}
@@ -557,7 +552,7 @@ export default function AdminPhantomStationModule({
             {/* Injected Offer Add Form */}
             <AnimatePresence>
               {showAddOfferForm && phantomStation.terminalStateOnline && (
-                <motion.form 
+                <motion.form
                   onSubmit={handleAddStoreOffer}
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
@@ -567,7 +562,7 @@ export default function AdminPhantomStationModule({
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
                     <div>
                       <label className="text-zinc-550 text-[10px] block uppercase mb-1">Items Reales de Base de Datos:</label>
-                      <select 
+                      <select
                         aria-label="Items Reales de Base de Datos"
                         value={selectedDbItemId}
                         onChange={(e) => setSelectedDbItemId(e.target.value)}
@@ -584,11 +579,11 @@ export default function AdminPhantomStationModule({
 
                     <div>
                       <label className="text-zinc-550 text-[10px] block uppercase mb-1">Precio Unitario:</label>
-                      <input 
+                      <input
                         aria-label="Precio Unitario"
-                        type="number" 
-                        value={offerPrice} 
-                        onChange={(e) => setOfferPrice(Math.max(1, parseInt(e.target.value) || 0))} 
+                        type="number"
+                        value={offerPrice}
+                        onChange={(e) => setOfferPrice(Math.max(1, parseInt(e.target.value) || 0))}
                         className="w-full bg-zinc-950 border border-zinc-850 text-white rounded px-2.5 py-1.5 focus:outline-none focus:border-red-500"
                         required
                       />
@@ -596,7 +591,7 @@ export default function AdminPhantomStationModule({
 
                     <div>
                       <label className="text-zinc-550 text-[10px] block uppercase mb-1">Selector de Divisa Estricta:</label>
-                      <select 
+                      <select
                         aria-label="Selector de Divisa Estricta"
                         value={offerCurrency}
                         onChange={(e) => setOfferCurrency(e.target.value)}
@@ -610,11 +605,11 @@ export default function AdminPhantomStationModule({
 
                     <div>
                       <label className="text-zinc-550 text-[10px] block uppercase mb-1">Límite de Stock (storageLeft):</label>
-                      <input 
+                      <input
                         aria-label="Límite de Stock"
-                        type="number" 
-                        value={offerStock} 
-                        onChange={(e) => setOfferStock(Math.max(1, parseInt(e.target.value) || 0))} 
+                        type="number"
+                        value={offerStock}
+                        onChange={(e) => setOfferStock(Math.max(1, parseInt(e.target.value) || 0))}
                         className="w-full bg-zinc-950 border border-zinc-850 text-white rounded px-2.5 py-1.5 focus:outline-none"
                       />
                     </div>
@@ -622,11 +617,11 @@ export default function AdminPhantomStationModule({
                     <div>
                       <label className="text-zinc-550 text-[10px] block uppercase mb-1">Porcentaje de Descuento (discount):</label>
                       <div className="relative">
-                        <input 
+                        <input
                           aria-label="Descuento VIP"
-                          type="number" 
-                          value={offerDiscount} 
-                          onChange={(e) => setOfferDiscount(Math.max(0, Math.min(95, parseInt(e.target.value) || 0)))} 
+                          type="number"
+                          value={offerDiscount}
+                          onChange={(e) => setOfferDiscount(Math.max(0, Math.min(95, parseInt(e.target.value) || 0)))}
                           className="w-full bg-zinc-950 border border-zinc-850 text-white rounded px-2.5 py-1.5 focus:outline-none pr-7"
                         />
                         <span className="absolute right-2.5 top-1.5 text-zinc-500 font-bold">%</span>
@@ -655,7 +650,7 @@ export default function AdminPhantomStationModule({
                   [ TRANSMUTACIÓN ]: INYECCIÓN RÁPIDA DE CLUSTER BOXES, MATERIALIZADORES Y HERRAMIENTAS SECTORIALES
                 </span>
               </div>
-              
+
               <p className="text-[10.5px] text-zinc-500 leading-normal font-sans">
                 Inyecte directamente cofres misteriosos, herramientas exigidas de minería geográfica, o materializadores científicos para reducir costes de hangar con un solo click.
               </p>
@@ -872,17 +867,17 @@ export default function AdminPhantomStationModule({
                   <div>
                     <span className="text-[9.5px] text-zinc-400 font-bold block uppercase pb-1 border-b border-zinc-900 mb-2">CONDICIONES EN RED (Conditions Apply)</span>
                     <span className="text-[9px] text-zinc-[600] block mb-2 leading-tight">Marque las categorías de tienda donde se aplicará este beneficio regulatorio:</span>
-                    
+
                     <div className="space-y-1.5 font-sans">
                       {['Consumibles', 'Herramientas', 'Blueprints', 'Eventos'].map((category) => {
                         const isChecked = phantomStation.badgeDiscountCategories.includes(category);
                         return (
                           <label key={category} className="flex items-center gap-2 cursor-pointer text-zinc-300">
                             <input
-                              aria-label="input element"type="checkbox"
+                              aria-label="input element" type="checkbox"
                               checked={isChecked}
                               onChange={() => {
-                                const nextCats = isChecked 
+                                const nextCats = isChecked
                                   ? phantomStation.badgeDiscountCategories.filter((c: string) => c !== category)
                                   : [...phantomStation.badgeDiscountCategories, category];
                                 const updated = { ...phantomStation, badgeDiscountCategories: nextCats };
@@ -930,11 +925,10 @@ export default function AdminPhantomStationModule({
                   const disc = offer.discountPercent !== undefined ? offer.discountPercent : 0;
 
                   return (
-                    <div 
-                      key={offer.id} 
-                      className={`p-4 bg-black/45 border rounded-lg flex flex-col justify-between font-mono text-xs relative transition-colors ${
-                        isCriticalStock ? 'border-[#ff1e1e]/30 bg-[#ff1e1e]/5' : 'border-zinc-900 hover:border-zinc-800'
-                      }`}
+                    <div
+                      key={offer.id}
+                      className={`p-4 bg-black/45 border rounded-lg flex flex-col justify-between font-mono text-xs relative transition-colors ${isCriticalStock ? 'border-[#ff1e1e]/30 bg-[#ff1e1e]/5' : 'border-zinc-900 hover:border-zinc-800'
+                        }`}
                     >
                       {/* Discount Tag */}
                       {disc > 0 && (
@@ -951,7 +945,7 @@ export default function AdminPhantomStationModule({
                           {<RarityBadge rank={offer.rank || offer.category || 'Common'} />}
                           <span className="text-[9.5px] text-zinc-[500]">ID: {offer.id}</span>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-2 text-[10px] pt-1">
                           <div>
                             <span className="text-zinc-[650] block text-[9px] uppercase">MONEDA</span>
@@ -985,7 +979,7 @@ export default function AdminPhantomStationModule({
                         {/* Direct Stock configuration tool */}
                         <div className="flex items-center gap-1.5">
                           <span className="text-zinc-[650] text-[9.5px] uppercase">Ajustar Stock:</span>
-                          <input 
+                          <input
                             aria-label="Ajustar Stock"
                             type="number"
                             min="0"
@@ -1045,16 +1039,16 @@ export default function AdminPhantomStationModule({
             </div>
 
             <div className="admin-auction-engine grid grid-cols-1 md:grid-cols-2 gap-6 font-mono text-xs">
-              
+
               {/* Form to configure controls */}
               <div className="p-4 bg-black/45 border border-zinc-900 rounded-lg space-y-4">
                 <span className="text-[10.5px] text-white font-bold block uppercase border-b border-zinc-900 pb-2">PARÁMETROS DEL MOTOR EN COLA</span>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="text-zinc-[500] text-[10px] block uppercase mb-1">Ajustar Límite de Refrescos Diarios (maxRefreshAttempts):</label>
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-center bg-zinc-950/45 p-2 rounded border border-zinc-900">
-                      <input 
+                      <input
                         aria-label="Intentos Máximos de Refresco (Rango)"
                         type="range"
                         min="5"
@@ -1069,9 +1063,9 @@ export default function AdminPhantomStationModule({
                         className="flex-1 h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-[#ff1e1e]"
                       />
                       <div className="flex gap-2">
-                        <input 
+                        <input
                           aria-label="Intentos Máximos de Refresco (Número)"
-                          type="number" 
+                          type="number"
                           value={phantomStation.refreshAttemptsMax}
                           onChange={(e) => {
                             const val = Math.max(1, parseInt(e.target.value) || 0);
@@ -1088,7 +1082,7 @@ export default function AdminPhantomStationModule({
                   <div>
                     <label className="text-zinc-[500] text-[10px] block uppercase mb-1">Configurar Costo de Refresco Manual (costPerManualRefresh - Phantom Coins):</label>
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-center bg-zinc-950/45 p-2 rounded border border-zinc-900">
-                      <input 
+                      <input
                         aria-label="Costo de Refresco (Rango)"
                         type="range"
                         min="0"
@@ -1103,9 +1097,9 @@ export default function AdminPhantomStationModule({
                         className="flex-1 h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-[#ff1e1e]"
                       />
                       <div className="flex gap-2">
-                        <input 
+                        <input
                           aria-label="Costo de Refresco (Número)"
-                          type="number" 
+                          type="number"
                           value={phantomStation.refreshCostVoidCrystals}
                           onChange={(e) => {
                             const val = Math.max(0, parseInt(e.target.value) || 0);
@@ -1122,7 +1116,7 @@ export default function AdminPhantomStationModule({
                   <div>
                     <label className="text-zinc-[500] text-[10px] block uppercase mb-1">Editar Intervalo de Temporizador Automático (autoRefreshGlobalInterval - segundos):</label>
                     <div className="flex flex-col sm:flex-row gap-3 sm:items-center bg-zinc-950/45 p-2 rounded border border-zinc-900">
-                      <input 
+                      <input
                         aria-label="Cuenta regresiva de refresco gratis (Rango)"
                         type="range"
                         min="60"
@@ -1137,9 +1131,9 @@ export default function AdminPhantomStationModule({
                         className="flex-1 h-1 bg-zinc-900 rounded appearance-none cursor-pointer accent-[#ff1e1e]"
                       />
                       <div className="flex gap-2">
-                        <input 
+                        <input
                           aria-label="Cuenta regresiva de refresco gratis (Número)"
-                          type="number" 
+                          type="number"
                           value={phantomStation.freeRefreshCountdown}
                           onChange={(e) => {
                             const val = Math.max(10, parseInt(e.target.value) || 0);
@@ -1165,19 +1159,18 @@ export default function AdminPhantomStationModule({
                           key={preset.key}
                           type="button"
                           onClick={() => {
-                            const updated = { 
-                              ...phantomStation, 
+                            const updated = {
+                              ...phantomStation,
                               freeRefreshIntervalType: preset.key,
-                              freeRefreshCountdown: preset.duration 
+                              freeRefreshCountdown: preset.duration
                             };
                             saveToGlobalAndHUD(updated);
                             alertTrigger('success', `Temporizador asignado a preset: ${preset.label}`);
                           }}
-                          className={`py-1.5 px-2 rounded text-[10px] font-sans font-bold border transition-all cursor-pointer text-center ${
-                            phantomStation.freeRefreshIntervalType === preset.key
+                          className={`py-1.5 px-2 rounded text-[10px] font-sans font-bold border transition-all cursor-pointer text-center ${phantomStation.freeRefreshIntervalType === preset.key
                               ? 'bg-red-950/20 text-[#ff1e1e] border-[#ff1e1e]'
                               : 'bg-zinc-950 text-zinc-400 border-zinc-900 hover:text-zinc-200'
-                          }`}
+                            }`}
                         >
                           {preset.label}
                         </button>
@@ -1197,7 +1190,7 @@ export default function AdminPhantomStationModule({
               <div className="p-4 bg-zinc-900/15 border border-zinc-900 rounded-lg space-y-4 flex flex-col justify-between">
                 <div>
                   <span className="text-[10.5px] text-zinc-400 font-bold block uppercase border-b border-zinc-900 pb-2">ESTADO DEL MOTOR DE ROTACIÓN (ROTATION STATE)</span>
-                  
+
                   <div className="space-y-3 pt-2 text-[11px]">
                     <div className="flex justify-between border-b border-zinc-900/60 pb-1.5 text-zinc-500">
                       <span>Refrescos Automáticos:</span>
@@ -1250,7 +1243,7 @@ export default function AdminPhantomStationModule({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-mono text-xs">
-              
+
               {/* Event Switcher */}
               <div className="p-4 bg-black/45 border border-zinc-900 rounded-lg space-y-4">
                 <div className="flex items-center gap-2">
@@ -1385,11 +1378,11 @@ export default function AdminPhantomStationModule({
                     </div>
 
                     <div className="flex gap-3">
-                      <input 
+                      <input
                         aria-label="Meta de Planos de Construcción (Rango)"
-                        type="range" 
-                        min="10" 
-                        max="200" 
+                        type="range"
+                        min="10"
+                        max="200"
                         step="5"
                         value={phantomStation.totalBlueprintsGoal}
                         onChange={(e) => {
@@ -1399,7 +1392,7 @@ export default function AdminPhantomStationModule({
                         }}
                         className="w-full h-1 bg-zinc-900 rounded-lg appearance-none cursor-pointer accent-[#ff1e1e]"
                       />
-                      <input 
+                      <input
                         aria-label="Meta de Planos de Construcción (Número)"
                         type="number"
                         value={phantomStation.totalBlueprintsGoal}
@@ -1411,7 +1404,7 @@ export default function AdminPhantomStationModule({
                         className="w-16 bg-zinc-950 border border-zinc-850 rounded px-2 text-white font-bold py-0.5 text-center text-[11.5px]"
                       />
                     </div>
-                    
+
                     <div className="flex justify-between text-[9px] text-zinc-[650]">
                       <span>Mínimo: 10 planos</span>
                       <span>Máximo: 200 planos</span>
@@ -1485,20 +1478,19 @@ export default function AdminPhantomStationModule({
                               nameForNpc = 'Lord Comandante Alacrán';
                               welcomePhrase = 'LA ORDEN ALACRÁN DECLARA ESTADO DE BENEFICIOS';
                             }
-                            const updated = { 
-                              ...phantomStation, 
-                              npcAvatar: npc.key, 
+                            const updated = {
+                              ...phantomStation,
+                              npcAvatar: npc.key,
                               npcName: nameForNpc,
                               npcGreeting: welcomePhrase
                             };
                             saveToGlobalAndHUD(updated);
                             alertTrigger('success', `Dependiente de campaña asignado: ${nameForNpc}`);
                           }}
-                          className={`p-2 rounded border text-left font-sans text-[10px] tracking-wide font-medium transition-all cursor-pointer ${
-                            phantomStation.npcAvatar === npc.key
+                          className={`p-2 rounded border text-left font-sans text-[10px] tracking-wide font-medium transition-all cursor-pointer ${phantomStation.npcAvatar === npc.key
                               ? `${npc.color} bg-opacity-40 animate-pulse font-bold`
                               : 'bg-zinc-950 border-zinc-900 text-zinc-500 hover:text-zinc-300'
-                          }`}
+                            }`}
                         >
                           {npc.label}
                         </button>
@@ -1574,8 +1566,8 @@ export default function AdminPhantomStationModule({
                   >
                     <defs>
                       <linearGradient id="colorBurnt" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ff1e1e" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#ff1e1e" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#ff1e1e" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#ff1e1e" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1d1d21" vertical={false} />
