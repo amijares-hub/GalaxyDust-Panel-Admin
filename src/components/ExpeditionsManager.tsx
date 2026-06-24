@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Rocket, ShieldAlert, RefreshCw, Map, Pickaxe, Crosshair, Wrench, Bot, AlertTriangle, Clock, Users, FileText, Globe, Target, Activity, Lock, Search, Zap, Terminal, Gift } from 'lucide-react';
+import { Rocket, ShieldAlert, RefreshCw, Map, Pickaxe, Crosshair, Wrench, Bot, AlertTriangle, Clock, Users, FileText, Globe, Target, Activity, Lock, Search, Zap, Terminal, Gift, Compass, Sparkles } from 'lucide-react';
 
 interface StarNode {
   id: string;
@@ -56,6 +56,13 @@ export const ExpeditionsManager: React.FC = () => {
     "[11:32:01 UTC] SYSTEM_INIT: Conexión segura establecida con la red de balizas."
   ]);
   const streamEndRef = useRef<HTMLDivElement>(null);
+
+  // MODO DIOS STATES (Generador de Galaxias)
+  const [atlasNodeName, setAtlasNodeName] = useState<string>('Sector Oculto');
+  const [atlasIsMinable, setAtlasIsMinable] = useState<boolean>(true);
+  const [atlasInjectedWealth, setAtlasInjectedWealth] = useState<number>(500000);
+  const [atlasHaloPreset, setAtlasHaloPreset] = useState<string>('Blue Sólido (Virgen)');
+  const [atlasCoords, setAtlasCoords] = useState({ gc: 1, galaxy: 1, cluster: 1, system: 1, planet: 1 });
 
   // Mocks interactivos para la sección de slots
   const fleetPayload = [{ shipId: "mock-ship-1", name: "Explorer Frigate (Común)", qty: 1 }];
@@ -997,34 +1004,180 @@ export const ExpeditionsManager: React.FC = () => {
 
   const renderGalaxyGenerator = () => {
     return (
-      <div className="col-span-3 bg-slate-950 p-4 rounded-lg border border-slate-800 shadow-lg">
-        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
-          <Globe className="w-4 h-4 text-purple-400" /> Generador de Galaxias (Nodos Locales)
-        </h3>
+      <div className="col-span-1 lg:col-span-3 space-y-6">
         
-        <div className="flex items-center gap-4 text-[10px] uppercase font-bold text-slate-500 mb-6 bg-slate-900 p-2 rounded inline-flex">
-          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Propia</div>
-          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div> Enemiga</div>
-          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Disputa</div>
-          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-cyan-500 shadow-[0_0_8px_rgba(34,211,238,0.5)]"></div> Minable</div>
+        {/* SECCIÓN A: CENSO ESTELAR UNIVERSAL */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 shadow-lg shadow-black/40 flex items-center justify-between col-span-1 md:col-span-3 grid grid-cols-3 gap-4">
+            <div className="text-center border-r border-slate-800/50">
+              <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Cúmulos Galácticos (GC)</div>
+              <div className="text-xl font-mono text-white font-black">12 <span className="text-xs font-sans text-slate-400 font-medium">Registrados</span></div>
+            </div>
+            <div className="text-center border-r border-slate-800/50">
+              <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Sistemas Solares</div>
+              <div className="text-xl font-mono text-cyan-400 font-black">340 <span className="text-xs font-sans text-slate-400 font-medium">Activos</span></div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mb-1">Cuerpos Celestes / Planetas</div>
+              <div className="text-xl font-mono text-purple-400 font-black">1,420 <span className="text-xs font-sans text-slate-400 font-medium">En órbita</span></div>
+            </div>
+          </div>
+          
+          <div className="bg-emerald-950/20 p-4 rounded-lg border border-emerald-900/30 shadow-lg shadow-black/40 flex items-center justify-center col-span-1 md:col-span-1">
+            <div className="text-center">
+              <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse mx-auto mb-2 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
+              <div className="text-[11px] text-emerald-400 font-bold uppercase tracking-widest">Sincronización Cartográfica OK</div>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {starNodes.map((node, i) => {
-            const statusType = i % 4 === 0 ? 'own' : i % 4 === 1 ? 'enemy' : i % 4 === 2 ? 'disputed' : 'minable';
-            const borderClass = statusType === 'own' ? 'border-emerald-500/50 bg-emerald-950/10' :
-                                statusType === 'enemy' ? 'border-red-500/50 bg-red-950/10' :
-                                statusType === 'disputed' ? 'border-amber-500/50 bg-amber-950/10' :
-                                'border-cyan-500/50 bg-cyan-950/10 shadow-[0_0_15px_rgba(34,211,238,0.1)]';
-            
-            return (
-              <div key={node.id} className={`p-3 rounded border ${borderClass} flex flex-col items-center justify-center text-center gap-2 hover:bg-slate-800/50 transition-colors cursor-pointer`}>
-                <Globe className={`w-6 h-6 ${statusType === 'own' ? 'text-emerald-400' : statusType === 'enemy' ? 'text-red-400' : statusType === 'disputed' ? 'text-amber-400' : 'text-cyan-400'}`} />
-                <div className="text-xs font-bold text-slate-200 truncate w-full">{node.name}</div>
-                <div className="text-[9px] text-slate-500 font-mono truncate w-full">{node.id.split('-')[0]}</div>
+        {/* SECCIÓN B y C */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* SECCIÓN B: INTERACTIVE SPATIAL ATLAS (col-span-2) */}
+          <div className="lg:col-span-2 bg-slate-950 p-4 rounded-lg border border-slate-800 shadow-lg shadow-black/40 h-fit space-y-5">
+            <h3 className="text-xs font-bold text-cyan-500 uppercase tracking-widest flex items-center gap-2 border-b border-slate-900 pb-2">
+              <Compass className="w-4 h-4" /> Atlas Espacial Dinámico
+            </h3>
+
+            {/* Formulario Rápido */}
+            <div className="bg-slate-900/50 p-4 rounded border border-slate-800/50 grid grid-cols-1 md:grid-cols-12 gap-4">
+              <div className="md:col-span-5">
+                <label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Firma Estelar (Nombre)</label>
+                <input 
+                  type="text" 
+                  value={atlasNodeName} 
+                  onChange={e => setAtlasNodeName(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-xs font-mono text-cyan-300 focus:border-cyan-500 outline-none" 
+                />
               </div>
-            )
-          })}
+
+              <div className="md:col-span-5">
+                <label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Vector GPS Estelar (GC.GX.CL.SY.PL)</label>
+                <div className="flex gap-1">
+                  {(['gc', 'galaxy', 'cluster', 'system', 'planet'] as const).map((key) => (
+                    <input 
+                      key={key}
+                      type="number" 
+                      min={1}
+                      value={atlasCoords[key]} 
+                      onChange={e => setAtlasCoords({...atlasCoords, [key]: Number(e.target.value)})} 
+                      className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-xs font-mono text-slate-300 text-center focus:border-cyan-500 outline-none" 
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="md:col-span-2 flex flex-col justify-end">
+                <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-1.5 rounded">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase ml-1">Minable</span>
+                  <div 
+                    onClick={() => setAtlasIsMinable(!atlasIsMinable)}
+                    className={`w-8 h-4 flex items-center rounded-full p-0.5 cursor-pointer transition-colors ${atlasIsMinable ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                  >
+                    <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${atlasIsMinable ? 'translate-x-4' : ''}`} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cuadrícula de Nodos Dinámicos (Mock de Halos) */}
+            <div>
+              <label className="block text-[10px] text-slate-500 uppercase font-bold mb-3">Previsualización Cartográfica Orbital</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                
+                {/* NODO VIRGEN */}
+                <div className="bg-[#050507] p-3 rounded-xl border-2 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.3)] flex flex-col items-center justify-center text-center group hover:border-cyan-400 transition-all cursor-crosshair h-32 relative overflow-hidden">
+                  <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.6)] mb-2 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4 text-cyan-300" />
+                  </div>
+                  <span className="text-[10px] font-bold text-cyan-100 truncate w-full">Sector {atlasCoords.gc}.1.1.1</span>
+                  <span className="text-[8px] font-mono text-cyan-400 uppercase mt-1 bg-cyan-950/50 px-2 py-0.5 rounded">Virgen Inexplorado</span>
+                </div>
+
+                {/* PROPIEDAD COMANDANTE */}
+                <div className="bg-[#050507] p-3 rounded-xl border-2 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.3)] flex flex-col items-center justify-center text-center group hover:border-emerald-400 transition-all cursor-crosshair h-32 relative overflow-hidden">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.6)] mb-2 flex items-center justify-center">
+                    <Globe className="w-4 h-4 text-emerald-300" />
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-100 truncate w-full">Orion Prime</span>
+                  <span className="text-[8px] font-mono text-emerald-400 uppercase mt-1 bg-emerald-950/50 px-2 py-0.5 rounded">Comandante Z</span>
+                </div>
+
+                {/* ENEMIGO LIF */}
+                <div className="bg-[#050507] p-3 rounded-xl border-2 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)] flex flex-col items-center justify-center text-center group hover:border-red-400 transition-all cursor-crosshair h-32 relative overflow-hidden">
+                  <div className="w-8 h-8 rounded-full bg-red-500/20 border border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.6)] mb-2 flex items-center justify-center">
+                    <Target className="w-4 h-4 text-red-300" />
+                  </div>
+                  <span className="text-[10px] font-bold text-red-100 truncate w-full">Marauder Base</span>
+                  <span className="text-[8px] font-mono text-red-400 uppercase mt-1 bg-red-950/50 px-2 py-0.5 rounded">LIF Faction</span>
+                </div>
+
+                {/* EN DISPUTA */}
+                <div className="bg-[#050507] p-3 rounded-xl border-2 border-amber-500/80 shadow-[0_0_25px_rgba(245,158,11,0.5)] flex flex-col items-center justify-center text-center group hover:border-amber-400 transition-all cursor-crosshair h-32 relative overflow-hidden animate-pulse">
+                  <div className="w-8 h-8 rounded-full bg-amber-500/30 border-2 border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.8)] mb-2 flex items-center justify-center">
+                    <Crosshair className="w-4 h-4 text-amber-200" />
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-100 truncate w-full">Cinturón de Fuego</span>
+                  <span className="text-[8px] font-mono text-amber-400 uppercase mt-1 bg-amber-950/80 border border-amber-500/30 px-2 py-0.5 rounded">⚔️ En Disputa Activa</span>
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+          {/* SECCIÓN C: CONSOLA MODO DIOS SEMILLERO (col-span-1) */}
+          <div className="bg-indigo-950/10 p-4 rounded-lg border border-indigo-900/30 space-y-6 h-fit shadow-lg shadow-black/40">
+            <div className="flex items-center gap-2 border-b border-indigo-900/30 pb-2">
+              <Globe className="w-4 h-4 text-indigo-400" />
+              <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Semillero Universal</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-3 bg-slate-900/50 p-3 rounded border border-slate-800/50">
+                <p className="text-[10px] text-slate-400 leading-relaxed font-medium">Instancia ecosistemas completos de una sola vez o inyecta variables divinas en coordenadas vírgenes para incentivar exploraciones.</p>
+                
+                <div>
+                  <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Inyectar Riqueza Virgen</label>
+                  <div className="relative">
+                    <span className="absolute left-2.5 top-1.5 text-xs text-emerald-500 font-bold">💎</span>
+                    <input 
+                      type="number" 
+                      min={0}
+                      value={atlasInjectedWealth} 
+                      onChange={e => setAtlasInjectedWealth(Number(e.target.value))} 
+                      className="w-full bg-slate-950 border border-slate-800 p-2 pl-8 rounded text-xs font-mono text-emerald-400 focus:border-emerald-500 outline-none" 
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Preset Cromático de Halos</label>
+                  <select 
+                    value={atlasHaloPreset} 
+                    onChange={e => setAtlasHaloPreset(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-800 p-2 rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none text-slate-300"
+                  >
+                    <option value="Blue Sólido (Virgen)">🔵 Blue Sólido (Virgen)</option>
+                    <option value="Emerald (Propiedad)">🟢 Emerald (Propiedad)</option>
+                    <option value="Crimson (LIF)">🔴 Crimson (LIF)</option>
+                    <option value="Amber Pulse (Disputa)">🟠 Amber Pulse (Disputa)</option>
+                    <option value="Void (Agujero Negro)">⚫ Void (Agujero Negro)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button 
+                  onClick={() => alert(`¡SIMULACIÓN: Sembrado Universal ejecutado. Cúmulo de Galaxias GC-${atlasCoords.gc} instanciado y enriquecido con ${atlasInjectedWealth} ud. de recursos vírgenes!`)} 
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded text-[10px] font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(79,70,229,0.2)] hover:shadow-[0_0_20px_rgba(79,70,229,0.4)] flex items-center justify-center gap-2"
+                >
+                  🌌 Ejecutar Seeder Masivo
+                </button>
+              </div>
+            </div>
+          </div>
+          
         </div>
       </div>
     );
