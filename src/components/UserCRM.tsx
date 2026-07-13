@@ -67,6 +67,10 @@ export const UserCRM: React.FC = () => {
   });
   const [loadingAssets, setLoadingAssets] = useState<boolean>(false);
 
+  // Estados para el control y filtrado del Hangar interno segmentado
+  const [activeAssetTab, setActiveAssetTab] = useState<string>('ships');
+  const [assetSearchTerm, setAssetSearchTerm] = useState<string>('');
+
   // Formulario de Inyección
   const [injectAmount, setInjectAmount] = useState<number>(0);
   const [injectType, setInjectType] = useState<string>('gd_balance');
@@ -418,81 +422,149 @@ export const UserCRM: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 📦 🔥 NUEVA SECCIÓN: INVENTARIO Y HANGAR EN ÓRBITA EN VIVO ── */}
-                  <div className="bg-zinc-900/20 p-4 border border-zinc-900 rounded-xl space-y-3">
-                    <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
-                      <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
-                        🛸 EQUIPAMIENTO E INVENTARIO EN VIVO DEL PILOTO
-                      </span>
-                      <button onClick={() => fetchPlayerAssets(selectedPlayer.id)} className="text-zinc-500 hover:text-white flex items-center gap-1 text-[10px] cursor-pointer">
-                        <RefreshCw size={10} className={loadingAssets ? "animate-spin" : ""} /> Recargar Hangar
+                  {/* 📦 🛰️ COMPONENTE: INVENTARIO Y HANGAR EN ÓRBITA SEGMENTADO POR PESTAÑAS */}
+                  <div className="bg-zinc-900/20 p-4 border border-zinc-900 rounded-xl space-y-4">
+
+                    {/* CABECERA Y ACCIÓN DE RECARGA */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-zinc-900 pb-2.5">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
+                          🛸 EQUIPAMIENTO E INVENTARIO EN VIVO DEL PILOTO
+                        </span>
+                        <p className="text-[9.5px] text-zinc-500 font-sans">Gestión, auditoría y desintegración atómica de instancias en Supabase.</p>
+                      </div>
+                      <button
+                        onClick={() => { fetchPlayerAssets(selectedPlayer.id); setAssetSearchTerm(''); }}
+                        className="text-zinc-500 hover:text-white flex items-center gap-1 text-[10px] bg-zinc-950 px-2 py-1 border border-zinc-900 rounded cursor-pointer transition-colors"
+                      >
+                        <RefreshCw size={10} className={loadingAssets ? "animate-spin text-cyan-400" : ""} /> Recargar Hangar
                       </button>
                     </div>
 
-                    <div className="space-y-4 max-h-56 overflow-y-auto pr-1">
-                      {/* SUB-REJILLA: NAVES */}
-                      {playerAssets.ships.length > 0 && (
-                        <div className="space-y-1.5">
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase">🚀 Naves en Hangar ({playerAssets.ships.length})</span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {playerAssets.ships.map((ship) => (
-                              <div key={ship.id} className="p-2 bg-zinc-950 border border-zinc-900 rounded flex justify-between items-center text-[10px]">
-                                <div>
-                                  <span className="font-bold text-zinc-200 block truncate">{ship.ship_id}</span>
-                                  <span className="text-[8px] text-zinc-500">Estado: <strong className="text-emerald-500 font-normal">{ship.flight_state}</strong></span>
+                    {/* BARRA TÁCTICA: SUB-PESTAÑAS DE ASSETS CON CONTADORES DINÁMICOS */}
+                    <div className="flex flex-wrap gap-1 bg-black/40 p-1 rounded-lg border border-zinc-900/60 select-none">
+                      {[
+                        { id: 'ships', label: '🚀 Naves', count: playerAssets.ships.length, color: 'border-cyan-500 text-cyan-400 bg-cyan-950/10' },
+                        { id: 'structures', label: '🏢 Estructuras', count: playerAssets.structures.length, color: 'border-amber-500 text-amber-400 bg-amber-950/10' },
+                        { id: 'technologies', label: '🔬 Tecnologías', count: playerAssets.technologies.length, color: 'border-purple-500 text-purple-400 bg-purple-950/10' },
+                        { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'border-emerald-500 text-emerald-400 bg-emerald-500/10' }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => { setActiveAssetTab(tab.id); setAssetSearchTerm(''); }}
+                          className={`px-3 py-1.5 font-bold uppercase text-[9.5px] tracking-wider rounded transition-all border cursor-pointer ${
+                            activeAssetTab === tab.id
+                              ? `${tab.color} border-zinc-800`
+                              : 'border-transparent text-zinc-500 hover:text-zinc-400 hover:bg-zinc-900/30'
+                          }`}
+                        >
+                          {tab.label} <span className="opacity-40 font-normal">({tab.count})</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* BUSCADOR FILTRADO INTERNO */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-zinc-600" />
+                      <input
+                        type="text"
+                        placeholder={`Buscar en ${activeAssetTab}...`}
+                        className="w-full bg-zinc-950 border border-zinc-900 pl-8 pr-3 py-1.5 rounded font-mono text-zinc-300 outline-none text-[10.5px] focus:border-zinc-800 transition-colors"
+                        value={assetSearchTerm}
+                        onChange={e => setAssetSearchTerm(e.target.value)}
+                      />
+                    </div>
+
+                    {/* VENTANA DE CONTENEDORES CONDICIONALES */}
+                    <div className="max-h-60 overflow-y-auto pr-1 font-mono text-[11px]">
+
+                      {/* PESTAÑA: NAVES */}
+                      {activeAssetTab === 'ships' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {playerAssets.ships.filter((s: any) => (s.ship_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase())).length > 0 ? (
+                            playerAssets.ships
+                              .filter((s: any) => (s.ship_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase()))
+                              .map((ship: any) => (
+                                <div key={ship.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
+                                  <div>
+                                    <span className="font-bold text-zinc-200 block truncate max-w-[180px]" title={ship.ship_id}>{ship.ship_id}</span>
+                                    <span className="text-[8.5px] text-zinc-500">Estado: <strong className="text-emerald-500 font-normal">{ship.flight_state}</strong></span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-1.5 py-0.5 bg-cyan-950/40 text-cyan-400 border border-cyan-900/60 rounded text-[9px] font-black">LVL {ship.level}</span>
+                                    <button onClick={() => handleDeleteEntity('user_ships', ship.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Desintegrar Nave"><Trash2 size={12} /></button>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-1.5 py-0.5 bg-cyan-950/40 text-cyan-400 border border-cyan-900 rounded text-[9px] font-bold">Lvl {ship.level}</span>
-                                  <button onClick={() => handleDeleteEntity('user_ships', ship.id)} className="text-zinc-600 hover:text-red-400 p-1 transition-colors cursor-pointer" title="Desintegrar Nave"><Trash2 size={12} /></button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))
+                          ) : (
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron naves con ese criterio.</div>
+                          )}
                         </div>
                       )}
 
-                      {/* SUB-REJILLA: ESTRUCTURAS */}
-                      {playerAssets.structures.length > 0 && (
-                        <div className="space-y-1.5">
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase">🏢 Complejos y Estructuras ({playerAssets.structures.length})</span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {playerAssets.structures.map((struct) => (
-                              <div key={struct.id} className="p-2 bg-zinc-950 border border-zinc-900 rounded flex justify-between items-center text-[10px]">
-                                <span className="font-bold text-zinc-200 truncate">{struct.building_id || struct.structure_id}</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900 rounded text-[9px] font-bold">Lvl {struct.level}</span>
-                                  <button onClick={() => handleDeleteEntity('user_structures', struct.id)} className="text-zinc-600 hover:text-red-400 p-1 transition-colors cursor-pointer" title="Derribar Estructura"><Trash2 size={12} /></button>
+                      {/* PESTAÑA: ESTRUCTURAS */}
+                      {activeAssetTab === 'structures' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {playerAssets.structures.filter((s: any) => (s.building_id || s.structure_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase())).length > 0 ? (
+                            playerAssets.structures
+                              .filter((s: any) => (s.building_id || s.structure_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase()))
+                              .map((struct: any) => (
+                                <div key={struct.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
+                                  <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={struct.building_id || struct.structure_id}>{struct.building_id || struct.structure_id}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900/60 rounded text-[9px] font-black">LVL {struct.level}</span>
+                                    <button onClick={() => handleDeleteEntity('user_structures', struct.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Derribar Estructura"><Trash2 size={12} /></button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))
+                          ) : (
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron estructuras con ese criterio.</div>
+                          )}
                         </div>
                       )}
 
-                      {/* SUB-REJILLA: TECNOLOGÍAS */}
-                      {playerAssets.technologies.length > 0 && (
-                        <div className="space-y-1.5">
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase">🔬 Árbol de Tecnologías ({playerAssets.technologies.length})</span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {playerAssets.technologies.map((tech) => (
-                              <div key={tech.id} className="p-2 bg-zinc-950 border border-zinc-900 rounded flex justify-between items-center text-[10px]">
-                                <span className="font-bold text-zinc-200 truncate">{tech.technology_id}</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="px-1.5 py-0.5 bg-purple-950/40 text-purple-400 border border-purple-900 rounded text-[9px] font-bold">Lvl {tech.level}</span>
-                                  <button onClick={() => handleDeleteEntity('user_technologies', tech.id)} className="text-zinc-600 hover:text-red-400 p-1 transition-colors cursor-pointer" title="Remover Tecnología"><Trash2 size={12} /></button>
+                      {/* PESTAÑA: TECNOLOGÍAS */}
+                      {activeAssetTab === 'technologies' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {playerAssets.technologies.filter((s: any) => (s.technology_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase())).length > 0 ? (
+                            playerAssets.technologies
+                              .filter((s: any) => (s.technology_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase()))
+                              .map((tech: any) => (
+                                <div key={tech.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
+                                  <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={tech.technology_id}>{tech.technology_id}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-1.5 py-0.5 bg-purple-950/40 text-purple-400 border border-purple-900/60 rounded text-[9px] font-black">LVL {tech.level}</span>
+                                    <button onClick={() => handleDeleteEntity('user_technologies', tech.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Remover Conocimiento"><Trash2 size={12} /></button>
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
+                              ))
+                          ) : (
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron tecnologías con ese criterio.</div>
+                          )}
                         </div>
                       )}
 
-                      {/* FALLBACK SI ESTÁ VACÍO */}
-                      {playerAssets.ships.length === 0 && playerAssets.structures.length === 0 && playerAssets.technologies.length === 0 && (
-                        <div className="text-center p-3 text-zinc-600 italic text-[11px]">
-                          — El hangar de este comandante se encuentra completamente vacío en este cuadrante —
+                      {/* PESTAÑA: ASTROBOTS */}
+                      {activeAssetTab === 'astrobots' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {playerAssets.astrobots.filter((s: any) => (s.astrobot_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase())).length > 0 ? (
+                            playerAssets.astrobots
+                              .filter((s: any) => (s.astrobot_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase()))
+                              .map((astro: any) => (
+                                <div key={astro.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
+                                  <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={astro.astrobot_id}>{astro.astrobot_id}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-1.5 py-0.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 rounded text-[9px] font-black">LVL {astro.level}</span>
+                                    <button onClick={() => handleDeleteEntity('user_astrobots', astro.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Desactivar Astrobot"><Trash2 size={12} /></button>
+                                  </div>
+                                </div>
+                              ))
+                          ) : (
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron astrobots con ese criterio.</div>
+                          )}
                         </div>
                       )}
+
                     </div>
                   </div>
 
