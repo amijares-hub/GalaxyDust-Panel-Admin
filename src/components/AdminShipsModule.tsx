@@ -835,7 +835,7 @@ export default function AdminShipsModule({
   const [editedBadgeForm, setEditedBadgeForm] = useState<Partial<BadgeAsset>>({});
   const [isNewBadge, setIsNewBadge] = useState(false);
 
-  const handleApplyBulkChanges = () => {
+  const handleApplyBulkChanges = async () => {
     if (bulkSelectedShipIds.length === 0) {
       setIsAlertToShow({
         show: true,
@@ -849,41 +849,41 @@ export default function AdminShipsModule({
       setIsAlertToShow({
         show: true,
         status: 'error',
-        message: 'Selecciona al menos una propiedad (Rareza o Motor) para aplicar cambios en lote.'
+        message: 'Selecciona al menos una propiedad (Rareza o Motor) para aplicar.'
       });
       return;
     }
 
-    setShipsList(prev => prev.map(ship => {
-      if (bulkSelectedShipIds.includes(ship.ship_id)) {
-        const updated = { ...ship };
-        if (bulkRarity !== 'no_change') {
-          updated.rarity = bulkRarity as any;
-        }
-        if (bulkEngine !== 'no_change') {
-          updated.engine = bulkEngine as any;
-        }
-        return updated;
-      }
-      return ship;
-    }));
+    try {
+      const payload: any = {};
+      if (bulkRarity !== 'no_change') payload.rarity = bulkRarity;
+      if (bulkEngine !== 'no_change') payload.engine = bulkEngine;
 
-    addAuditLog(
-      "BULK_UPDATE",
-      "SHIP",
-      bulkSelectedShipIds.join(", "),
-      `Modificación masiva de ${bulkSelectedShipIds.length} naves. Nuevos valores aplicados: Rareza: [${bulkRarity}], Motor: [${bulkEngine}]`
-    );
+      // Mutación en lote masiva atómica sobre todo el pool de IDs seleccionados
+      const { error } = await supabase.from('seed_ships').update(payload).in('ship_id', bulkSelectedShipIds);
+      if (error) throw error;
 
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `¡EDICIÓN EN LOTE COMPLETADA! Se actualizó la configuración de ${bulkSelectedShipIds.length} naves seleccionadas con éxito.`
-    });
+      addAuditLog(
+        "BULK_UPDATE",
+        "SHIP",
+        bulkSelectedShipIds.join(", "),
+        `Modificación masiva en Supabase de ${bulkSelectedShipIds.length} registros.`
+      );
 
-    setBulkSelectedShipIds([]);
-    setBulkRarity('no_change');
-    setBulkEngine('no_change');
+      setIsAlertToShow({
+        show: true,
+        status: 'success',
+        message: `¡EDICIÓN EN LOTE PERSISTIDA! Sincronizados ${bulkSelectedShipIds.length} chasis en la nube.`
+      });
+
+      setBulkSelectedShipIds([]);
+      setBulkRarity('no_change');
+      setBulkEngine('no_change');
+      fetchRealShipsCatalog();
+    } catch (err: any) {
+      console.error("Fallo en actualización masiva de Supabase:", err.message);
+      alert(`FALLO EN MUTACIÓN EN LOTE: ${err.message}`);
+    }
   };
   
   // Create / Clone State Toggle
@@ -987,8 +987,7 @@ export default function AdminShipsModule({
     });
   };
 
-  // Save changes back to our system state
-  const handleSaveShipKernel = () => {
+  const handleSaveShipKernel = async () => {
     if (!editedShipForm.ship_name?.trim()) {
       setIsAlertToShow({
         show: true,
@@ -998,56 +997,61 @@ export default function AdminShipsModule({
       return;
     }
 
-    const rarity = editedShipForm.rarity || 'Common';
     const blueprints = Number(editedShipForm.blueprints_required) || 0;
-    
-    // Cohesion limits check - Now any ship of any rarity requires only 1 blueprint minimum
-    let minRequired = 1;
-    if (blueprints < minRequired) {
+    if (blueprints < 1) {
       setIsAlertToShow({
         show: true,
         status: 'error',
-        message: `VALIDACIÓN DE COHERENCIA RECHAZADA: Un asset requiere al menos ${minRequired} plano (Blueprint).`
+        message: 'VALIDACIÓN DE COHERENCIA RECHAZADA: Un chasis requiere al menos 1 plano activo.'
       });
       return;
     }
 
-    if (isNewShip) {
-      // Create new asset
-      const createdItem = editedShipForm as ShipSeed;
-      setShipsList(prev => [createdItem, ...prev]);
-      addAuditLog(
-        "CREATE",
-        "SHIP",
-        createdItem.ship_id,
-        `Se creó el plano de nave "${createdItem.ship_name}" con rareza ${createdItem.rarity}, ataque ${createdItem.attack_standard}, velocidad ${createdItem.speed_boost}.`
-      );
-      setIsAlertToShow({
-        show: true,
-        status: 'success',
-        message: `¡PLANO DE NAVE CREADO! "${createdItem.ship_name}" se inyectó con éxito en el catálogo seed_ships.`
-      });
-    } else {
-      // Update existing asset
-      const updatedItem = editedShipForm as ShipSeed;
-      setShipsList(prev => prev.map(s => s.ship_id === updatedItem.ship_id ? updatedItem : s));
-      addAuditLog(
-        "UPDATE",
-        "SHIP",
-        updatedItem.ship_id,
-        `Se actualizó el kernel semilla de "${updatedItem.ship_name}": Ataque: ${updatedItem.attack_standard}, Escudo: ${updatedItem.shield}, Defensa: ${updatedItem.defense}, Vel: ${updatedItem.speed_boost}.`
-      );
-      setIsAlertToShow({
-        show: true,
-        status: 'success',
-        message: `¡KERNEL SEMILLA ACTUALIZADO! Parámetros de "${updatedItem.ship_name}" guardados en BD.`
-      });
-    }
+    try {
+      const payload: any = { ...editedShipForm };
 
-    // Reset view
-    setSelectedShip(null);
-    setIsNewShip(false);
-    setEditedShipForm({});
+      // 🛡️ Depurador Atómico: Castea los strings numéricos de los inputs de la dApp
+      const numericFields = [
+        'can_level_required', 'blueprints_required', 'resistance', 'shield',
+        'defense', 'speed_boost', 'combat_speed', 'attack_standard',
+        'attack_ionic', 'attack_plasma', 'attack_laser', 'attack_graviton',
+        'cargo_capacity', 'production_min', 'production_max'
+      ];
+      numericFields.forEach(field => {
+        if (payload[field] !== undefined) payload[field] = Number(payload[field]) || 0;
+      });
+
+      if (isNewShip) {
+        // Inyección limpia de nueva tuerca en la tabla maestra
+        const { error } = await supabase.from('seed_ships').insert([payload]);
+        if (error) throw error;
+
+        addAuditLog("CREATE", "SHIP", payload.ship_id!, `Se creó el plano de nave "${payload.ship_name}" en Supabase.`);
+      } else {
+        const id = payload.ship_id;
+        delete payload.ship_id; // Protegemos la Clave Primaria de mutaciones accidentales
+
+        const { error } = await supabase.from('seed_ships').update(payload).eq('ship_id', id);
+        if (error) throw error;
+
+        addAuditLog("UPDATE", "SHIP", id!, `Se actualizó el kernel semilla de "${payload.ship_name}" en Supabase.`);
+      }
+
+      setIsAlertToShow({
+        show: true,
+        status: 'success',
+        message: '¡Catálogo maestro seed_ships actualizado con éxito en la nube!'
+      });
+
+      // Resetear estados del drawer de edición y re-hidratar radar
+      setSelectedShip(null);
+      setIsNewShip(false);
+      setEditedShipForm({});
+      fetchRealShipsCatalog();
+    } catch (err: any) {
+      console.error("Fallo crítico escribiendo chasis en Supabase:", err.message);
+      alert(`FALLO TRANSACCIONAL EN SERVER: ${err.message}`);
+    }
   };
 
   // Clone active blueprint asset
@@ -1074,29 +1078,35 @@ export default function AdminShipsModule({
     setIsDeleteConfirmOpen(true);
   };
 
-  const handleConfirmDeleteShip = () => {
+  const handleConfirmDeleteShip = async () => {
     if (!shipIdToDelete) return;
 
-    const shipToRem = shipsList.find(s => s.ship_id === shipIdToDelete);
-    setShipsList(prev => prev.filter(s => s.ship_id !== shipIdToDelete));
-    if (shipToRem) {
-      addAuditLog(
-        "DELETE",
-        "SHIP",
-        shipToRem.ship_id,
-        `Se eliminó el plano de nave "${shipToRem.ship_name}" con rareza ${shipToRem.rarity} del catálogo global.`
-      );
-    }
-    setIsDeleteConfirmOpen(false);
-    setShipIdToDelete(null);
-    setSelectedShip(null);
-    setEditedShipForm({});
+    try {
+      const shipToRem = shipsList.find(s => s.ship_id === shipIdToDelete);
 
-    setIsAlertToShow({
-      show: true,
-      status: 'error',
-      message: `¡Nave deletreada de la galaxia! Registro del plano "${shipToRem?.ship_name || 'Plano'}" borrado del kernel.`
-    });
+      // Purgar fila relacional en el backend
+      const { error } = await supabase.from('seed_ships').delete().eq('ship_id', shipIdToDelete);
+      if (error) throw error;
+
+      if (shipToRem) {
+        addAuditLog("DELETE", "SHIP", shipIdToDelete, `Se eliminó el plano de nave "${shipToRem.ship_name}" de Supabase.`);
+      }
+
+      setIsDeleteConfirmOpen(false);
+      setShipIdToDelete(null);
+      setSelectedShip(null);
+      setEditedShipForm({});
+      fetchRealShipsCatalog(); // Sincroniza la rejilla visual al instante
+
+      setIsAlertToShow({
+        show: true,
+        status: 'error',
+        message: `Plano borrado permanentemente de los servidores centrales.`
+      });
+    } catch (err: any) {
+      console.error("Fallo purgando registro de Supabase:", err.message);
+      alert(`FALLO AL PURGAR ASSET SEMILLA: ${err.message}`);
+    }
   };
 
   // ========================================================

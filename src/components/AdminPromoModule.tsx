@@ -11,8 +11,8 @@ interface PromoCode {
     metal: number;
     crystal: number;
     deuterium: number;
-    gdCoin: number;
-    phantomCoin: number;
+    gd_coins: number;
+    phantom_coins: number;
     ships: string;
   };
 }
@@ -25,12 +25,12 @@ export const AdminPromoModule: React.FC = () => {
       code: 'WELCOME2026',
       expiration: '2026-12-31',
       limit: 1000,
-      rewards: { metal: 5000, crystal: 5000, deuterium: 1000, gdCoin: 100, phantomCoin: 0, ships: '' }
+      rewards: { metal: 5000, crystal: 5000, deuterium: 1000, gd_coins: 100, phantom_coins: 0, ships: '' }
     }
   ]);
 
   const [newPromo, setNewPromo] = useState<Partial<PromoCode>>({
-    rewards: { metal: 0, crystal: 0, deuterium: 0, gdCoin: 0, phantomCoin: 0, ships: '' }
+    rewards: { metal: 0, crystal: 0, deuterium: 0, gd_coins: 0, phantom_coins: 0, ships: '' }
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -61,7 +61,7 @@ export const AdminPromoModule: React.FC = () => {
       };
 
       setPromoCodes([...promoCodes, code]);
-      setNewPromo({ rewards: { metal: 0, crystal: 0, deuterium: 0, gdCoin: 0, phantomCoin: 0, ships: '' } });
+      setNewPromo({ rewards: { metal: 0, crystal: 0, deuterium: 0, gd_coins: 0, phantom_coins: 0, ships: '' } });
     } catch (error) {
       alert('Error al crear promo code en el servidor.');
     } finally {
@@ -160,8 +160,8 @@ export const AdminPromoModule: React.FC = () => {
             { key: 'metal', label: 'Metal' },
             { key: 'crystal', label: 'Crystal' },
             { key: 'deuterium', label: 'Deuterium' },
-            { key: 'gdCoin', label: 'GD Coin' },
-            { key: 'phantomCoin', label: 'Phantom Coin' },
+            { key: 'gd_coins', label: 'GD Coins' },
+            { key: 'phantom_coins', label: 'Phantom Coins' },
           ].map(({ key, label }) => (
             <div key={key}>
               <label className={labelCls}>{label}</label>
@@ -212,7 +212,7 @@ export const AdminPromoModule: React.FC = () => {
                   <td className="px-3 py-2.5 text-zinc-400 font-mono">{code.expiration}</td>
                   <td className="px-3 py-2.5 text-zinc-400">{code.limit.toLocaleString()} usos</td>
                   <td className="px-3 py-2.5 text-zinc-500 font-mono text-[10px]">
-                    M:{code.rewards.metal} C:{code.rewards.crystal} D:{code.rewards.deuterium} GD:{code.rewards.gdCoin}
+                    M:{code.rewards.metal} | C:{code.rewards.crystal} | D:{code.rewards.deuterium} | GD:{code.rewards.gd_coins} | PH:{code.rewards.phantom_coins}
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <button

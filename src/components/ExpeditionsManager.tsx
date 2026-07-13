@@ -9,15 +9,13 @@ interface StarNode {
 
 interface Expedition {
   id: string;
-  target_node_id: string;
+  user_id: string;      // UUID del piloto
+  target_cluster: string; // Reemplaza target_node_id
   expedition_type: string;
   duration_hours: number;
-  status: string;
+  phase: 'traveling' | 'active' | 'returning' | 'finished'; // Reemplaza status
   arrives_at: string;
   fleet_payload?: any[];
-  star_nodes?: {
-    name: string;
-  };
 }
 
 type SubTab = 'exploration_mining' | 'domination' | 'expedition_events' | 'galaxy_generator';
@@ -172,18 +170,16 @@ export const ExpeditionsManager: React.FC = () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('expeditions')
+        .from('user_expeditions') // Apalancado a la tabla verídica del juego
         .select(`
           id,
-          target_node_id,
+          user_id,
+          target_cluster,
           expedition_type,
           duration_hours,
-          status,
+          phase,
           arrives_at,
-          fleet_payload,
-          star_nodes (
-            name
-          )
+          fleet_payload
         `)
         .order('arrives_at', { ascending: false });
 
@@ -230,14 +226,93 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  const renderStatus = (status: string) => {
-    switch (status) {
+  const handleGlobalInstaRecall = async () => {
+    const confirm = window.confirm(
+      "\ud83d\udea8 ALERTA DE INTERVENCI\u00d3N MAESTRA:\n\n\u00bfEst\u00e1s seguro de forzar el retorno inmediato de TODAS las flotas en vuelo continuo?\nEsto anular\u00e1 los cron\u00f3metros en caliente y liberar\u00e1 los hangares de los pilotos."
+    );
+    if (!confirm) return;
+
+    try {
+      const nowISO = new Date().toISOString();
+
+      // Modifica masivamente todas las expediciones activas que no hayan finalizado
+      const { error } = await supabase
+        .from('user_expeditions')
+        .update({
+          phase: 'finished',
+          arrives_at: nowISO
+        })
+        .neq('phase', 'finished'); // Solo afecta a naves en vuelo o exploraci\u00f3n
+
+      if (error) throw error;
+
+      alert("\ud83d\udef8 [N\u00daCLEO OPERATIVO]: Orden de anclaje emitida. Todas las flotas regresaron a puerto.");
+      fetchExpeditions(); // Recarga instant\u00e1nea del radar t\u00e1ctico
+    } catch (err: any) {
+      console.error("Fallo catastr\u00f3fico en cascada de base de datos:", err.message);
+      alert(`Error de infraestructura: ${err.message}`);
+    }
+  };
+
+  const handleInjectClaim = async () => {
+    if (!claimTargetUuid.trim()) {
+      alert("Acción rechazada: Debes especificar el UUID del destinatario.");
+      return;
+    }
+
+    if (claimAmount <= 0) {
+      alert("Acción rechazada: La cantidad de inyección debe ser mayor a 0.");
+      return;
+    }
+
+    try {
+      const itemLower = claimItemType.toLowerCase();
+
+      if (itemLower === 'metal' || itemLower === 'cristal') {
+        const dbField = itemLower === 'cristal' ? 'crystal' : 'metal';
+
+        const { data: currentVault, error: readError } = await supabase
+          .from('vaults')
+          .select(dbField)
+          .eq('player_id', claimTargetUuid.trim())
+          .maybeSingle();
+
+        if (readError) throw readError;
+        if (!currentVault) {
+          alert("❌ Error: El UUID especificado no posee una Bóveda (Vault) activa en Postgres.");
+          return;
+        }
+
+        const newBalance = ((currentVault as any)[dbField] || 0) + Number(claimAmount);
+
+        const { error: updateError } = await supabase
+          .from('vaults')
+          .update({ [dbField]: newBalance })
+          .eq('player_id', claimTargetUuid.trim());
+
+        if (updateError) throw updateError;
+
+        alert(`💎 [RECURSOS SINCRO]: Se inyectaron +${claimAmount.toLocaleString()} de ${claimItemType} al Vault del piloto con éxito.`);
+
+        const timeStr = new Date().toISOString().split('T')[1].substring(0, 8);
+        setLiveStreamLogs(prev => [`[${timeStr} UTC] 🛑 INYECTOR ROOT: +${claimAmount} ${dbField.toUpperCase()} -> Pilot [${claimTargetUuid.slice(0, 8)}]`, ...prev]);
+      } else {
+        alert(`🛸 [AVISO LOGÍSTICA]: El asset "${claimItemType}" es estructural. Para conceder naves u objetos con esquemas complejos de nivelación, utiliza el Taller de Naves o tu Módulo de Matrix de Inventarios.`);
+      }
+    } catch (err: any) {
+      console.error("Fallo crítico inyectando claim:", err.message);
+      alert(`Fallo en la transacción Root: ${err.message}`);
+    }
+  };
+
+
+  const renderStatus = (phase: string) => {
+    switch (phase) {
       case 'traveling': return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-amber-500/10 text-amber-400">EN VUELO</span>;
-      case 'active': return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-emerald-500/10 text-emerald-400">ACTIVA</span>;
-      case 'combat': return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-red-500/10 text-red-400">EN COMBATE</span>;
+      case 'active': return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-emerald-500/10 text-emerald-400">EXPLORANDO</span>;
       case 'returning': return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-cyan-500/10 text-cyan-400">RETORNANDO</span>;
       case 'finished': return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-slate-500/10 text-slate-400">FINALIZADA</span>;
-      default: return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-slate-500/10 text-slate-400">{status.toUpperCase()}</span>;
+      default: return <span className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-slate-500/10 text-slate-400">{phase.toUpperCase()}</span>;
     }
   };
 
@@ -430,8 +505,12 @@ export const ExpeditionsManager: React.FC = () => {
               {/* Insta-Recall */}
               <div>
                 <p className="text-[10px] text-slate-400 mb-2 leading-relaxed">Intervención de emergencia. Retorna todas las flotas civiles al instante sin perder carga útil.</p>
-                <button onClick={() => alert('¡SIMULACIÓN: Flotas forzadas a retornar al C.A.N!')} className="w-full bg-red-600 hover:bg-red-500 py-2.5 rounded text-[10px] font-black uppercase tracking-wider text-white transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_20px_rgba(220,38,38,0.4)]">
-                  <AlertTriangle className="w-3 h-3" /> Forzar Insta-Recall Global
+                <button
+                  type="button"
+                  onClick={handleGlobalInstaRecall}
+                  className="w-full bg-red-640 hover:bg-red-500 py-2.5 rounded text-[10px] font-black uppercase tracking-wider text-white transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(220,38,38,0.2)] hover:shadow-[0_0_20px_rgba(220,38,38,0.4)] cursor-pointer"
+                >
+                  <AlertTriangle className="w-3 h-3" /> Forzar Insta-Recall Global Real
                 </button>
               </div>
 
@@ -789,9 +868,9 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           ) : (
             filteredExpeditions.map((exp) => {
-              const destinationName = exp.star_nodes?.name || exp.target_node_id;
-              // Alerta lógica
-              const isInDanger = isMilitary && (exp.status === 'combat' || (exp.status === 'traveling' && Math.random() > 0.85));
+              const destinationName = exp.target_cluster; // Enlace directo al clúster destino
+              // Heurística temporal de riesgo
+              const isInDanger = exp.phase === 'active' && Math.random() > 0.90;
               
               return (
                 <div key={exp.id} className="p-3 bg-slate-900 border border-slate-800 rounded flex flex-col gap-2 hover:border-slate-700 transition-colors">
@@ -807,11 +886,11 @@ export const ExpeditionsManager: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    {renderStatus(exp.status)}
+                    {renderStatus(exp.phase)}
                   </div>
                   
                   {/* Alertas Contextuales */}
-                  {(exp.status === 'active' && exp.expedition_type === 'mining') && (
+                  {(exp.phase === 'active' && exp.expedition_type === 'mining') && (
                     <div className="text-[10px] text-emerald-400/90 bg-emerald-500/10 py-1 px-2 rounded font-mono border border-emerald-500/20 mt-1 flex items-center gap-1.5">
                       ⛏️ Minando recursos... Boost acumulado +15%
                     </div>
@@ -980,11 +1059,12 @@ export const ExpeditionsManager: React.FC = () => {
               </div>
 
               <div className="space-y-3">
-                <button 
-                  onClick={() => alert(`¡SIMULACIÓN: Inyectado ${claimAmount}x ${claimItemType} al destinatario: ${claimTargetUuid || 'DESCONOCIDO'}!`)} 
-                  className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded text-[10px] font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(147,51,234,0.2)] hover:shadow-[0_0_20px_rgba(147,51,234,0.4)] flex items-center justify-center gap-2"
+                <button
+                  type="button"
+                  onClick={handleInjectClaim}
+                  className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded text-[10px] font-black uppercase tracking-wider text-white transition-all shadow-[0_0_15px_rgba(147,51,234,0.2)] hover:shadow-[0_0_20px_rgba(147,51,234,0.4)] flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Zap className="w-3 h-3" /> Disparar Inyector de Claim
+                  <Zap className="w-3 h-3" /> Disparar Inyector de Claim Real
                 </button>
 
                 <button 

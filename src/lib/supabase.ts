@@ -229,24 +229,24 @@ export const supabaseService = {
         if (data && data.length > 0) {
           // Hidratamos las propiedades requeridas por el frontend mapeando desde las columnas reales de Postgres
           const mappedUsers: UserProfile[] = data.map((row: any) => ({
-            id: row.id,
-            username: row.username || 'Explorador Anónimo',
-            email: row.email || 'sin-correo@sasorilabs.io',
-            level: row.can_level || 1, // Mapeo de can_level hacia level del UI
+            id: row.user_id, // 🌟 Corregido: Enlaza directo a tu columna user_id real
+            username: row.username || 'Explorador Anónimo', 
+            email: row.email || row.wallet_address || 'sin-correo@sasorilabs.io', // Usa la wallet como identidad temporal si no hay email
+            level: row.can_level || 1,
             can_level: row.can_level || 1,
-            xp: row.xp || 0,
-            role: row.role || 'user',
+            xp: Number(row.can_xp) || 0,
+            role: row.is_admin ? 'admin' : 'user', // Mapeo inteligente con tu booleano is_admin
             status: row.status || 'active',
-            avatarUrl: row.avatar_url || 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?q=80&w=128',
+            avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?q=80&w=128',
             created_at: row.created_at || new Date().toISOString(),
-            last_active: row.last_active || new Date().toISOString(),
-            // Evitamos crasheos inyectando arrays vacíos para elementos relacionales dinámicos
-            inventory: row.inventory || [],
-            auditLogs: row.audit_logs || [],
-            metal: Number(row.metal) || 0,
-            crystal: Number(row.crystal) || 0,
-            deuterium: Number(row.deuterium) || 0,
-            dark_matter: Number(row.dark_matter) || 0,
+            last_active: row.updated_at || new Date().toISOString(),
+            inventory: [],
+            auditLogs: [],
+            // 💰 Soldadura de tu Ledger de Materiales reales (_balance)
+            metal: Number(row.metal_balance) || 0, 
+            crystal: Number(row.crystal_balance) || 0,
+            deuterium: Number(row.deuterium_balance) || 0,
+            dark_matter: Number(row.dark_matter_balance) || 0,
             omniplate: Number(row.omniplate) || 0,
             orichaltron: Number(row.orichaltron) || 0,
             lunar_fiber: Number(row.lunar_fiber) || 0,
@@ -255,11 +255,11 @@ export const supabaseService = {
             xenoplasm: Number(row.xenoplasm) || 0,
             organium: Number(row.organium) || 0,
             mana: Number(row.mana) || 0,
-            gd_coins: Number(row.gd_coins) || 0,
-            phantom_coins: Number(row.phantom_coins) || 0,
-            faction: row.faction || 'Nova',
-            moral_status: row.moral_status || 'Order',
-            ban_duration_days: row.ban_duration_days || 0,
+            gd_coins: Number(row.gd_balance) || 0,
+            phantom_coins: Number(row.phantom_coin) || 0,
+            faction: 'Nova',
+            moral_status: 'Order',
+            ban_duration_days: 0,
             ban_reason: row.ban_reason || ''
           }));
           return { data: mappedUsers, source: 'supabase' };
@@ -292,15 +292,15 @@ export const supabaseService = {
         // 🔥 FILTRO MAESTRO: Limpiamos y sanitizamos las columnas antes de subirlas.
         // Postgres abortaría la transacción si le enviamos arrays o campos de interfaz como 'inventory' o 'email'
         const sanitizedRows = users.map(u => ({
-          id: u.id,
+          user_id: u.id, // 🌟 Corregido: Mapea id del UI de vuelta a user_id de Postgres
           username: u.username,
           can_level: u.level, // Guardamos la variable level del UI en can_level de Postgres
           role: u.role,
           status: u.status,
-          metal: u.metal,
-          crystal: u.crystal,
-          deuterium: u.deuterium,
-          dark_matter: u.dark_matter,
+          metal_balance: u.metal,
+          crystal_balance: u.crystal,
+          deuterium_balance: u.deuterium,
+          dark_matter_balance: u.dark_matter,
           omniplate: u.omniplate,
           orichaltron: u.orichaltron,
           lunar_fiber: u.lunar_fiber,
@@ -309,8 +309,8 @@ export const supabaseService = {
           xenoplasm: u.xenoplasm,
           organium: u.organium,
           mana: u.mana,
-          gd_coins: u.gd_coins,
-          phantom_coins: u.phantom_coins,
+          gd_balance: u.gd_coins,
+          phantom_coins_balance: u.phantom_coins,
           faction: u.faction,
           moral_status: u.moral_status,
           ban_duration_days: u.ban_duration_days,

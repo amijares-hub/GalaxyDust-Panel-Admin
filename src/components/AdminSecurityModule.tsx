@@ -56,7 +56,7 @@ export const AdminSecurityModule: React.FC = () => {
     }
   };
 
-  const sortedAnomalies = [...anomalies].sort((a, b) => b.gold - a.gold);
+  const sortedAnomalies = [...anomalies].sort((a, b) => b.gd_coins - a.gd_coins);
 
   const tabCls = (tab: 'anticheat' | 'blackbox') =>
     `flex items-center gap-2 px-4 py-2 text-xs font-bold font-mono uppercase tracking-wider transition-all rounded cursor-pointer ${
@@ -107,7 +107,7 @@ export const AdminSecurityModule: React.FC = () => {
                   <th className="px-4 py-3 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Rank</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Usuario</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Nivel</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Economía Anómala</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-zinc-650 uppercase tracking-wider">Balances Auditados (Monedas y Recursos)</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Flag</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-zinc-600 uppercase tracking-wider text-right">Acción</th>
                 </tr>
@@ -131,8 +131,14 @@ export const AdminSecurityModule: React.FC = () => {
                     <td className="px-4 py-3 text-zinc-500 font-mono font-bold">#{index + 1}</td>
                     <td className="px-4 py-3 font-bold text-zinc-200">{user.username}</td>
                     <td className="px-4 py-3 text-cyan-400 font-mono">Lvl {user.level}</td>
-                    <td className="px-4 py-3 text-yellow-400 font-mono text-[11px]">
-                      Oro: {user.gold.toLocaleString()} | Gemas: {user.gems.toLocaleString()}
+                    <td className="px-4 py-3 font-mono text-[11px] leading-relaxed">
+                      <div className="text-yellow-405 font-bold">
+                        GD: {user.gd_coins.toLocaleString()} Coins | PH: {user.phantom_coins.toLocaleString()} PC
+                      </div>
+                      <div className="text-zinc-500 text-[10px] mt-0.5">
+                        Metal: <span className="text-zinc-300">{user.metal.toLocaleString()}</span> | 
+                        Crystal: <span className="text-cyan-400">{user.crystal.toLocaleString()}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-yellow-500 font-bold text-[10px] flex items-center gap-1 bg-yellow-950/30 border border-yellow-500/20 px-2 py-1 rounded w-max font-mono uppercase">

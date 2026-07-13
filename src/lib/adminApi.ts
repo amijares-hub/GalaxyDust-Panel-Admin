@@ -1,5 +1,25 @@
 import { getSupabaseClient } from './supabase'; // Puente directo a Postgres
 
+export interface ForceReturnPayload {
+  expedition_id: string;
+  force_timestamp: string;
+}
+
+export interface InjectEventPayload {
+  user_id: string;
+  expedition_id: string;
+  event_type: 'hostile' | 'anomaly' | 'discovery';
+  title: string;
+  message: string;
+  damage_sustained: number;
+  rewards_looted: {
+    metal?: number;
+    crystal?: number;
+    dark_matter?: number;
+    phantom_coins?: number;
+  };
+}
+
 export interface PromoCodeRewards {
   metal?: number;
   crystal?: number;
@@ -58,6 +78,63 @@ const getClient = () => {
 };
 
 export const adminApi = {
+  // Forzar retorno anticipado de flotas en vuelo exterior
+  forceExpeditionReturn: async (payload: ForceReturnPayload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/expeditions/force-return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`Go API devolvió status ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.warn('Microservicio Go Offline. Ejecutando mitigación transaccional directa en la línea temporal...');
+      
+      const { data, error: sbError } = await getClient()
+        .from('user_expeditions')
+        .update({ 
+          phase: 'finished',
+          arrival_time: payload.force_timestamp,
+          return_time: payload.force_timestamp
+        })
+        .eq('id', payload.expedition_id);
+
+      if (sbError) throw sbError;
+      return { status: 'fallback_success', data };
+    }
+  },
+
+  // Inyección de Eventos RNG Manuales desde el panel de mando
+  injectExpeditionEvent: async (payload: InjectEventPayload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/expeditions/inject-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(`Go API devolvió status ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      console.warn('Microservicio Go inalcanzable. Volcando telemetría cinemática directo a la tabla de logs...');
+      
+      const { data, error: logError } = await getClient()
+        .from('expedition_logs')
+        .insert({
+          user_id: payload.user_id,
+          expedition_id: payload.expedition_id,
+          event_type: payload.event_type,
+          title: payload.title,
+          message: payload.message,
+          damage_sustained: payload.damage_sustained,
+          rewards_looted: payload.rewards_looted
+        });
+
+      if (logError) throw logError;
+      return { status: 'fallback_success', data };
+    }
+  },
+
   // Generador de Promo Codes
   createPromoCode: async (payload: PromoCodePayload) => {
     try {

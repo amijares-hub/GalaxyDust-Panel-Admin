@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { RefreshCw, Search, ShieldAlert, Database, Radio, Layers, Edit3, X, Save, Plus, Camera, Activity, Box, Puzzle, BadgePercent, UploadCloud, PlusCircle, Sliders, Flame, Shield, Anchor, Wrench, Cpu, Coins, Hammer, Boxes, Trash2 } from 'lucide-react';
-import { calculateCombatStats } from './CombatSandboxTester';
 
 export const ComponentMatrix: React.FC = () => {
   const [rawItems, setRawItems] = useState<any[]>([]);
@@ -15,16 +14,20 @@ export const ComponentMatrix: React.FC = () => {
   const [rawPayloadCount, setRawPayloadCount] = useState<number>(-1);
   const [masterSkills, setMasterSkills] = useState<any[]>([]);
 
+  // Bulk Actions & Selected Context
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkRarity, setBulkRarity] = useState<string>('no_change');
+  const [selectedMatrixItem, setSelectedMatrixItem] = useState<any | null>(null);
+
   // Estados del Motor Bimodal Alternable
   const [editorMode, setEditorMode] = useState<'EDIT' | 'CREATE'>('EDIT');
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+  
   // Auxiliar para inyección rápida en arrays de habilidades (skills)
   const [newSkillInput, setNewSkillInput] = useState<string>('');
-
+  
   // CONFIGURACIÓN DE TABLAS DE PRODUCCIÓN GALAXYDUST
   const tabs = [
     { id: 'SHIPS', label: '🚀 Naves', table: 'seed_ships', pk: 'ship_id', nameCol: 'ship_name' },
@@ -67,6 +70,7 @@ export const ComponentMatrix: React.FC = () => {
       setLoading(true);
       setDbError(null);
       setRawItems([]);
+      setSelectedIds([]);
 
       const { data, error } = await supabase.from(currentTabConfig.table).select('*');
 
@@ -99,6 +103,27 @@ export const ComponentMatrix: React.FC = () => {
     } catch (e: any) {
       setDbError(`EXCEPCIÓN CRÍTICA DE RED: ${e.message}`);
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyBulkMatrix = async () => {
+    if (selectedIds.length === 0 || bulkRarity === 'no_change') return;
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from(currentTabConfig.table)
+        .update({ rarity: bulkRarity })
+        .in(currentTabConfig.pk, selectedIds);
+
+      if (error) throw error;
+      
+      alert(`Actualización masiva exitosa: ${selectedIds.length} assets marcados como ${bulkRarity}.`);
+      setSelectedIds([]);
+      setBulkRarity('no_change');
+      loadLiveMatrixData();
+    } catch (error: any) {
+      alert(`Error en actualización masiva: ${error.message}`);
       setLoading(false);
     }
   };
@@ -307,45 +332,14 @@ export const ComponentMatrix: React.FC = () => {
     });
   }, [rawItems, searchFilter, rarityFilter, currentTabConfig]);
 
-  // ==========================================
-  // PUENTE DEL MOTOR DE SIMULACIÓN (COMBAT SANDBOX)
-  // ==========================================
-  const simulatedShip = useMemo(() => {
-    if (!editingItem || activeTab !== 'SHIPS') return null;
-
-    const skillsParaSimular = (editingItem.skills || [])
-      .map((sk: any) => {
-        const skillId = typeof sk === 'string' ? sk : sk?.skill_id;
-        return skillCache.get(skillId);
-      })
-      .filter(Boolean);
-
-    return calculateCombatStats(editingItem, skillsParaSimular);
-  }, [editingItem, activeTab, skillCache]);
-
-  const renderSandboxStat = (label: string, field: string, isPercentage: boolean = false) => {
-    const baseValue = Number(editingItem[field]) || 0;
-    const computedValue = simulatedShip ? Number((simulatedShip as any)[field]) || 0 : baseValue;
-    const isModified = computedValue !== baseValue;
-
+  // Input genérico para simplificar el drawer
+  const renderStatInput = (label: string, field: string) => {
     return (
       <div>
         <label className="text-[9px] text-zinc-550 font-bold uppercase tracking-wider">{label}</label>
-        <div className="flex items-center gap-1">
-          <input type="number" value={editingItem[field] ?? 0} onChange={(e) => updateFormKey(field, e.target.value)} className={`w-full bg-black border border-zinc-850 p-1.5 rounded text-white text-right font-mono text-xs focus:outline-none focus:border-red-500 ${isModified ? 'text-zinc-500 border-zinc-900' : ''}`} />
-          {isModified && (
-            <div className="text-[10px] text-emerald-400 font-bold whitespace-nowrap bg-emerald-950/30 px-2 py-1 rounded border border-emerald-900/40 flex flex-col justify-center font-mono animate-fadeIn">
-              → {isPercentage ? `${computedValue.toFixed(1)}%` : Math.round(computedValue).toLocaleString()}
-            </div>
-          )}
-        </div>
+        <input type="number" value={editingItem[field] ?? 0} onChange={(e) => updateFormKey(field, e.target.value)} className="w-full bg-black border border-zinc-850 p-1.5 rounded text-white text-right font-mono text-xs focus:outline-none focus:border-red-500" />
       </div>
     );
-  };
-
-  const getDynamicFields = (item: any) => {
-    const coreKeys = ['id', 'ship_id', 'defense_id', 'name', 'ship_name', 'defense_name', 'description', 'image_url', 'avatar_url', 'rarity', 'skills', 'levels_config', 'set_skills', 'stack', 'duration', 'skill_requirements', 'effect'];
-    return Object.keys(item).filter(k => !coreKeys.includes(k));
   };
 
   return (
@@ -422,19 +416,67 @@ export const ComponentMatrix: React.FC = () => {
         </select>
       </div>
 
-      {/* REJILLA DE TARJETAS */}
+      {/* ⚡ BARRA DE ACCIONES EN LOTE UNIVERSAL */}
+      {selectedIds.length > 0 && (
+        <div className="p-3 bg-red-950/20 border border-red-500/30 rounded-lg flex flex-col md:flex-row items-center justify-between gap-3 text-xs animate-fadeIn z-10 relative">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            <span className="font-mono text-zinc-300">
+              Modificación masiva: <strong className="text-red-500 font-bold">{selectedIds.length}</strong> assets marcados en {currentTabConfig.table}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <select
+              value={bulkRarity}
+              onChange={(e) => setBulkRarity(e.target.value)}
+              className="bg-black border border-zinc-850 rounded px-2 py-1 text-zinc-300 font-mono outline-none cursor-pointer"
+            >
+              <option value="no_change">Sin alterar Rareza</option>
+              <option value="Common">Common</option>
+              <option value="Uncommon">Uncommon</option>
+              <option value="Rare">Rare</option>
+              <option value="Epic">Epic</option>
+              <option value="Legendary">Legendary</option>
+            </select>
+
+            <button
+              onClick={handleApplyBulkMatrix}
+              className="px-3 py-1.5 bg-red-650 hover:bg-red-600 text-white font-bold uppercase font-mono rounded transition-colors cursor-pointer"
+            >
+              Aplicar a la Base Semilla ({selectedIds.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🔲 DISPOSITIVO DE DISTRIBUCIÓN EN REJILLA 100% */}
       {loading ? (
         <div className="p-16 text-center text-zinc-500 animate-pulse tracking-widest font-mono z-10 relative">MINANDO MANIFIESTOS REALES...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 z-10 relative pr-1 pb-16">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 items-start z-10 relative pb-16">
           {filteredItems.map((item) => {
             const currentId = item[currentTabConfig.pk];
             const currentName = item[currentTabConfig.nameCol] || 'Asset Sin Nombre';
+            const isSelected = selectedIds.includes(currentId);
 
             return (
-              <div key={currentId} className="bg-black/40 border border-zinc-900 p-4 rounded-xl flex flex-col justify-between space-y-4 hover:border-zinc-800 transition-all relative">
+              <div key={currentId} className={`bg-black/40 border ${isSelected ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.15)]' : 'border-zinc-900'} p-4 rounded-xl flex flex-col justify-between space-y-4 hover:border-zinc-800 transition-all relative cursor-pointer`} onClick={() => setSelectedMatrixItem(item)}>
+                {/* CHECKBOX PARA SELECCIÓN EN LOTE */}
+                <div className="absolute top-2 right-2 z-30" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-red-600 rounded bg-black border-zinc-800 cursor-pointer"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedIds(prev => [...prev, currentId]);
+                      else setSelectedIds(prev => prev.filter(id => id !== currentId));
+                    }}
+                  />
+                </div>
+                
                 <div className="space-y-2.5">
-                  <div className="w-full h-36 bg-zinc-950/60 rounded-xl border border-zinc-850 flex items-center justify-center overflow-hidden relative select-none group cursor-pointer">
+                  <div className="w-full h-36 bg-zinc-950/60 rounded-xl border border-zinc-850 flex items-center justify-center overflow-hidden relative select-none group">
                     <input 
                       type="file" 
                       accept="image/webp,image/png,image/jpeg"
@@ -582,22 +624,22 @@ export const ComponentMatrix: React.FC = () => {
                     <div><label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">Tamaño de Chasis (ship_size)</label><input type="text" value={editingItem.ship_size || ''} onChange={(e) => updateFormKey('ship_size', e.target.value)} className="w-full bg-black border border-zinc-850 p-2 rounded text-white" /></div>
 
                     <div className="col-span-2 grid grid-cols-2 lg:grid-cols-3 gap-3 bg-zinc-950/80 p-3 rounded-xl border border-zinc-900 mt-1 shadow-inner relative">
-                      <span className="col-span-full text-[9.5px] text-cyan-400 font-bold uppercase block border-b border-zinc-900 pb-1 flex items-center gap-1 select-none"><Sliders size={12} /> Atributos de Protección (Sandbox Activo)</span>
-                      {renderSandboxStat('Shield', 'shield')}
-                      {renderSandboxStat('Defense', 'defense')}
-                      {renderSandboxStat('Resistance', 'resistance')}
-                      {renderSandboxStat('Speed Boost %', 'speed_boost', true)}
-                      {renderSandboxStat('Cargo Capacity', 'cargo_capacity')}
+                      <span className="col-span-full text-[9.5px] text-cyan-400 font-bold uppercase block border-b border-zinc-900 pb-1 flex items-center gap-1 select-none"><Sliders size={12} /> Atributos de Protección</span>
+                      {renderStatInput('Shield', 'shield')}
+                      {renderStatInput('Defense', 'defense')}
+                      {renderStatInput('Resistance', 'resistance')}
+                      {renderStatInput('Speed Boost %', 'speed_boost')}
+                      {renderStatInput('Cargo Capacity', 'cargo_capacity')}
                       <div><label className="text-[9px] text-zinc-500">Slots Flota</label><input type="number" value={editingItem.fleet_slots ?? 1} onChange={(e) => updateFormKey('fleet_slots', e.target.value)} className="w-full bg-black border border-zinc-850 p-1.5 rounded text-white text-right" /></div>
                     </div>
 
                     <div className="col-span-2 grid grid-cols-2 lg:grid-cols-3 gap-3 bg-zinc-950/80 p-3 rounded-xl border border-zinc-900 shadow-inner relative">
-                      <span className="col-span-full text-[9.5px] text-red-400 font-bold uppercase block border-b border-zinc-900 pb-1 flex items-center gap-1 select-none"><Flame size={12} /> Calibración de Daños (Sandbox Activo)</span>
-                      {renderSandboxStat('Standard', 'attack_standard')}
-                      {renderSandboxStat('Laser', 'attack_laser')}
-                      {renderSandboxStat('Ionic', 'attack_ionic')}
-                      {renderSandboxStat('Plasma', 'attack_plasma')}
-                      {renderSandboxStat('Graviton', 'attack_graviton')}
+                      <span className="col-span-full text-[9.5px] text-red-400 font-bold uppercase block border-b border-zinc-900 pb-1 flex items-center gap-1 select-none"><Flame size={12} /> Calibración de Daños</span>
+                      {renderStatInput('Standard', 'attack_standard')}
+                      {renderStatInput('Laser', 'attack_laser')}
+                      {renderStatInput('Ionic', 'attack_ionic')}
+                      {renderStatInput('Plasma', 'attack_plasma')}
+                      {renderStatInput('Graviton', 'attack_graviton')}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 col-span-2">

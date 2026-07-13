@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Database, Shield, Cpu, Users, ChevronDown, ChevronRight, CheckCircle,
   X, AlertTriangle, LayoutGrid, Clock, Wifi, WifiOff, Settings,
-  Navigation, Orbit, Gift, Radio, Ghost, Menu
+  Navigation, Orbit, Gift, Radio, Ghost, Menu, ShieldAlert
 } from 'lucide-react';
 
 import {
@@ -25,7 +25,6 @@ import ConditionEditor from './components/ConditionEditor';
 import UserCRM from './components/UserCRM';
 import GalaxyDustHUD from './components/GalaxyDustHUD';
 import CANManager from './components/CANManager';
-import AdminShipsModule from './components/AdminShipsModule';
 import { ComponentMatrix } from './components/ComponentMatrix';
 import { ExpeditionsManager } from './components/ExpeditionsManager';
 import { SkillManager } from './components/SkillManager';
@@ -409,39 +408,7 @@ export default function App() {
                 </AnimatePresence>
               </div>
 
-              {/* FUNCTION: Flotas y Naves */}
-              <div className="space-y-0.5">
-                <button
-                  onClick={() => toggleDropdown('ships')}
-                  className={`w-full py-1.5 px-2 rounded flex items-center justify-between text-xs font-medium tracking-wide transition-all cursor-pointer ${nav.activeMain === 'ships' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
-                    }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Navigation size={13} className="shrink-0 text-red-500 rotate-45" />
-                    <span className="truncate">Flotas y Naves</span>
-                  </div>
-                  {menuDropdowns.ships ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                </button>
 
-                <AnimatePresence initial={false}>
-                  {menuDropdowns.ships && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
-                    >
-                      <button
-                        onClick={() => setNav({ activeMain: 'ships', activeSub: 'ships_hangar' })}
-                        className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'ships' && nav.activeSub === 'ships_hangar' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
-                          }`}
-                      >
-                        Hangar del Comandante
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
 
               {/* FUNCTION: Gestor de Assets e Inventario */}
               <div className="space-y-0.5">
@@ -522,6 +489,79 @@ export default function App() {
                     <Orbit size={13} className="shrink-0 text-red-500" />
                     <span className="truncate">Expediciones</span>
                   </div>
+                </button>
+              </div>
+
+              {/* ── SECCIÓN DE OPERACIONES ECONÓMICAS Y SEGURIDAD ── */}
+              <div className="space-y-1 pt-2 border-t border-zinc-900">
+                <span className="text-[9px] font-bold tracking-widest text-zinc-500 font-mono uppercase block px-1 mb-1.5">
+                  Operaciones & LiveOps
+                </span>
+
+                {/* MARKETPLACE */}
+                <button
+                  onClick={() => setNav({ activeMain: 'market', activeSub: 'market_items' })}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'market' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <LayoutGrid size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>P2P Marketplace</span>
+                </button>
+
+                {/* PHANTOM STATION */}
+                <button
+                  onClick={() => setNav({ activeMain: 'phantom_station', activeSub: 'store_manager' })}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'phantom_station' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <Ghost size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>Phantom Station</span>
+                </button>
+
+                {/* MARKETING PROMO CODES */}
+                <button
+                  onClick={() => setNav({ activeMain: 'promo', activeSub: 'promo_main' })}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'promo' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <Gift size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>Promociones P2P</span>
+                </button>
+
+                {/* ALLIANCE CRM */}
+                <button
+                  onClick={() => setNav({ activeMain: 'alliance', activeSub: 'alliance_main' })}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'alliance' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <Shield size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>Alliance CRM</span>
+                </button>
+
+                {/* SECURITY SECURITY CONTROL */}
+                <button
+                  onClick={() => setNav({ activeMain: 'security', activeSub: 'anticheat' })}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'security' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <ShieldAlert size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>Radar Anti-Cheat</span>
+                </button>
+
+                {/* DATA SANITIZER */}
+                <button
+                  onClick={() => setNav({ activeMain: 'sanitizer', activeSub: 'sanitizer_main' })}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'sanitizer' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <Radio size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>Data Sanitizer Sci-Fi</span>
                 </button>
               </div>
 
@@ -645,14 +685,7 @@ export default function App() {
                 />
               )}
 
-              {/* FLOTAS Y NAVES MODULE */}
-              {nav.activeMain === 'ships' && (
-                <AdminShipsModule
-                  users={users}
-                  setIsAlertToShow={alertTrigger}
-                  onRefreshData={fetchAllData}
-                />
-              )}
+
 
               {/* MATRIX OF COMPONENTS MODULE */}
               {nav.activeMain === 'matrix' && (
@@ -667,6 +700,50 @@ export default function App() {
               {/* EXPEDITIONS MANAGER */}
               {nav.activeMain === 'expediciones' && (
                 <ExpeditionsManager />
+              )}
+
+              {/* MARKETPLACE P2P INTERFACE */}
+              {nav.activeMain === 'market' && (
+                <AdminMarketplaceModule
+                  users={users}
+                  setIsAlertToShow={alertTrigger}
+                  onRefreshData={fetchAllData}
+                  activeSubTab={nav.activeSub}
+                />
+              )}
+
+              {/* PHANTOM STATION PREMIUM HUB */}
+              {nav.activeMain === 'phantom_station' && (
+                <AdminPhantomStationModule
+                  gameHud={gameHud}
+                  users={users}
+                  onSaveGameHud={handleSaveGameHud}
+                  setIsAlertToShow={alertTrigger}
+                />
+              )}
+
+              {/* PROMO CODES MARKETING CENTER */}
+              {nav.activeMain === 'promo' && (
+                <AdminPromoModule />
+              )}
+
+              {/* ALLIANCE GREMIO CONTROL HUB */}
+              {nav.activeMain === 'alliance' && (
+                <AdminAllianceCRM />
+              )}
+
+              {/* FORENSIC BLACKBOX & ANTI-CHEAT ENGINE */}
+              {nav.activeMain === 'security' && (
+                <AdminSecurityModule />
+              )}
+
+              {/* DATA SANITIZER CLEANER */}
+              {nav.activeMain === 'sanitizer' && (
+                <AdminSanitizerModule
+                  gameHud={gameHud}
+                  saveGameHud={handleSaveGameHud}
+                  alertTrigger={alertTrigger}
+                />
               )}
             </>
           )}
