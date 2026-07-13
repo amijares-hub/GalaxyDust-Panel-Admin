@@ -37,7 +37,7 @@ interface PlayerProfile {
 
 const categoryMap: Record<string, { targetTable: string, seedTable: string, idColumn: string, label: string }> = {
   ships: { targetTable: 'user_ships', seedTable: 'seed_ships', idColumn: 'ship_id', label: '🚀 Nueva Nave (user_ships)' },
-  structures: { targetTable: 'user_structures', seedTable: 'seed_structures', idColumn: 'structure_id', label: '🏢 Nueva Estructura (user_structures)' },
+  structures: { targetTable: 'user_structures', seedTable: 'seed_structures', idColumn: 'building_id', label: '🏢 Nueva Estructura (user_structures)' },
   defenses: { targetTable: 'user_defenses', seedTable: 'seed_defenses', idColumn: 'defense_id', label: '🛡️ Nueva Defensa (user_defenses)' },
   technologies: { targetTable: 'user_technologies', seedTable: 'seed_technologies', idColumn: 'technology_id', label: '🔬 Nueva Tecnología (user_technologies)' },
   astrobots: { targetTable: 'user_astrobots', seedTable: 'seed_astrobots', idColumn: 'astrobot_id', label: '🤖 Nuevo Astrobot (user_astrobots)' },
@@ -458,7 +458,7 @@ export const UserCRM: React.FC = () => {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {playerAssets.structures.map((struct) => (
                               <div key={struct.id} className="p-2 bg-zinc-950 border border-zinc-900 rounded flex justify-between items-center text-[10px]">
-                                <span className="font-bold text-zinc-200 truncate">{struct.structure_id}</span>
+                                <span className="font-bold text-zinc-200 truncate">{struct.building_id || struct.structure_id}</span>
                                 <div className="flex items-center gap-2">
                                   <span className="px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900 rounded text-[9px] font-bold">Lvl {struct.level}</span>
                                   <button onClick={() => handleDeleteEntity('user_structures', struct.id)} className="text-zinc-600 hover:text-red-400 p-1 transition-colors cursor-pointer" title="Derribar Estructura"><Trash2 size={12} /></button>
