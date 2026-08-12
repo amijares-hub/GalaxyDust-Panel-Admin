@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
-import { Shield, Search, Users, Coins, Database, ShieldAlert, Zap, Layers, CheckSquare, Square, Eye, Trash2, RefreshCw } from 'lucide-react';
+import { 
+  Shield, Search, Users, Coins, Database, ShieldAlert, Zap, Layers, 
+  CheckSquare, Square, Eye, Trash2, RefreshCw, Ban, VolumeX, UserX, AlertOctagon, RotateCcw
+} from 'lucide-react';
 
 interface PlayerProfile {
   id: string;
   username: string;
   email: string;
   role: 'admin' | 'player';
-  status: 'active' | 'banned';
+  status: 'active' | 'banned' | 'muted';
   created_at: string;
   wallet_address: string;
+  avatar_url?: string;
   can_level: number;
   can_xp: number;
   metal_balance: number;
@@ -62,8 +66,16 @@ export const UserCRM: React.FC = () => {
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
 
   // Estado de los Assets Físicos reales en Supabase
-  const [playerAssets, setPlayerAssets] = useState<{ ships: any[], structures: any[], technologies: any[], astrobots: any[] }>({
-    ships: [], structures: [], technologies: [], astrobots: []
+  const [playerAssets, setPlayerAssets] = useState<{ 
+    ships: any[], 
+    structures: any[], 
+    technologies: any[], 
+    astrobots: any[],
+    tools: any[],
+    licenses: any[],
+    consumibles: any[]
+  }>({
+    ships: [], structures: [], technologies: [], astrobots: [], tools: [], licenses: [], consumibles: []
   });
   const [loadingAssets, setLoadingAssets] = useState<boolean>(false);
 
@@ -93,42 +105,46 @@ export const UserCRM: React.FC = () => {
       const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       if (data) {
-        const mapped: PlayerProfile[] = data.map((row: any) => ({
-          id: row.user_id,
-          username: row.wallet_address ? `${row.wallet_address.slice(0, 6)}...${row.wallet_address.slice(-4)}` : 'Explorador',
-          email: `UID: ${row.user_id.substring(0, 8).toUpperCase()}`,
-          role: row.is_admin ? 'admin' : 'player',
-          status: 'active',
-          created_at: row.created_at,
-          wallet_address: row.wallet_address || '',
-          can_level: row.can_level || 1,
-          can_xp: Number(row.can_xp) || 0,
-          metal_balance: Number(row.metal_balance) || 0,
-          crystal_balance: Number(row.crystal_balance) || 0,
-          deuterium_balance: Number(row.deuterium_balance) || 0,
-          dark_matter_balance: Number(row.dark_matter_balance) || 0,
-          gd_balance: Number(row.gd_balance) || 0,
-          phantom_coins_balance: Number(row.phantom_coins_balance) || 0,
-          gd_coin: Number(row.gd_coin) || 0,
-          quantum_credit: Number(row.quantum_credit) || 0,
-          halloween_coin: Number(row.halloween_coin) || 0,
-          phantom_coin: Number(row.phantom_coin) || 0,
-          xmas_coin: Number(row.xmas_coin) || 0,
-          valentine_coin: Number(row.valentine_coin) || 0,
-          omniplate: Number(row.omniplate) || 0,
-          orichaltron: Number(row.orichaltron) || 0,
-          lunar_fiber: Number(row.lunar_fiber) || 0,
-          infinite_core: Number(row.infinite_core) || 0,
-          primal_token: Number(row.primal_token) || 0,
-          xenoplasm: Number(row.xenoplasm) || 0,
-          organium: Number(row.organium) || 0,
-          mana: Number(row.mana) || 0,
-          is_admin: !!row.is_admin
-        }));
+        const mapped: PlayerProfile[] = data.map((row: any) => {
+          const uid = row.user_id || row.id || crypto.randomUUID();
+          return {
+            id: uid,
+            username: row.username || row.display_name || (row.wallet_address ? `${row.wallet_address.slice(0, 6)}...${row.wallet_address.slice(-4)}` : 'Explorador'),
+            email: `UID: ${uid.substring(0, 8).toUpperCase()}`,
+            role: row.is_admin ? 'admin' : 'player',
+            status: row.status || (row.is_banned ? 'banned' : row.is_muted ? 'muted' : 'active'),
+            created_at: row.created_at || new Date().toISOString(),
+            wallet_address: row.wallet_address || '',
+            avatar_url: row.avatar_url || row.avatar || '',
+            can_level: row.can_level || row.level || 1,
+            can_xp: Number(row.can_xp || row.exp_points) || 0,
+            metal_balance: Number(row.metal_balance || row.metal) || 0,
+            crystal_balance: Number(row.crystal_balance || row.crystal) || 0,
+            deuterium_balance: Number(row.deuterium_balance || row.deuterium) || 0,
+            dark_matter_balance: Number(row.dark_matter_balance || row.dark_matter) || 0,
+            gd_balance: Number(row.gd_balance || row.gd_coin) || 0,
+            phantom_coins_balance: Number(row.phantom_coins_balance || row.phantom_coin) || 0,
+            gd_coin: Number(row.gd_coin) || 0,
+            quantum_credit: Number(row.quantum_credit) || 0,
+            halloween_coin: Number(row.halloween_coin) || 0,
+            phantom_coin: Number(row.phantom_coin) || 0,
+            xmas_coin: Number(row.xmas_coin) || 0,
+            valentine_coin: Number(row.valentine_coin) || 0,
+            omniplate: Number(row.omniplate) || 0,
+            orichaltron: Number(row.orichaltron) || 0,
+            lunar_fiber: Number(row.lunar_fiber) || 0,
+            infinite_core: Number(row.infinite_core) || 0,
+            primal_token: Number(row.primal_token) || 0,
+            xenoplasm: Number(row.xenoplasm) || 0,
+            organium: Number(row.organium) || 0,
+            mana: Number(row.mana) || 0,
+            is_admin: !!row.is_admin
+          };
+        });
         setPlayers(mapped);
       }
     } catch (e: any) {
-      console.error(e.message);
+      console.error("Error al cargar jugadores en UserCRM:", e.message);
     } finally {
       setLoading(false);
     }
@@ -139,18 +155,24 @@ export const UserCRM: React.FC = () => {
     if (!supabase) return;
     try {
       setLoadingAssets(true);
-      const [shipsRes, structsRes, techsRes, astroRes] = await Promise.all([
+      const [shipsRes, structsRes, techsRes, astroRes, toolsRes, licsRes, consRes] = await Promise.all([
         supabase.from('user_ships').select('*').eq('user_id', userId),
         supabase.from('user_structures').select('*').eq('user_id', userId),
         supabase.from('user_technologies').select('*').eq('user_id', userId),
         supabase.from('user_astrobots').select('*').eq('user_id', userId),
+        supabase.from('user_tools').select('*').eq('user_id', userId),
+        supabase.from('user_licenses').select('*').eq('user_id', userId),
+        supabase.from('user_consumibles').select('*').eq('user_id', userId),
       ]);
 
       setPlayerAssets({
         ships: shipsRes.data || [],
         structures: structsRes.data || [],
         technologies: techsRes.data || [],
-        astrobots: astroRes.data || []
+        astrobots: astroRes.data || [],
+        tools: toolsRes.data || [],
+        licenses: licsRes.data || [],
+        consumibles: consRes.data || []
       });
     } catch (e) {
       console.error("Error sincronizando hangar relacional:", e);
@@ -181,7 +203,7 @@ export const UserCRM: React.FC = () => {
         if (!error && data) {
           const mappedSeeds = data.map((row: any) => {
             const actualId = row.id || row[config.idColumn] || '';
-            const actualName = row.name || row.title || actualId;
+            const actualName = row.name || row.title || row.ship_name || row.structure_name || actualId;
             return { id: String(actualId), name: String(actualName) };
           }).filter(item => item.id);
           setAllSeeds(mappedSeeds);
@@ -201,13 +223,18 @@ export const UserCRM: React.FC = () => {
     try {
       const currentVal = (selectedPlayer as any)[injectType] || 0;
       const newVal = currentVal + Number(injectAmount);
-      const { error } = await supabase.from('user_profiles').update({ [injectType]: newVal }).eq('user_id', selectedPlayer.id);
+      
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ [injectType]: newVal })
+        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`);
+
       if (error) throw error;
       alert(`⚡ Inyección Exitosa: +${injectAmount} agregados a ${injectType}`);
       fetchPlayers();
       setSelectedPlayer(null);
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      alert(`Error en inyección: ${e.message}`);
     }
   };
 
@@ -230,7 +257,7 @@ export const UserCRM: React.FC = () => {
       alert(`🚀 TRANSMISIÓN COMPLETADA: Instancia de [${blueprintId}] inyectada con éxito.`);
       setBlueprintId('');
       setShowSuggestions(false);
-      fetchPlayerAssets(selectedPlayer.id); // 🔥 Recarga el hangar en pantalla automáticamente
+      fetchPlayerAssets(selectedPlayer.id);
     } catch (e: any) {
       alert(`Fallo en la inyección: ${e.message}`);
     }
@@ -249,13 +276,78 @@ export const UserCRM: React.FC = () => {
     }
   };
 
-  // ── 4. MOTOR EN LOTE ──
+  // ── 4. SANCIONES Y MODERACIÓN EN TIEMPO REAL (BAN / MUTE / RESET AVATAR) ──
+  const handleToggleBan = async () => {
+    if (!selectedPlayer || !supabase) return;
+    const newStatus = selectedPlayer.status === 'banned' ? 'active' : 'banned';
+    if (!window.confirm(`¿Confirmas ${newStatus === 'banned' ? 'BANEAR' : 'DESBANEAR'} al comandante ${selectedPlayer.username}?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ status: newStatus, is_banned: newStatus === 'banned' })
+        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`);
+
+      if (error) throw error;
+      alert(`✅ Piloto ${selectedPlayer.username} marcado como ${newStatus.toUpperCase()}`);
+      setSelectedPlayer(prev => prev ? { ...prev, status: newStatus } : null);
+      fetchPlayers();
+    } catch (e: any) {
+      alert(`Error en sanción: ${e.message}`);
+    }
+  };
+
+  const handleToggleMute = async () => {
+    if (!selectedPlayer || !supabase) return;
+    const newStatus = selectedPlayer.status === 'muted' ? 'active' : 'muted';
+    if (!window.confirm(`¿Confirmas ${newStatus === 'muted' ? 'SILENCIAR (MUTE)' : 'REACTIVAR'} al comandante ${selectedPlayer.username}?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ status: newStatus, is_muted: newStatus === 'muted' })
+        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`);
+
+      if (error) throw error;
+      alert(`✅ Piloto ${selectedPlayer.username} marcado como ${newStatus.toUpperCase()}`);
+      setSelectedPlayer(prev => prev ? { ...prev, status: newStatus } : null);
+      fetchPlayers();
+    } catch (e: any) {
+      alert(`Error en moderación: ${e.message}`);
+    }
+  };
+
+  const handleResetAvatar = async () => {
+    if (!selectedPlayer || !supabase) return;
+    const defaultAvatar = "https://qldjeysusithpblfrmtq.supabase.co/storage/v1/object/public/Assets%20para%20la%20Pagina%20Web/Avatares%20de%20Comandantes/1.png";
+    if (!window.confirm(`¿Resetear el avatar de ${selectedPlayer.username} al valor oficial por defecto?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ avatar_url: defaultAvatar, avatar: defaultAvatar })
+        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`);
+
+      if (error) throw error;
+      alert("✅ Avatar reseteado correctamente.");
+      fetchPlayers();
+    } catch (e: any) {
+      alert(`Error al resetear avatar: ${e.message}`);
+    }
+  };
+
+  // ── 5. MOTOR EN LOTE ──
   const handleApplyBulkChanges = async () => {
     if (bulkSelectedIds.length === 0) return;
     try {
       const updatePayload: any = { can_level: Number(bulkLevel) };
       if (bulkRole !== 'no_change') updatePayload.is_admin = bulkRole === 'admin';
-      const { error } = await supabase.from('user_profiles').update(updatePayload).in('user_id', bulkSelectedIds);
+      
+      const { error } = await supabase
+        .from('user_profiles')
+        .update(updatePayload)
+        .in('user_id', bulkSelectedIds);
+
       if (error) throw error;
       alert(`¡Operación masiva completada! ${bulkSelectedIds.length} pilotos actualizados.`);
       setBulkSelectedIds([]);
@@ -275,7 +367,9 @@ export const UserCRM: React.FC = () => {
   };
 
   const filteredPlayers = players.filter(p =>
-    p.id.toLowerCase().includes(searchTerm.toLowerCase()) || p.wallet_address.toLowerCase().includes(searchTerm.toLowerCase())
+    p.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    p.wallet_address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredSuggestions = allSeeds.filter(s =>
@@ -287,14 +381,14 @@ export const UserCRM: React.FC = () => {
   const totalMetalCirculating = players.reduce((acc, p) => acc + p.metal_balance, 0);
 
   return (
-    <div className="space-y-6 font-mono text-xs">
+    <div className="space-y-6 font-mono text-xs text-left text-white select-none">
 
       {/* NAVEGACIÓN SUB-PESTAÑAS */}
       <div className="flex border-b border-zinc-800 gap-2 select-none">
-        <button onClick={() => setActiveSubTab('crm_central')} className={`px-4 py-2.5 font-bold uppercase tracking-wider transition-all border-b-2 ${activeSubTab === 'crm_central' ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>
+        <button onClick={() => setActiveSubTab('crm_central')} className={`px-4 py-2.5 font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${activeSubTab === 'crm_central' ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>
           🛰️ CRM Central de Pilotos
         </button>
-        <button onClick={() => setActiveSubTab('general_dashboard')} className={`px-4 py-2.5 font-bold uppercase tracking-wider transition-all border-b-2 ${activeSubTab === 'general_dashboard' ? 'border-purple-500 text-purple-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>
+        <button onClick={() => setActiveSubTab('general_dashboard')} className={`px-4 py-2.5 font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${activeSubTab === 'general_dashboard' ? 'border-purple-500 text-purple-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>
           📊 Dashboard General de Operaciones
         </button>
       </div>
@@ -306,7 +400,7 @@ export const UserCRM: React.FC = () => {
           <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl space-y-3">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <span className="text-zinc-500 text-[10px] uppercase font-bold">Consola Táctica Perimetral</span>
-              <input type="text" placeholder="Filtrar por UID o Wallet..." className="bg-zinc-900 border border-zinc-800 text-zinc-200 px-3 py-1.5 rounded text-xs outline-none focus:border-cyan-500 w-full md:w-64" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <input type="text" placeholder="Filtrar por UID, Wallet o Nombre..." className="bg-zinc-900 border border-zinc-800 text-zinc-200 px-3 py-1.5 rounded text-xs outline-none focus:border-cyan-500 w-full md:w-64 uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
 
             {bulkSelectedIds.length > 0 && (
@@ -317,12 +411,12 @@ export const UserCRM: React.FC = () => {
                     <span className="text-zinc-500 text-[9px]">Nivel CAN:</span>
                     <input type="number" min="1" className="bg-zinc-900 border border-zinc-800 p-1 rounded w-14 text-center text-white font-bold" value={bulkLevel} onChange={e => setBulkLevel(Number(e.target.value))} />
                   </div>
-                  <select className="bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-300 outline-none" value={bulkRole} onChange={e => setBulkRole(e.target.value)}>
+                  <select className="bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-300 outline-none cursor-pointer" value={bulkRole} onChange={e => setBulkRole(e.target.value)}>
                     <option value="no_change">No alterar Rango</option>
                     <option value="player">Degradar a PLAYER</option>
                     <option value="admin">Promover a ADMIN</option>
                   </select>
-                  <button onClick={handleApplyBulkChanges} className="bg-red-600 hover:bg-red-500 text-white font-black px-3 py-1 rounded text-[10px] uppercase tracking-wider transition-colors">Ejecutar Cambios masivos</button>
+                  <button onClick={handleApplyBulkChanges} className="bg-red-600 hover:bg-red-500 text-white font-black px-3 py-1 rounded text-[10px] uppercase tracking-wider transition-colors cursor-pointer">Ejecutar Cambios masivos</button>
                 </div>
               </div>
             )}
@@ -330,13 +424,13 @@ export const UserCRM: React.FC = () => {
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
 
-            {/* LADO IZQUIERDO */}
+            {/* LADO IZQUIERDO DE LISTA DE PILOTOS */}
             <div className="xl:col-span-1 bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
               <table className="min-w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-900 bg-zinc-900/40 text-zinc-500 text-[10px] font-bold">
                     <th className="p-3 w-10 text-center">
-                      <button onClick={toggleSelectAll} className="text-zinc-500 hover:text-white transition-colors">
+                      <button onClick={toggleSelectAll} className="text-zinc-500 hover:text-white transition-colors cursor-pointer">
                         {bulkSelectedIds.length === filteredPlayers.length ? <CheckSquare size={14} className="text-cyan-400" /> : <Square size={14} />}
                       </button>
                     </th>
@@ -348,16 +442,20 @@ export const UserCRM: React.FC = () => {
                   {filteredPlayers.map(p => (
                     <tr key={p.id} className={`hover:bg-zinc-900/30 cursor-pointer ${selectedPlayer?.id === p.id ? 'bg-zinc-900/40 border-l-2 border-cyan-500' : ''}`} onClick={() => setSelectedPlayer(p)}>
                       <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => toggleSelectRow(p.id)} className="text-zinc-600 hover:text-white">
+                        <button onClick={() => toggleSelectRow(p.id)} className="text-zinc-600 hover:text-white cursor-pointer">
                           {bulkSelectedIds.includes(p.id) ? <CheckSquare size={14} className="text-cyan-400" /> : <Square size={14} />}
                         </button>
                       </td>
                       <td className="p-3">
-                        <div className="text-white font-sans font-bold text-xs select-all">{p.wallet_address}</div>
-                        <div className="text-[9px] text-zinc-500 tracking-tight font-mono truncate max-w-[155px]">{p.id}</div>
+                        <div className="text-white font-sans font-bold text-xs flex items-center gap-1.5">
+                          <span className="truncate">{p.username}</span>
+                          {p.status === 'banned' && <span className="px-1 bg-red-950 text-red-400 text-[7.5px] border border-red-800 rounded">BAN</span>}
+                          {p.status === 'muted' && <span className="px-1 bg-amber-950 text-amber-400 text-[7.5px] border border-amber-800 rounded">MUTE</span>}
+                        </div>
+                        <div className="text-[9px] text-zinc-500 tracking-tight font-mono truncate max-w-[155px]">{p.wallet_address || p.id}</div>
                       </td>
                       <td className="p-3 text-right">
-                        <button className="px-2 py-1 bg-zinc-900 border border-zinc-800 rounded font-bold text-cyan-400 hover:bg-zinc-850 flex items-center gap-1 ml-auto text-[10px]"><Eye size={11} /> Auditar</button>
+                        <button className="px-2 py-1 bg-zinc-900 border border-zinc-800 rounded font-bold text-cyan-400 hover:bg-zinc-850 flex items-center gap-1 ml-auto text-[10px] cursor-pointer"><Eye size={11} /> Auditar</button>
                       </td>
                     </tr>
                   ))}
@@ -365,18 +463,61 @@ export const UserCRM: React.FC = () => {
               </table>
             </div>
 
-            {/* LADO DERECHO EXPANSIVO */}
+            {/* LADO DERECHO EXPANSIVO CON ACCIONES DISCIPLINARIAS */}
             <div className="xl:col-span-2 space-y-4">
               {selectedPlayer ? (
                 <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl space-y-5 shadow-xl animate-fadeIn">
 
-                  {/* HEADER */}
-                  <div className="border-b border-zinc-900 pb-2 flex justify-between items-center">
+                  {/* HEADER CON BOTONES DE DISCIPLINA (BAN/MUTE/RESET) */}
+                  <div className="border-b border-zinc-900 pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
-                      <h3 className="text-white font-bold text-sm tracking-wide">MATRIZ DE BALANCE: {selectedPlayer.wallet_address}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-white font-bold text-sm tracking-wide uppercase">{selectedPlayer.username}</h3>
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-black border uppercase ${
+                          selectedPlayer.status === 'banned' ? 'bg-red-950 text-red-400 border-red-800' :
+                          selectedPlayer.status === 'muted' ? 'bg-amber-950 text-amber-400 border-amber-800' :
+                          'bg-emerald-950 text-emerald-400 border-emerald-800'
+                        }`}>
+                          {selectedPlayer.status}
+                        </span>
+                      </div>
                       <span className="text-[9px] text-zinc-500 font-mono">UUID: {selectedPlayer.id}</span>
                     </div>
-                    <span className="px-2 py-0.5 rounded text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold font-mono">CAN Lvl {selectedPlayer.can_level}</span>
+
+                    {/* ACCIONES TÁCTICAS DISCIPLINARIAS */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={handleToggleBan}
+                        className={`px-2.5 py-1 rounded text-[8.5px] font-mono font-bold uppercase border cursor-pointer transition-colors flex items-center gap-1 ${
+                          selectedPlayer.status === 'banned'
+                            ? 'bg-emerald-950 text-emerald-400 border-emerald-700 hover:bg-emerald-900'
+                            : 'bg-red-950 text-red-400 border-red-700 hover:bg-red-900'
+                        }`}
+                      >
+                        <Ban size={11} />
+                        {selectedPlayer.status === 'banned' ? 'Desbanear' : 'Banear Piloto'}
+                      </button>
+
+                      <button
+                        onClick={handleToggleMute}
+                        className={`px-2.5 py-1 rounded text-[8.5px] font-mono font-bold uppercase border cursor-pointer transition-colors flex items-center gap-1 ${
+                          selectedPlayer.status === 'muted'
+                            ? 'bg-emerald-950 text-emerald-400 border-emerald-700 hover:bg-emerald-900'
+                            : 'bg-amber-950 text-amber-400 border-amber-700 hover:bg-amber-900'
+                        }`}
+                      >
+                        <VolumeX size={11} />
+                        {selectedPlayer.status === 'muted' ? 'Desmutear' : 'Mute Chat'}
+                      </button>
+
+                      <button
+                        onClick={handleResetAvatar}
+                        className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-cyan-300 rounded text-[8.5px] font-mono font-bold uppercase cursor-pointer transition-colors flex items-center gap-1"
+                      >
+                        <RotateCcw size={11} />
+                        Reset Avatar
+                      </button>
+                    </div>
                   </div>
 
                   {/* 📊 BALANCES (4 CUADRANTES) */}
@@ -447,7 +588,9 @@ export const UserCRM: React.FC = () => {
                         { id: 'ships', label: '🚀 Naves', count: playerAssets.ships.length, color: 'border-cyan-500 text-cyan-400 bg-cyan-950/10' },
                         { id: 'structures', label: '🏢 Estructuras', count: playerAssets.structures.length, color: 'border-amber-500 text-amber-400 bg-amber-950/10' },
                         { id: 'technologies', label: '🔬 Tecnologías', count: playerAssets.technologies.length, color: 'border-purple-500 text-purple-400 bg-purple-950/10' },
-                        { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'border-emerald-500 text-emerald-400 bg-emerald-500/10' }
+                        { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'border-emerald-500 text-emerald-400 bg-emerald-500/10' },
+                        { id: 'tools', label: '🔧 Tools', count: playerAssets.tools.length, color: 'border-blue-500 text-blue-400 bg-blue-500/10' },
+                        { id: 'licenses', label: '📜 Licencias', count: playerAssets.licenses.length, color: 'border-yellow-500 text-yellow-400 bg-yellow-500/10' }
                       ].map(tab => (
                         <button
                           key={tab.id}
@@ -469,7 +612,7 @@ export const UserCRM: React.FC = () => {
                       <input
                         type="text"
                         placeholder={`Buscar en ${activeAssetTab}...`}
-                        className="w-full bg-zinc-950 border border-zinc-900 pl-8 pr-3 py-1.5 rounded font-mono text-zinc-300 outline-none text-[10.5px] focus:border-zinc-800 transition-colors"
+                        className="w-full bg-zinc-950 border border-zinc-900 pl-8 pr-3 py-1.5 rounded font-mono text-zinc-300 outline-none text-[10.5px] focus:border-zinc-800 transition-colors uppercase"
                         value={assetSearchTerm}
                         onChange={e => setAssetSearchTerm(e.target.value)}
                       />
@@ -488,16 +631,16 @@ export const UserCRM: React.FC = () => {
                                 <div key={ship.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
                                   <div>
                                     <span className="font-bold text-zinc-200 block truncate max-w-[180px]" title={ship.ship_id}>{ship.ship_id}</span>
-                                    <span className="text-[8.5px] text-zinc-500">Estado: <strong className="text-emerald-500 font-normal">{ship.flight_state}</strong></span>
+                                    <span className="text-[8.5px] text-zinc-500">Estado: <strong className="text-emerald-500 font-normal">{ship.flight_state || 'IDLE'}</strong></span>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="px-1.5 py-0.5 bg-cyan-950/40 text-cyan-400 border border-cyan-900/60 rounded text-[9px] font-black">LVL {ship.level}</span>
+                                    <span className="px-1.5 py-0.5 bg-cyan-950/40 text-cyan-400 border border-cyan-900/60 rounded text-[9px] font-black">LVL {ship.level || 1}</span>
                                     <button onClick={() => handleDeleteEntity('user_ships', ship.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Desintegrar Nave"><Trash2 size={12} /></button>
                                   </div>
                                 </div>
                               ))
                           ) : (
-                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron naves con ese criterio.</div>
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron naves en este registro.</div>
                           )}
                         </div>
                       )}
@@ -512,13 +655,13 @@ export const UserCRM: React.FC = () => {
                                 <div key={struct.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
                                   <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={struct.building_id || struct.structure_id}>{struct.building_id || struct.structure_id}</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900/60 rounded text-[9px] font-black">LVL {struct.level}</span>
+                                    <span className="px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900/60 rounded text-[9px] font-black">LVL {struct.level || 1}</span>
                                     <button onClick={() => handleDeleteEntity('user_structures', struct.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Derribar Estructura"><Trash2 size={12} /></button>
                                   </div>
                                 </div>
                               ))
                           ) : (
-                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron estructuras con ese criterio.</div>
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron estructuras en este registro.</div>
                           )}
                         </div>
                       )}
@@ -533,13 +676,13 @@ export const UserCRM: React.FC = () => {
                                 <div key={tech.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
                                   <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={tech.technology_id}>{tech.technology_id}</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="px-1.5 py-0.5 bg-purple-950/40 text-purple-400 border border-purple-900/60 rounded text-[9px] font-black">LVL {tech.level}</span>
+                                    <span className="px-1.5 py-0.5 bg-purple-950/40 text-purple-400 border border-purple-900/60 rounded text-[9px] font-black">LVL {tech.level || 1}</span>
                                     <button onClick={() => handleDeleteEntity('user_technologies', tech.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Remover Conocimiento"><Trash2 size={12} /></button>
                                   </div>
                                 </div>
                               ))
                           ) : (
-                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron tecnologías con ese criterio.</div>
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron tecnologías en este registro.</div>
                           )}
                         </div>
                       )}
@@ -554,13 +697,53 @@ export const UserCRM: React.FC = () => {
                                 <div key={astro.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
                                   <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={astro.astrobot_id}>{astro.astrobot_id}</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="px-1.5 py-0.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 rounded text-[9px] font-black">LVL {astro.level}</span>
+                                    <span className="px-1.5 py-0.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 rounded text-[9px] font-black">LVL {astro.level || 1}</span>
                                     <button onClick={() => handleDeleteEntity('user_astrobots', astro.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Desactivar Astrobot"><Trash2 size={12} /></button>
                                   </div>
                                 </div>
                               ))
                           ) : (
-                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron astrobots con ese criterio.</div>
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron astrobots en este registro.</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* PESTAÑA: TOOLS */}
+                      {activeAssetTab === 'tools' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {playerAssets.tools.filter((s: any) => (s.tool_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase())).length > 0 ? (
+                            playerAssets.tools
+                              .filter((s: any) => (s.tool_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase()))
+                              .map((tool: any) => (
+                                <div key={tool.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
+                                  <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={tool.tool_id}>{tool.tool_id}</span>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => handleDeleteEntity('user_tools', tool.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Eliminar Herramienta"><Trash2 size={12} /></button>
+                                  </div>
+                                </div>
+                              ))
+                          ) : (
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron herramientas en este registro.</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* PESTAÑA: LICENCIAS */}
+                      {activeAssetTab === 'licenses' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {playerAssets.licenses.filter((s: any) => (s.license_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase())).length > 0 ? (
+                            playerAssets.licenses
+                              .filter((s: any) => (s.license_id || '').toLowerCase().includes(assetSearchTerm.toLowerCase()))
+                              .map((lic: any) => (
+                                <div key={lic.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
+                                  <span className="font-bold text-zinc-200 truncate max-w-[180px]" title={lic.license_id}>{lic.license_id}</span>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => handleDeleteEntity('user_licenses', lic.id)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer" title="Revocar Licencia"><Trash2 size={12} /></button>
+                                  </div>
+                                </div>
+                              ))
+                          ) : (
+                            <div className="col-span-2 text-center py-6 text-zinc-600 italic">No se detectaron licencias en este registro.</div>
                           )}
                         </div>
                       )}
@@ -572,7 +755,7 @@ export const UserCRM: React.FC = () => {
                   <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3">
                     <span className="text-[9px] text-zinc-400 font-bold uppercase block tracking-wider flex items-center gap-1"><ShieldAlert size={12} className="text-red-500" /> INYECTOR MAESTRO DE ASSETS EN CALIENTE</span>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px]" value={injectType} onChange={e => setInjectType(e.target.value)}>
+                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={injectType} onChange={e => setInjectType(e.target.value)}>
                         <option value="metal_balance">Metal Puro (Recurso Core)</option>
                         <option value="crystal_balance">Cristal Estelar (Recurso Core)</option>
                         <option value="deuterium_balance">Deuterio (Recurso Core)</option>
@@ -601,14 +784,14 @@ export const UserCRM: React.FC = () => {
                       🚀 INYECTOR DE INSTANCIAS Y ENTIDADES (BLUEPRINTS CON PREDICTOR)
                     </span>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-start">
-                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px]" value={entityGroup} onChange={e => { setEntityGroup(e.target.value); setBlueprintId(''); }}>
+                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={entityGroup} onChange={e => { setEntityGroup(e.target.value); setBlueprintId(''); }}>
                         {Object.entries(categoryMap).map(([key, value]) => (
                           <option key={key} value={key}>{value.label}</option>
                         ))}
                       </select>
 
                       <div className="md:col-span-2 relative">
-                        <input type="text" placeholder="Escribe para buscar en el catálogo semilla..." className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px]" value={blueprintId} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} onChange={e => { setBlueprintId(e.target.value); setShowSuggestions(true); }} />
+                        <input type="text" placeholder="Escribe para buscar en el catálogo semilla..." className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] uppercase" value={blueprintId} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} onChange={e => { setBlueprintId(e.target.value); setShowSuggestions(true); }} />
                         {showSuggestions && blueprintId && filteredSuggestions.length > 0 && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950 border border-zinc-800 rounded-md shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-zinc-900/80 text-[11px]">
                             {filteredSuggestions.map(s => (
@@ -636,10 +819,10 @@ export const UserCRM: React.FC = () => {
                     </div>
                     <div className="w-[1px] h-4 bg-zinc-800"></div>
                     <button onClick={async () => {
-                      if (!window.confirm(`¿Alterar rango root?`)) return;
-                      const { error } = await supabase.from('user_profiles').update({ is_admin: !selectedPlayer.is_admin }).eq('user_id', selectedPlayer.id);
+                      if (!window.confirm(`¿Alterar rango root de ${selectedPlayer.username}?`)) return;
+                      const { error } = await supabase.from('user_profiles').update({ is_admin: !selectedPlayer.is_admin }).or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`);
                       if (error) alert(error.message);
-                      else { alert("¡Rango modificado!"); fetchPlayers(); setSelectedPlayer(null); }
+                      else { alert("¡Rango modificado con éxito!"); fetchPlayers(); setSelectedPlayer(null); }
                     }} className="text-zinc-400 hover:text-white underline text-[10px] cursor-pointer">Alternar Privilegios Root</button>
                   </div>
 

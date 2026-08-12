@@ -196,6 +196,12 @@ export default function App() {
     }));
   };
 
+  // Helper: navigate and auto-close mobile sidebar
+  const navTo = (main: NavigationState['activeMain'], sub: string) => {
+    setNav({ activeMain: main, activeSub: sub });
+    setIsMobileMenuOpen(false);
+  };
+
   const handleSaveRules = async (updatedRules: GameRule[]) => {
     await supabaseService.saveRules(updatedRules);
     setRules(updatedRules);
@@ -315,21 +321,21 @@ export default function App() {
                       className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
                     >
                       <button
-                        onClick={() => setNav({ activeMain: 'can', activeSub: 'can_commander' })}
+                        onClick={() => navTo('can', 'can_commander')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'can' && nav.activeSub === 'can_commander' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
                         Auditoría de Comandante
                       </button>
                       <button
-                        onClick={() => setNav({ activeMain: 'can', activeSub: 'can_global' })}
+                        onClick={() => navTo('can', 'can_global')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'can' && nav.activeSub === 'can_global' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
                         Configuración Global
                       </button>
                       <button
-                        onClick={() => setNav({ activeMain: 'can', activeSub: 'can_alliances' })}
+                        onClick={() => navTo('can', 'can_alliances')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'can' && nav.activeSub === 'can_alliances' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
@@ -363,7 +369,7 @@ export default function App() {
                       className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
                     >
                       <button
-                        onClick={() => setNav({ activeMain: 'rules', activeSub: 'rules_list' })}
+                        onClick={() => navTo('rules', 'rules_list')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'rules' && nav.activeSub === 'rules_list' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
@@ -397,7 +403,7 @@ export default function App() {
                       className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
                     >
                       <button
-                        onClick={() => setNav({ activeMain: 'crm', activeSub: 'crm_users' })}
+                        onClick={() => navTo('crm', 'crm_users')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'crm' && nav.activeSub === 'crm_users' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
@@ -433,7 +439,7 @@ export default function App() {
                       className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
                     >
                       <button
-                        onClick={() => setNav({ activeMain: 'matrix', activeSub: 'matrix_overview' })}
+                        onClick={() => navTo('matrix', 'matrix_overview')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'matrix' && nav.activeSub === 'matrix_overview' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
@@ -467,7 +473,7 @@ export default function App() {
                       className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
                     >
                       <button
-                        onClick={() => setNav({ activeMain: 'skills', activeSub: 'skills_overview' })}
+                        onClick={() => navTo('skills', 'skills_overview')}
                         className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'skills' && nav.activeSub === 'skills_overview' ? 'text-cyan-500 border-cyan-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
                           }`}
                       >
@@ -481,7 +487,7 @@ export default function App() {
               {/* FUNCTION: Expediciones */}
               <div className="space-y-0.5">
                 <button
-                  onClick={() => setNav({ activeMain: 'expediciones', activeSub: 'expediciones_main' })}
+                  onClick={() => navTo('expediciones', 'expediciones_main')}
                   className={`w-full py-1.5 px-2 rounded flex items-center justify-between text-xs font-medium tracking-wide transition-all cursor-pointer ${nav.activeMain === 'expediciones' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                     }`}
                 >
@@ -500,7 +506,7 @@ export default function App() {
 
                 {/* MARKETPLACE */}
                 <button
-                  onClick={() => setNav({ activeMain: 'market', activeSub: 'market_items' })}
+                  onClick={() => navTo('market', 'market_items')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
                     nav.activeMain === 'market' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                   }`}
@@ -511,7 +517,7 @@ export default function App() {
 
                 {/* PHANTOM STATION */}
                 <button
-                  onClick={() => setNav({ activeMain: 'phantom_station', activeSub: 'store_manager' })}
+                  onClick={() => navTo('phantom_station', 'store_manager')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
                     nav.activeMain === 'phantom_station' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                   }`}
@@ -522,7 +528,7 @@ export default function App() {
 
                 {/* MARKETING PROMO CODES */}
                 <button
-                  onClick={() => setNav({ activeMain: 'promo', activeSub: 'promo_main' })}
+                  onClick={() => navTo('promo', 'promo_main')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
                     nav.activeMain === 'promo' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                   }`}
@@ -533,7 +539,7 @@ export default function App() {
 
                 {/* ALLIANCE CRM */}
                 <button
-                  onClick={() => setNav({ activeMain: 'alliance', activeSub: 'alliance_main' })}
+                  onClick={() => navTo('alliance', 'alliance_main')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
                     nav.activeMain === 'alliance' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                   }`}
@@ -542,9 +548,9 @@ export default function App() {
                   <span>Alliance CRM</span>
                 </button>
 
-                {/* SECURITY SECURITY CONTROL */}
+                {/* SECURITY CONTROL */}
                 <button
-                  onClick={() => setNav({ activeMain: 'security', activeSub: 'anticheat' })}
+                  onClick={() => navTo('security', 'anticheat')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
                     nav.activeMain === 'security' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                   }`}
@@ -555,13 +561,13 @@ export default function App() {
 
                 {/* DATA SANITIZER */}
                 <button
-                  onClick={() => setNav({ activeMain: 'sanitizer', activeSub: 'sanitizer_main' })}
+                  onClick={() => navTo('sanitizer', 'sanitizer_main')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
                     nav.activeMain === 'sanitizer' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
                   }`}
                 >
                   <Radio size={13} className="shrink-0 mr-2 text-red-500" />
-                  <span>Data Sanitizer Sci-Fi</span>
+                  <span>Data Sanitizer</span>
                 </button>
               </div>
 
@@ -768,7 +774,7 @@ export default function App() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className={`fixed bottom-6 right-6 z-50 p-4 border rounded-xl flex items-start gap-3 shadow-2xl backdrop-blur-md max-w-sm ${alert.status === 'success'
+            className={`fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 p-4 border rounded-xl flex items-start gap-3 shadow-2xl backdrop-blur-md max-w-[90vw] sm:max-w-sm ${alert.status === 'success'
                 ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-400'
                 : 'bg-red-950/80 border-red-500/30 text-red-500'
               }`}
