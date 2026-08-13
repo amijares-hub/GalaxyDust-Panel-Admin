@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Cpu, Plus, Trash2, ToggleLeft, ToggleRight, Check, AlertTriangle, 
   HelpCircle, Play, Sparkles, Terminal, ArrowRight, Save, Info, RefreshCw
 } from 'lucide-react';
 import { GameRule, GameCondition, GameAction, UserProfile } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface ConditionEditorProps {
   rules: GameRule[];
@@ -14,15 +15,15 @@ interface ConditionEditorProps {
 }
 
 export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertToShow }: ConditionEditorProps) {
-  // Local rules array
+  // Arreglo local de reglas
   const [localRules, setLocalRules] = useState<GameRule[]>(() => 
     rules.map(r => ({ ...r, conditions: r.conditions.map(c => ({ ...c })) }))
   );
 
-  // Interface view switching
+  // Conmutador de vistas principales
   const [activeTab, setActiveTab] = useState<'rules_manager' | 'rules_builder' | 'simulation_sandbox'>('rules_manager');
 
-  // Multi-version snapshots system
+  // Historial de versiones para Rollback
   const [versionHistory, setVersionHistory] = useState<Array<{
     id: string;
     timestamp: string;
@@ -49,7 +50,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
     }
   ]);
 
-  // Global system-wide telemetry alerts state
+  // Alertas de telemetría global
   const [globalAlerts, setGlobalAlerts] = useState([
     {
       id: 'alert_cpu',
@@ -80,10 +81,10 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
     }
   ]);
 
-  // Double confirmation deletion stage buffers
+  // Buffer para confirmación de borrado
   const [ruleToDeleteId, setRuleToDeleteId] = useState<string | null>(null);
 
-  // Rule Builder Form States
+  // Formulario del Creador de Reglas
   const [newRuleName, setNewRuleName] = useState('');
   const [newRuleDescription, setNewRuleDescription] = useState('');
   const [newRuleTrigger, setNewRuleTrigger] = useState<GameRule['trigger']>('on_login');
@@ -96,13 +97,13 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
     message: 'Premio por cumplir condiciones'
   });
 
-  // Simulator sandboxed states
+  // Simulador Sandbox
   const [selectedSimUser, setSelectedSimUser] = useState<string>(users[0]?.id || '');
   const [selectedSimRule, setSelectedSimRule] = useState<string>(rules[0]?.id || '');
   const [simLog, setSimLog] = useState<Array<{ type: 'info' | 'success' | 'warning' | 'error', text: string }>>([]);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  // Helper arrays for visual selections
+  // Selectores auxiliares
   const triggersList = [
     { key: 'on_login', name: 'Inicio de Sesion (on_login)' },
     { key: 'on_level_up', name: 'Al Subir de Nivel (on_level_up)' },
@@ -134,7 +135,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
     { key: 'suspend_account', name: 'Baneo Temporal (suspend_account)' },
   ];
 
-  // Conflict scanner helper
+  // Escáner de conflictos
   const detectConflicts = (rule: GameRule, allRules: GameRule[]): { hasConflict: boolean; reason?: string } => {
     if (!rule.isActive) return { hasConflict: false };
 
@@ -299,7 +300,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
       await onSaveRules(updated);
       setIsAlertToShow({ show: true, status: 'success', message: '¡Nueva regla inyectada con éxito en el motor lúdico!' });
       
-      // Reset form & go to list
       setNewRuleName('');
       setNewRuleDescription('');
       setNewConditions([{ field: 'user.level', operator: 'greater_than', value: 10 }]);
@@ -363,7 +363,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
         message: '¡REVERTIDO CON ÉXITO! Las reglas lúdicas han regresado a la configuración seleccionada.'
       });
     } catch (err: any) {
-      setIsAlertToShow({ show: true, status: 'error', message: err.message || 'Fallo militar al restaurar' });
+      setIsAlertToShow({ show: true, status: 'error', message: err.message || 'Fallo al restaurar' });
     }
   };
 
@@ -376,7 +376,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
     setGlobalAlerts(prev => prev.map(a => a.name === alertName ? { ...a, lastTriggered: new Date().toISOString() } : a));
   };
 
-  // Run Rule Simulation sandbox triggers
   const handleRunSimulation = () => {
     const user = users.find(u => u.id === selectedSimUser);
     const rule = localRules.find(r => r.id === selectedSimRule);
@@ -418,9 +417,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
       else if (cond.operator === 'not_equals') isMet = String(attributeVal) !== String(compVal);
 
       if (isMet) {
-        log.push({ type: 'success', text: `  ✓ Condición [${idx + 1}]: Campo ${cond.field} (${attributeVal}) ${cond.operator} valor (${compVal}) - APROBADO` });
+        log.push({ type: 'success', text: `   ✓ Condición [${idx + 1}]: Campo ${cond.field} (${attributeVal}) ${cond.operator} valor (${compVal}) - APROBADO` });
       } else {
-        log.push({ type: 'error', text: `  ✗ Condición [${idx + 1}]: Campo ${cond.field} (${attributeVal}) ${cond.operator} valor (${compVal}) - RECHAZADO` });
+        log.push({ type: 'error', text: `   ✗ Condición [${idx + 1}]: Campo ${cond.field} (${attributeVal}) ${cond.operator} valor (${compVal}) - RECHAZADO` });
         allConditionsMet = false;
       }
     });
@@ -451,25 +450,25 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
   };
 
   return (
-    <div className="h-full flex flex-col space-y-6">
+    <div className="h-full flex flex-col space-y-6 font-mono text-xs text-left select-none text-white">
 
       {/* Top Section Nav & Summary */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-950 border border-zinc-900 rounded-xl p-5">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-950 border border-zinc-900 rounded-xl p-5 shadow-xl">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2 font-mono">
             <Cpu className="text-red-500 animate-pulse" size={20} /> Motor de Funciones y Condiciones de Juego
           </h2>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-zinc-400 font-sans mt-0.5">
             Define la lógica, desencadenantes de logros, recompensas dinámicas y seguridad perimetral de Sasorilabs.
           </p>
         </div>
 
         {/* Tab Selection */}
-        <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-1 text-xs select-none">
+        <div className="flex bg-zinc-900 border border-zinc-800 rounded-lg p-1 text-xs select-none font-mono">
           <button
             onClick={() => setActiveTab('rules_manager')}
             className={`py-2 px-4 rounded-md font-semibold cursor-pointer tracking-wider transition-all uppercase ${
-              activeTab === 'rules_manager' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+              activeTab === 'rules_manager' ? 'bg-red-650 text-white shadow-md' : 'text-zinc-400 hover:text-white'
             }`}
           >
             Lógica del Servidor
@@ -477,7 +476,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
           <button
             onClick={() => setActiveTab('rules_builder')}
             className={`py-2 px-4 rounded-md font-semibold cursor-pointer tracking-wider transition-all uppercase ${
-              activeTab === 'rules_builder' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+              activeTab === 'rules_builder' ? 'bg-red-650 text-white shadow-md' : 'text-zinc-400 hover:text-white'
             }`}
           >
             Creador de Reglas
@@ -488,7 +487,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
               if (localRules.length > 0) setSelectedSimRule(localRules[0].id);
             }}
             className={`py-2 px-4 rounded-md font-semibold cursor-pointer tracking-wider transition-all uppercase ${
-              activeTab === 'simulation_sandbox' ? 'bg-red-600 text-white shadow-md' : 'text-zinc-400 hover:text-white'
+              activeTab === 'simulation_sandbox' ? 'bg-red-650 text-white shadow-md' : 'text-zinc-400 hover:text-white'
             }`}
           >
             Simulador Sandbox
@@ -503,12 +502,10 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
         {activeTab === 'rules_manager' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
             
-            {/* Left Column: Rules listing with conflict scanner */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Disclaimer info banner */}
               <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl flex items-start gap-3.5">
                 <Info className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-                <div className="text-xs text-zinc-450 leading-relaxed">
+                <div className="text-xs text-zinc-400 leading-relaxed font-sans">
                   <span className="font-bold text-zinc-200">¿Cómo actúan estas condiciones?</span> El motor escucha eventos transaccionales, logins o combates. Al activarse, evalúa secuencialmente los criterios declarados en la tabla inferior contra el contexto del jugador que causó el evento. Si el resultado es favorable, ejecuta la acción inmediata programada. Puedes activar/desactivar reglas en tiempo real.
                 </div>
               </div>
@@ -520,7 +517,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
                 <div className="space-y-4 pt-2">
                   {localRules.length === 0 ? (
-                    <div className="text-center py-10 border border-dashed border-zinc-800 rounded-xl text-zinc-500">
+                    <div className="text-center py-10 border border-dashed border-zinc-800 rounded-xl text-zinc-500 font-mono text-xs">
                       No hay condiciones configuradas en el sistema. Crea una usando el "Creador de Reglas".
                     </div>
                   ) : (
@@ -533,10 +530,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                             conflictInfo.hasConflict ? 'border-red-950/40 bg-red-950/5' : 'border-zinc-850 hover:border-zinc-800'
                           }`}
                         >
-                          {/* Left: Metadata */}
                           <div className="flex-1 space-y-2">
                             <div className="flex items-center gap-3 flex-wrap">
-                              <span className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px] font-mono font-bold text-red-150">
+                              <span className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px] font-mono font-bold text-red-400">
                                 {rule.trigger.toUpperCase()}
                               </span>
                               <h3 className="text-sm font-bold text-white tracking-wide">
@@ -552,7 +548,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-zinc-400 leading-normal max-w-2xl">
+                            <p className="text-xs text-zinc-400 leading-normal max-w-2xl font-sans">
                               {rule.description}
                             </p>
 
@@ -562,7 +558,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                               </p>
                             )}
 
-                            {/* Conditions and actions nested specs */}
                             <div className="pt-2 flex flex-wrap items-center gap-2">
                               <span className="text-[10px] text-zinc-500 font-mono">SI</span>
                               {rule.conditions.map((cond, ci) => (
@@ -573,26 +568,24 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                                 >
                                   <strong>{cond.field.replace('user.', '')}</strong>
                                   <span className="text-red-500 font-bold">
-                                    {cond.operator === 'greater_than' ? '>' : cond.operator === 'less_than' ? '<' :cond.operator === 'equals' ? '==' : '!='}
+                                    {cond.operator === 'greater_than' ? '>' : cond.operator === 'less_than' ? '<' : cond.operator === 'equals' ? '==' : '!='}
                                   </span>
                                   <span>{cond.value}</span>
                                 </span>
                               ))}
                               
-                              <ArrowRight size={13} className="text-zinc-650" />
+                              <ArrowRight size={13} className="text-zinc-600" />
                               <span className="text-[10px] text-zinc-500 font-mono">ENTONCES</span>
                               <span 
                                 className="px-2 py-1 rounded bg-red-650/10 border border-red-500/20 text-[10px] sm:text-xs font-mono text-red-400 font-semibold cursor-help"
-                                  title="Acción inmediata"
+                                title="Acción inmediata"
                               >
                                 <strong>{rule.action.type.toUpperCase()}</strong>: {JSON.stringify(rule.action.params)}
                               </span>
                             </div>
                           </div>
 
-                          {/* Right: Actions (Toggle, Delete) */}
                           <div className="flex items-center gap-4 border-t md:border-t-0 border-zinc-850 pt-4 md:pt-0">
-                            {/* Toggle active / inactive switch */}
                             <button
                               type="button"
                               onClick={() => handleToggleRule(rule.id)}
@@ -604,7 +597,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                                   <ToggleRight size={24} />
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1.5 text-zinc-650">
+                                <div className="flex items-center gap-1.5 text-zinc-600">
                                   <span>INACTIVA</span>
                                   <ToggleLeft size={24} />
                                 </div>
@@ -620,7 +613,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                             </button>
                           </div>
 
-                          {/* Floating tooltip icon */}
                           <div className="absolute top-2.5 right-2 px-1 rounded hover:bg-zinc-800 cursor-help text-zinc-500 text-[10px]" title={rule.tooltip}>
                             <HelpCircle size={13} />
                           </div>
@@ -632,7 +624,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
               </div>
             </div>
 
-            {/* Right Column: Version snaps rollback & Global alerts engine */}
             <div className="lg:col-span-1 space-y-6">
               
               {/* VERSION SNAPSHOTS COMPONENT */}
@@ -642,15 +633,15 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                   <span>Historial de Versiones (Rollback)</span>
                 </span>
                 
-                <p className="text-[11px] text-zinc-500 leading-normal">
+                <p className="text-[11px] text-zinc-500 leading-normal font-sans">
                   Consola de reversión instantánea lúdica. Registra los últimos 5 cambios realizados en las políticas lúdicas del servidor celular.
                 </p>
 
                 <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
                   {versionHistory.map((ver, idx) => (
-                    <div key={ver.id || idx} className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-lg text-[10px] space-y-2 hover:border-zinc-800 transition-colors">
+                    <div key={ver.id || idx} className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-lg text-[10px] space-y-2 hover:border-zinc-800 transition-colors font-mono">
                       <div className="flex items-center justify-between">
-                        <span className={`px-1.5 py-0.5 rounded-[2px] font-mono text-[8.5px] font-bold uppercase ${
+                        <span className={`px-1.5 py-0.5 rounded font-mono text-[8.5px] font-bold uppercase ${
                           ver.action === 'create' ? 'bg-emerald-500/10 text-emerald-400' :
                           ver.action === 'delete' ? 'bg-red-500/10 text-red-400' :
                           ver.action === 'rollback' ? 'bg-purple-500/10 text-purple-400 font-bold' :
@@ -664,14 +655,14 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                       </div>
                       
                       <div>
-                        <h4 className="text-zinc-200 font-semibold">{ver.ruleName}</h4>
-                        <p className="text-zinc-500 mt-1 leading-normal">{ver.description}</p>
+                        <h4 className="text-zinc-200 font-semibold font-sans">{ver.ruleName}</h4>
+                        <p className="text-zinc-500 mt-1 leading-normal font-sans text-[10px]">{ver.description}</p>
                       </div>
 
                       <button
                         type="button"
                         onClick={() => handleRollbackVersion(idx)}
-                        className="w-full py-1 bg-red-950/20 hover:bg-red-650 hover:text-white border border-red-900/30 text-red-500 font-bold tracking-wider text-[8.5px] rounded uppercase cursor-pointer transition-all"
+                        className="w-full py-1 bg-red-950/20 hover:bg-red-600 hover:text-white border border-red-900/30 text-red-500 font-bold tracking-wider text-[8.5px] rounded uppercase cursor-pointer transition-all font-mono"
                       >
                         REVERTIR A ESTA VERSIÓN
                       </button>
@@ -687,11 +678,11 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                   <span>Telecom / Alertas Globales</span>
                 </span>
 
-                <p className="text-[11px] text-zinc-550 leading-normal">
+                <p className="text-[11px] text-zinc-500 leading-normal font-sans">
                   Configura contingencias automáticas e integra el motor de notificaciones push para notificar anomalías de red o abusos de recursos del jugador.
                 </p>
 
-                <div className="space-y-3">
+                <div className="space-y-3 font-mono">
                   {globalAlerts.map(alert => (
                     <div key={alert.id} className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-lg text-[10px] space-y-2">
                       <div className="flex items-center justify-between">
@@ -706,15 +697,15 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                               message: `Alerta "${alert.name}" ha sido ${!alert.isEnabled ? 'REESTABLECIDA Y COMPILADA' : 'TEMPORALMENTE DESACTUADA'}.`
                             });
                           }}
-                          className={`px-1.5 py-0.5 rounded-[2px] font-mono text-[8px] font-bold ${
-                            alert.isEnabled ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-zinc-800 text-zinc-650 hover:bg-zinc-800/80'
+                          className={`px-1.5 py-0.5 rounded font-mono text-[8px] font-bold ${
+                            alert.isEnabled ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 'bg-zinc-800 text-zinc-600 hover:bg-zinc-800/80'
                           } cursor-pointer transition-colors`}
                         >
                           {alert.isEnabled ? 'ACTIVA' : 'APAGADA'}
                         </button>
                       </div>
 
-                      <div className="flex items-center justify-between text-[8.5px] text-zinc-550 font-mono">
+                      <div className="flex items-center justify-between text-[8.5px] text-zinc-500 font-mono">
                         <span>Límite: <strong className="text-zinc-400">{alert.threshold}</strong></span>
                         <span>Métrica: <strong className="text-zinc-400">{alert.metric}</strong></span>
                       </div>
@@ -728,78 +719,13 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         <button
                           type="button"
                           onClick={() => handleTriggerSimulatedAlert(alert.name)}
-                          className="w-full py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-red-500 font-bold tracking-wider text-[8px] rounded uppercase cursor-pointer transition-colors"
+                          className="w-full py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-red-500 font-bold tracking-wider text-[8px] rounded uppercase cursor-pointer transition-colors font-mono"
                         >
                           Disparar Simulación Push 📡
                         </button>
                       )}
                     </div>
                   ))}
-                  
-                  {/* Quick ADD Global Alert Mini-Form */}
-                  <div className="pt-2.5 border-t border-zinc-900 space-y-2">
-                    <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest font-mono">Agregar Alerta de Contingencia</span>
-                    <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                      <input
-                        type="text"
-                        id="newAlertName"
-                        aria-label="Nombre Alerta"
-                        placeholder="Nombre Alerta"
-                        className="p-1 px-2 bg-black border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 h-7 text-[10px]"
-                      />
-                      <input
-                        type="text"
-                        id="newAlertMetric"
-                        aria-label="Métrica"
-                        placeholder="Métrica"
-                        className="p-1 px-2 bg-black border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 h-7 text-[10px]"
-                      />
-                      <input
-                        type="text"
-                        id="newAlertThreshold"
-                        aria-label="Umbral"
-                        placeholder="Umbral"
-                        className="p-1 px-2 bg-black border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 h-7 text-[10px] col-span-2"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nameEl = document.getElementById('newAlertName') as HTMLInputElement;
-                        const metricEl = document.getElementById('newAlertMetric') as HTMLInputElement;
-                        const threshEl = document.getElementById('newAlertThreshold') as HTMLInputElement;
-                        if (nameEl && metricEl && threshEl && nameEl.value && metricEl.value && threshEl.value) {
-                          const newAlert = {
-                            id: `alert_dyn_${Date.now()}`,
-                            name: nameEl.value,
-                            metric: metricEl.value,
-                            threshold: threshEl.value,
-                            isEnabled: true,
-                            channels: ['push'],
-                            lastTriggered: 'Nunca'
-                          };
-                          setGlobalAlerts(prev => [...prev, newAlert]);
-                          setIsAlertToShow({
-                            show: true,
-                            status: 'success',
-                            message: `¡ALERTA GLOBAL PROGRAMADA! Se creó la contingencia fiscal "${nameEl.value}".`
-                          });
-                          nameEl.value = '';
-                          metricEl.value = '';
-                          threshEl.value = '';
-                        } else {
-                          setIsAlertToShow({
-                            show: true,
-                            status: 'error',
-                            message: 'Por favor complete todos los datos para la alerta de telemetría.'
-                          });
-                        }
-                      }}
-                      className="w-full py-1.5 bg-red-650 hover:bg-red-500 text-white text-[8px] font-bold tracking-wider rounded uppercase cursor-pointer transition-colors"
-                    >
-                      Compilar Directriz de Contingencia
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -809,48 +735,47 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
         {/* VIEW 2: RULE BUILDER FORM */}
         {activeTab === 'rules_builder' && (
-          <form onSubmit={handleCreateRuleSubmit} className="bg-zinc-950 border border-zinc-900 rounded-xl p-6 space-y-6 animate-fadeIn">
+          <form onSubmit={handleCreateRuleSubmit} className="bg-zinc-950 border border-zinc-900 rounded-xl p-6 space-y-6 animate-fadeIn font-mono">
             <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-white font-mono">
                 Constructor Lógico (Creador de Condiciones)
               </h3>
-              <p className="text-xs text-zinc-500 mt-1">Conecta disparadores con condiciones personalizadas para accionar comportamientos.</p>
+              <p className="text-xs text-zinc-500 mt-1 font-sans">Conecta disparadores con condiciones personalizadas para accionar comportamientos.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left Column: Basic Name/Trigger info */}
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Nombre del Regulador</label>
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Nombre del Regulador</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej. Recompensa de Nivel 50"
                     value={newRuleName}
                     onChange={(e) => setNewRuleName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500"
+                    className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500 uppercase"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Descripción del Comportamiento</label>
+                  <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Descripción del Comportamiento</label>
                   <textarea
                     required
                     rows={4}
                     placeholder="Describe exactamente qué hace la regla de forma técnica y humana."
                     value={newRuleDescription}
                     onChange={(e) => setNewRuleDescription(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500 resize-none leading-relaxed"
+                    className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500 resize-none font-sans leading-relaxed"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="newRuleTrigger" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Disparador del Servidor (Trigger)</label>
+                  <label htmlFor="newRuleTrigger" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Disparador del Servidor (Trigger)</label>
                   <select
                     id="newRuleTrigger"
                     value={newRuleTrigger}
                     onChange={(e) => setNewRuleTrigger(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500 font-sans"
+                    className="w-full px-3.5 py-2.5 text-xs bg-zinc-900 border border-zinc-800 rounded-lg text-white focus:outline-none focus:border-red-500 font-mono cursor-pointer"
                   >
                     {triggersList.map(t => (
                       <option key={t.key} value={t.key}>{t.name}</option>
@@ -859,7 +784,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                 </div>
               </div>
 
-              {/* Right Column: Conditions Rows Builder */}
               <div className="space-y-4 flex flex-col justify-between">
                 <div className="space-y-3">
                   <div className="flex justify-between items-center pb-1">
@@ -867,7 +791,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                     <button
                       type="button"
                       onClick={handleAddConditionRow}
-                      className="text-[11px] py-1 px-2.5 rounded hover:bg-zinc-900 border border-zinc-800 text-red-500 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer animate-pulse"
+                      className="text-[11px] py-1 px-2.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-red-500 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Plus size={11} /> Añadir Criterio
                     </button>
@@ -880,7 +804,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                           aria-label="Campo de condición"
                           value={cond.field}
                           onChange={(e) => handleUpdateConditionRow(idx, 'field', e.target.value)}
-                          className="flex-1 px-2 py-1 text-xs bg-black text-zinc-300 rounded border border-zinc-800 focus:outline-none"
+                          className="flex-1 px-2 py-1 text-xs bg-black text-zinc-300 rounded border border-zinc-800 focus:outline-none font-mono cursor-pointer"
                         >
                           {fieldsList.map(f => (
                             <option key={f.key} value={f.key}>{f.name.replace('user.', '')}</option>
@@ -891,7 +815,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                           aria-label="Operador de condición"
                           value={cond.operator}
                           onChange={(e) => handleUpdateConditionRow(idx, 'operator', e.target.value)}
-                          className="w-28 px-2 py-1 text-xs bg-black text-zinc-300 rounded border border-zinc-800 focus:outline-none"
+                          className="w-28 px-2 py-1 text-xs bg-black text-zinc-300 rounded border border-zinc-800 focus:outline-none font-mono cursor-pointer"
                         >
                           {operatorsList.map(o => (
                             <option key={o.key} value={o.key}>{o.name}</option>
@@ -922,9 +846,8 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                   </div>
                 </div>
 
-                {/* Bottom section of form: Action Selector */}
                 <div className="p-4 bg-zinc-900/20 border border-zinc-900 rounded-xl space-y-4">
-                  <span className="text-xs font-bold text-red-500 uppercase flex items-center gap-1.5 leading-none">
+                  <span className="text-xs font-bold text-red-500 uppercase flex items-center gap-1.5 leading-none font-mono">
                     <Sparkles size={12} /> Acción resultante a ejecutar
                   </span>
 
@@ -935,7 +858,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                         id="newActionType"
                         value={newActionType}
                         onChange={(e) => handleActionTypeChange(e.target.value as any)}
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
+                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none font-mono cursor-pointer"
                       >
                         {actionsList.map(ac => (
                           <option key={ac.key} value={ac.key}>{ac.name}</option>
@@ -943,9 +866,8 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                       </select>
                     </div>
 
-                    {/* Render parameters inputs according to action selected */}
                     <div className="space-y-1.5">
-                      {newActionType === 'add_gold' || newActionType === 'add_gems' ? (
+                      {newActionType === 'add_gd_coins' || newActionType === 'add_phantom_coins' ? (
                         <>
                           <label htmlFor="actionAmount" className="text-[10px] text-zinc-500 uppercase tracking-widest font-mono">Cantidad numérica</label>
                           <input
@@ -955,7 +877,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                             required
                             value={newActionParams.amount || 100}
                             onChange={(e) => handleActionParamChange('amount', parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500"
+                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none focus:border-red-500 font-mono"
                           />
                         </>
                       ) : newActionType === 'grant_item' ? (
@@ -965,7 +887,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                             id="actionItemId"
                             value={newActionParams.itemId || 'inv_1'}
                             onChange={(e) => handleActionParamChange('itemId', e.target.value)}
-                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
+                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none font-mono cursor-pointer"
                           >
                             <option value="inv_1">Espada de Plasma Escarlata (Legendario)</option>
                             <option value="inv_2">Escudo Reflector (Épico)</option>
@@ -984,7 +906,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                             required
                             value={newActionParams.multiplier || 1.1}
                             onChange={(e) => handleActionParamChange('multiplier', parseFloat(e.target.value) || 1.1)}
-                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
+                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none font-mono"
                           />
                         </>
                       ) : (
@@ -997,7 +919,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                             required
                             value={newActionParams.durationDays || 7}
                             onChange={(e) => handleActionParamChange('durationDays', parseInt(e.target.value) || 1)}
-                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
+                            className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none font-mono"
                           />
                         </>
                       )}
@@ -1012,7 +934,7 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                       placeholder="Ej. ¡Felicidades! Se inyectó +500 Gold"
                       value={newActionParams.message || ''}
                       onChange={(e) => handleActionParamChange('message', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none"
+                      className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-800 rounded text-white focus:outline-none font-mono"
                     />
                   </div>
                 </div>
@@ -1020,18 +942,17 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
               </div>
             </div>
 
-            {/* Bottom Form CTA Buttons */}
-            <div className="flex justify-end gap-3 pt-2 border-t border-zinc-900">
+            <div className="flex justify-end gap-3 pt-2 border-t border-zinc-900 font-mono">
               <button
                 type="button"
                 onClick={() => setActiveTab('rules_manager')}
-                className="py-2.5 px-5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 text-xs font-bold rounded-lg border border-zinc-800 cursor-pointer transition-colors"
+                className="py-2.5 px-5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 text-xs font-bold rounded-lg border border-zinc-800 cursor-pointer transition-colors uppercase"
               >
                 Cancelar Carga
               </button>
               <button
                 type="submit"
-                className="py-2.5 px-6 bg-red-600 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg hover:shadow-red-600/10 cursor-pointer flex items-center gap-1.5"
+                className="py-2.5 px-6 bg-red-650 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg cursor-pointer flex items-center gap-1.5 font-mono"
               >
                 <Save size={13} /> Registrar en el Motor
               </button>
@@ -1041,48 +962,45 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
 
         {/* VIEW 3: SIMULATION SANDBOX REGISTRY */}
         {activeTab === 'simulation_sandbox' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn font-mono">
             
-            {/* Simulation controls card */}
             <div className="lg:col-span-5 bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-5 flex flex-col justify-between">
               <div>
                 <span className="text-xs font-bold uppercase tracking-widest text-zinc-500 font-mono">
                   PARÁMETROS DEL SIMULADOR
                 </span>
-                <p className="text-xs text-zinc-500 mt-1">
+                <p className="text-xs text-zinc-500 mt-1 font-sans">
                   Ejecuta auditorías y pruebas unitarias de tus reglas analizando las propiedades de tus usuarios reales registrados.
                 </p>
               </div>
 
-              {/* User Picker */}
               <div className="space-y-2">
-                <label htmlFor="selectedSimUser" className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                <label htmlFor="selectedSimUser" className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block">
                   1. Seleccionar Jugador Evaluado
                 </label>
                 <select
                   id="selectedSimUser"
                   value={selectedSimUser}
                   onChange={(e) => setSelectedSimUser(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white font-sans text-xs focus:outline-none focus:border-red-500"
+                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white font-mono text-xs focus:outline-none cursor-pointer"
                 >
                   {users.map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.username} (Nivel {u.level} • {u.role.toUpperCase()} • {u.status.toUpperCase()})
+                      {u.username} (Lvl {u.level || u.can_level || 1} • {(u.role || 'player').toUpperCase()})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Rule Picker */}
               <div className="space-y-2">
-                <label htmlFor="selectedSimRule" className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                <label htmlFor="selectedSimRule" className="text-xs font-semibold text-zinc-400 uppercase tracking-wide block">
                   2. Seleccionar Regla a auditar
                 </label>
                 <select
                   id="selectedSimRule"
                   value={selectedSimRule}
                   onChange={(e) => setSelectedSimRule(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white font-sans text-xs focus:outline-none focus:border-red-500"
+                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-lg text-white font-mono text-xs focus:outline-none cursor-pointer"
                 >
                   {localRules.map(r => (
                     <option key={r.id} value={r.id}>
@@ -1092,19 +1010,17 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                 </select>
               </div>
 
-              {/* Guide Note */}
-              <div className="p-3 bg-red-600/5 border border-red-500/10 rounded-lg text-[11px] text-zinc-450 leading-relaxed flex gap-2">
-                <HelpCircle className="text-red-500 flex-shrink-0 mt-0.5 animate-bounce" size={14} />
+              <div className="p-3 bg-red-650/5 border border-red-500/10 rounded-lg text-[11px] text-zinc-400 leading-relaxed flex gap-2 font-sans">
+                <HelpCircle className="text-red-500 flex-shrink-0 mt-0.5" size={14} />
                 <span>
                   El simulador emula el compilador nativo del servidor del juego de Sasorilabs. No alterará la base de datos real a menos que guardes los cambios en el CRM.
                 </span>
               </div>
 
-              {/* Run CTA trigger */}
               <button
                 onClick={handleRunSimulation}
                 disabled={isSimulating}
-                className="w-full py-3 bg-red-600 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg hover:shadow-red-900/10 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full py-3 bg-red-650 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider rounded-lg shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 font-mono"
               >
                 {isSimulating ? (
                   <RefreshCw className="animate-spin" size={14} />
@@ -1115,7 +1031,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
               </button>
             </div>
 
-            {/* Simulated compiler visual terminal stdout */}
             <div className="lg:col-span-7 bg-black border border-zinc-900 rounded-xl p-5 flex flex-col space-y-4">
               <div className="flex justify-between items-center text-xs font-mono">
                 <span className="text-zinc-400 flex items-center gap-2">
@@ -1124,10 +1039,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                 <span className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
               </div>
 
-              {/* Console log workspace */}
               <div className="flex-1 min-h-[280px] bg-zinc-950 p-4 rounded-lg font-mono text-xs overflow-y-auto space-y-2 text-zinc-300 border border-zinc-900 leading-normal">
                 {simLog.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-zinc-650 pt-16">
+                  <div className="h-full flex flex-col items-center justify-center text-zinc-600 pt-16">
                     <Terminal size={24} className="mb-2" />
                     <p>Listo para auditar.</p>
                     <p className="text-[10px]">Configura los parámetros y presiona "Simular".</p>
@@ -1149,7 +1063,6 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                 )}
               </div>
 
-              {/* Clear console controls */}
               <div className="flex justify-end">
                 <button
                   type="button"
@@ -1174,23 +1087,23 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-zinc-950 border border-zinc-800 p-6 rounded-lg max-w-sm w-full space-y-4 font-sans"
+              className="bg-zinc-950 border border-zinc-800 p-6 rounded-xl max-w-sm w-full space-y-4 font-mono text-xs"
             >
               <div className="flex items-center gap-2.5 text-red-500 font-mono font-bold uppercase tracking-wider text-xs">
                 <AlertTriangle size={18} className="animate-bounce" />
                 <span>CONFIRMAR REMOCIÓN DE REGLA</span>
               </div>
               
-              <p className="text-xs text-zinc-400 leading-normal">
+              <p className="text-xs text-zinc-400 leading-normal font-sans">
                 ¿Está seguro de que desea eliminar permanentemente la regla <strong>{localRules.find(r => r.id === ruleToDeleteId)?.name}</strong>? Las recompensas o contingencias asociadas dejarán de dispararse en el motor lúdico en vivo.
               </p>
 
-              <div className="flex items-center justify-end gap-2.5 font-mono text-[9px]">
+              <div className="flex items-center justify-end gap-2.5 font-mono text-[10px]">
                 <button
                   onClick={() => setRuleToDeleteId(null)}
-                  className="px-3 py-1.5 bg-zinc-900 border border-zinc-850 hover:bg-zinc-800 text-zinc-400 rounded cursor-pointer"
+                  className="px-3 py-1.5 bg-zinc-900 border border-zinc-850 hover:bg-zinc-800 text-zinc-400 rounded-lg cursor-pointer font-bold uppercase"
                 >
-                  CONSERVAR REGLA
+                  CONSERVAR
                 </button>
                 <button
                   onClick={async () => {
@@ -1199,9 +1112,9 @@ export default function ConditionEditor({ rules, users, onSaveRules, setIsAlertT
                       setRuleToDeleteId(null);
                     }
                   }}
-                  className="px-3 py-1.5 bg-red-650 hover:bg-red-500 text-white font-bold rounded cursor-pointer"
+                  className="px-3 py-1.5 bg-red-650 hover:bg-red-500 text-white font-bold rounded-lg cursor-pointer uppercase"
                 >
-                  ELIMINAR REGLA 💀
+                  ELIMINAR 💀
                 </button>
               </div>
             </motion.div>

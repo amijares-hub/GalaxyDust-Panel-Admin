@@ -1,478 +1,608 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import {
-  Building, Cpu, Bot, FileText, Package, Sliders, FileBadge,
-  Plus, Minus, Trash2, Search, RefreshCw, AlertTriangle, Zap,
-  CheckCircle, PlusCircle, Hammer, LayoutGrid, Award, Shield, HardDrive, Key
+  Rocket, Building, Shield, Cpu, Award, FileText, Wrench, Package, Bot,
+  Search, RefreshCw, UserCheck, Plus, Trash2, Layers, Zap, Info, X, Check,
+  Database, Sparkles, Filter, ChevronRight, Layers3, AlertTriangle, UploadCloud
 } from 'lucide-react';
 
-// Interfaces del Catálogo Global Real de Semillas (Supabase)
-interface StructureAsset {
-  id: string;
-  name: string;
-  rarity: string;
-  collection: string;
-  type: string;
-  company: string;
-  power_score: number;
-  description: string;
-}
+export type AssetCategory = 
+  | 'Naves' 
+  | 'Estructuras' 
+  | 'Defensas' 
+  | 'Tecnologías' 
+  | 'Insignias' 
+  | 'Blueprints' 
+  | 'Licencias' 
+  | 'Tools' 
+  | 'Consumibles' 
+  | 'Astrobots';
 
-interface TechnologyAsset {
-  id: string;
-  name: string;
-  rarity: string;
-  collection: string;
-  type: string;
-  company: string;
-  power_score: number;
-  description: string;
-}
-
-interface BadgeAsset {
-  id: string;
-  name: string;
-  type: string;
-  collection: string;
-  power_score: number;
-  description: string;
-  effect: string;
-  stack: string;
-  duration: string;
-  rarity: string;
-}
-
-// Interfaces de Relaciones de Inventarios de los Jugadores
-interface UserAssetRow {
-  id: string;
-  user_id: string;
-  asset_id: string;
-  current_level: number;
-  asset_type: 'estructura' | 'tecnologia' | 'badge';
-}
-
-interface AdminAssetMatrixModuleProps {
-  users: any[];
-  setIsAlertToShow: (alert: { show: boolean; status: 'success' | 'error'; message: string }) => void;
-  onRefreshData?: () => void;
-}
-
-export default function AdminAssetMatrixModule({
-  users,
-  setIsAlertToShow,
-  onRefreshData
-}: AdminAssetMatrixModuleProps) {
-
-  // NAVEGACIÓN Y CONFIGURACIÓN DE PESTAÑAS CANÓNICAS
-  const [activeTab, setActiveTab] = useState<'estructuras' | 'tecnologias' | 'badges'>('estructuras');
-  const [loading, setLoading] = useState<boolean>(true);
-  const [dbClient, setDbClient] = useState<any>(null);
-
-  // LISTAS DE ALMACENAMIENTO CENTRAL EN LÍNEA
-  const [structuresList, setStructuresList] = useState<StructureAsset[]>([]);
-  const [technologiesList, setTechnologiesList] = useState<TechnologyAsset[]>([]);
-  const [badgesList, setBadgesList] = useState<BadgeAsset[]>([]);
-  const [playerInventory, setPlayerInventory] = useState<UserAssetRow[]>([]);
-
-  // CONSOLA DE FILTRADO Y BÚSQUEDA TÁCTICA
-  const [matrixSearchQuery, setMatrixSearchQuery] = useState('');
-  const [matrixRarityFilter, setMatrixRarityFilter] = useState('all');
-  const [matrixSortOrder, setMatrixSortOrder] = useState<'asc' | 'desc'>('desc');
-
-  // CONSOLA DE BÚSQUEDA Y ENLACE DE PILOTOS (AUDITORÍA DERECHA)
-  const [playerSearchQuery, setPlayerSearchQuery] = useState('');
-  const [auditedUser, setAuditedUser] = useState<any>(null);
-
-  // CONEXIÓN SÍNCRONA DE CIRCUITOS CON EL INICIALIZADOR DINÁMICO DE SUPABASE
-  useEffect(() => {
-    const url = localStorage.getItem('supabase_url') || (window as any)._env_?.VITE_SUPABASE_URL;
-    const key = localStorage.getItem('supabase_anon_key') || (window as any)._env_?.VITE_SUPABASE_ANON_KEY;
-
-    if (url && key) {
-      const client = createClient(url, key);
-      setDbClient(client);
-    } else {
-      console.warn("Falta configuración dinámica de red en el almacenamiento del cliente.");
-      setLoading(false);
-    }
-  }, []);
-
-  // DISPARADOR DE TRANSMISIÓN DE DATOS EN CUANTO EL CLIENTE QUEDE CONFIGURADO
-  useEffect(() => {
-    if (dbClient) {
-      loadCentralMatrixData();
-    }
-  }, [dbClient, auditedUser]);
-
-  const loadCentralMatrixData = async () => {
-    if (!dbClient) return;
-    try {
-      setLoading(true);
-
-      // DESCARGA ASÍNCRONA DEL CATÁLOGO REAL DE ESTRUCTURAS
-      const { data: sData } = await dbClient.from('seed_structures').select('*').order('name');
-      setStructuresList(sData || []);
-
-      // DESCARGA ASÍNCRONA DEL CATÁLOGO REAL DE TECNOLOGÍAS
-      const { data: tData } = await dbClient.from('seed_technologies').select('*').order('name');
-      setTechnologiesList(tData || []);
-
-      // DESCARGA ASÍNCRONA DEL CATÁLOGO REAL DE BADGES
-      const { data: bData } = await dbClient.from('seed_badges').select('*').order('name');
-      setBadgesList(bData || []);
-
-      // SI HAY UN PILOTO ACOPLADO, LEER SU INVENTARIO REAL EN LA BASE DE DATOS
-      if (auditedUser) {
-        const { data: invData } = await dbClient
-          .from('player_structures') // Tabla relacional de niveles de usuario
-          .select('*')
-          .eq('user_id', auditedUser.id);
-        setPlayerInventory(invData || []);
-      }
-
-    } catch (e: any) {
-      console.error("Fallo en la descarga de componentes de red:", e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // VINCULADOR COGNITIVO: CONECTAR PERFIL DEL COMANDANTE EN TIEMPO REAL
-  const handleLinkPilotTerminal = () => {
-    if (!playerSearchQuery.trim()) {
-      return setIsAlertToShow({ show: true, status: 'error', message: 'Ingrese email o identificador de piloto.' });
-    }
-    const query = playerSearchQuery.toLowerCase();
-    const match = users.find(u => u.id?.toLowerCase() === query || u.email?.toLowerCase() === query || u.username?.toLowerCase().includes(query));
-
-    if (match) {
-      setAuditedUser(match);
-      setIsAlertToShow({ show: true, status: 'success', message: `AUDITORÍA: Enlazando bitácora en vivo de ${match.username}` });
-    } else {
-      setIsAlertToShow({ show: true, status: 'error', message: 'No se localizó ningún capitán estelar en los registros.' });
-    }
-  };
-
-  // MODIFICADORES DE SOPORTE DIRECTOS SOBRE LA BASE DE DATOS (INYECCIÓN +1 / -1 / PURGAR)
-  const handleAlterAssetLevel = async (assetId: string, delta: number) => {
-    if (!dbClient || !auditedUser) return;
-    try {
-      const existing = playerInventory.find(item => item.asset_id === assetId);
-
-      if (existing) {
-        const targetLvl = existing.current_level + delta;
-        if (targetLvl <= 0) {
-          await dbClient.from('player_structures').delete().eq('id', existing.id);
-          setIsAlertToShow({ show: true, status: 'error', message: 'Activo desmantelado y purgado de la cuenta.' });
-        } else {
-          await dbClient.from('player_structures').update({ current_level: targetLvl }).eq('id', existing.id);
-          setIsAlertToShow({ show: true, status: 'success', message: 'Módulo de nivelación modificado con éxito.' });
-        }
-      } else if (delta > 0) {
-        await dbClient.from('player_structures').insert([{
-          user_id: auditedUser.id,
-          asset_id: assetId,
-          current_level: 1,
-          asset_type: activeTab.slice(0, -1)
-        }]);
-        setIsAlertToShow({ show: true, status: 'success', message: '¡INYECTAR DIRECTO! Elemento instalado en Nivel 1.' });
-      }
-      loadCentralMatrixData();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  // FORMATEADOR MATEMÁTICO: TOPE MÁXIMO DE 2 DECIMALES, SIN TEXTOS ADICIONALES
-  const formatPureDecimal = (val: number) => {
-    return val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  };
-
-  // FILTRADO DINÁMICO EN MEMORIA PARA LAS REJILLAS DE CATÁLOGOS
-  const filteredStructures = useMemo(() => {
-    return structuresList.filter(s => {
-      const matchQ = s.name.toLowerCase().includes(matrixSearchQuery.toLowerCase()) || s.id.toLowerCase().includes(matrixSearchQuery.toLowerCase());
-      const matchR = matrixRarityFilter === 'all' || s.rarity.toLowerCase() === matrixRarityFilter.toLowerCase();
-      return matchQ && matchR;
-    });
-  }, [structuresList, matrixSearchQuery, matrixRarityFilter]);
-
-  const filteredTechnologies = useMemo(() => {
-    return technologiesList.filter(t => {
-      const matchQ = t.name.toLowerCase().includes(matrixSearchQuery.toLowerCase()) || t.id.toLowerCase().includes(matrixSearchQuery.toLowerCase());
-      const matchR = matrixRarityFilter === 'all' || t.rarity.toLowerCase() === matrixRarityFilter.toLowerCase();
-      return matchQ && matchR;
-    });
-  }, [technologiesList, matrixSearchQuery, matrixRarityFilter]);
-
-  const filteredBadges = useMemo(() => {
-    return badgesList.filter(b => {
-      const matchQ = b.name.toLowerCase().includes(matrixSearchQuery.toLowerCase()) || b.id.toLowerCase().includes(matrixSearchQuery.toLowerCase());
-      const matchR = matrixRarityFilter === 'all' || b.rarity.toLowerCase() === matrixRarityFilter.toLowerCase();
-      return matchQ && matchR;
-    });
-  }, [badgesList, matrixSearchQuery, matrixRarityFilter]);
-
-  if (loading) {
-    return (
-      <div className="p-8 text-center text-red-500 animate-pulse font-mono text-xs tracking-widest bg-zinc-950 min-h-screen flex flex-col items-center justify-center">
-        ⚡ ESTABLECIENDO HANDSHAKE DE RED CON LAS MATRICES DE SUPABASE...
-      </div>
-    );
+const SEED_TABLE_MAPPING: Record<AssetCategory, { seedTables: string[]; userTable: string; icon: any }> = {
+  'Naves': {
+    seedTables: ['seed_ships', 'ships_stadistics', 'ships', 'naves'],
+    userTable: 'user_ships',
+    icon: Rocket
+  },
+  'Estructuras': {
+    seedTables: ['seed_structures', 'structures_stadistics', 'structures', 'estructuras'],
+    userTable: 'user_structures',
+    icon: Building
+  },
+  'Defensas': {
+    seedTables: ['seed_defenses', 'defenses_stadistics', 'defenses', 'defensas'],
+    userTable: 'user_defenses',
+    icon: Shield
+  },
+  'Tecnologías': {
+    seedTables: ['seed_technologies', 'technologies_stadistics', 'technologies', 'tecnologias'],
+    userTable: 'user_technologies',
+    icon: Cpu
+  },
+  'Insignias': {
+    seedTables: ['seed_badges', 'badges_stadistics', 'badges', 'insignias'],
+    userTable: 'user_badges',
+    icon: Award
+  },
+  'Blueprints': {
+    seedTables: ['seed_blueprints', 'blueprints_stadistics', 'blueprints', 'blue_prints'],
+    userTable: 'user_blueprints',
+    icon: Layers3
+  },
+  'Licencias': {
+    seedTables: ['seed_licenses', 'licenses_stadistics', 'licenses', 'seed_licencias', 'licencias'],
+    userTable: 'user_licenses',
+    icon: FileText
+  },
+  'Tools': {
+    seedTables: ['seed_tools', 'tools_stadistics', 'tools', 'herramientas'],
+    userTable: 'user_tools',
+    icon: Wrench
+  },
+  'Consumibles': {
+    seedTables: ['seed_packs', 'seed_bags', 'packs_stadistics', 'bags_stadistics', 'seed_consumables', 'seed_consumibles', 'consumables', 'consumibles'],
+    userTable: 'user_consumibles',
+    icon: Package
+  },
+  'Astrobots': {
+    seedTables: ['seed_astrobots', 'astrobots_stadistics', 'astrobots', 'astro_bots'],
+    userTable: 'user_astrobots',
+    icon: Bot
   }
+};
+
+const resolveImageUrl = (rawUrl?: string, fallbackKey?: string, fileExt?: string) => {
+  if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim() !== '') {
+    const clean = rawUrl.trim();
+    if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+    return `https://qldjeysusithpblfrmtq.supabase.co/storage/v1/object/public/galaxy-assets/${clean.replace(/^\//, '')}`;
+  }
+  const ext = fileExt || 'png';
+  if (fallbackKey) {
+    return `https://qldjeysusithpblfrmtq.supabase.co/storage/v1/object/public/galaxy-assets/${fallbackKey}.${ext}`;
+  }
+  return 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300';
+};
+
+export const AdminAssetMatrixModule: React.FC = () => {
+  const [activeCategory, setActiveCategory] = useState<AssetCategory>('Blueprints');
+  const [activeTableUsed, setActiveTableUsed] = useState<string>('');
+  const [seedAssets, setSeedAssets] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Filtros
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedRarity, setSelectedRarity] = useState<string>('Todas');
+
+  // Consola Piloto (Enlace)
+  const [pilotSearchInput, setPilotSearchInput] = useState<string>('');
+  const [syncedPilot, setSyncedPilot] = useState<any | null>(null);
+  const [pilotUserAssets, setPilotUserAssets] = useState<any[]>([]);
+  const [pilotSyncLoading, setPilotSyncLoading] = useState<boolean>(false);
+
+  // Inspección de Asset Individual
+  const [inspectAsset, setInspectAsset] = useState<any | null>(null);
+
+  // Inyección de Activos
+  const [injectQty, setInjectQty] = useState<number>(1);
+  const [injectLevel, setInjectLevel] = useState<number>(1);
+
+  // 1. Cargar Semillas de Supabase con Búsqueda Resiliente Multi-Tabla
+  const fetchSeedAssets = async (category: AssetCategory) => {
+    setLoading(true);
+    setErrorMsg(null);
+    setSeedAssets([]);
+    
+    const { seedTables } = SEED_TABLE_MAPPING[category];
+    let combinedData: any[] = [];
+    let successfulTables: string[] = [];
+    let lastError: string | null = null;
+
+    for (const tableName of seedTables) {
+      try {
+        const { data, error } = await supabase.from(tableName).select('*');
+        if (!error && data) {
+          if (data.length > 0) {
+            data.forEach((item: any) => {
+              const itemId = String(item.ship_id || item.id || item.name || Math.random());
+              if (!combinedData.some(existing => String(existing.ship_id || existing.id || existing.name) === itemId)) {
+                combinedData.push({ ...item, _sourceTable: tableName });
+              }
+            });
+            successfulTables.push(tableName);
+          } else if (successfulTables.length === 0) {
+            successfulTables.push(tableName);
+          }
+        } else if (error) {
+          lastError = error.message;
+        }
+      } catch (e: any) {
+        lastError = e.message;
+      }
+    }
+
+    if (successfulTables.length > 0) {
+      setActiveTableUsed(successfulTables.join(' + '));
+      setSeedAssets(combinedData);
+    } else {
+      setActiveTableUsed(seedTables[0]);
+      setSeedAssets([]);
+      if (lastError) {
+        setErrorMsg(`La tabla no responde en Supabase (${lastError}). Verifica que las tablas estén creadas.`);
+      }
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchSeedAssets(activeCategory);
+  }, [activeCategory]);
+
+  // 2. Sincronizar Piloto por Email, Username o UID
+  const handleSyncPilot = async () => {
+    if (!pilotSearchInput.trim()) return;
+    setPilotSyncLoading(true);
+    setSyncedPilot(null);
+    setPilotUserAssets([]);
+
+    try {
+      const query = pilotSearchInput.trim();
+      let userProfile: any = null;
+
+      const { data: dataByUid } = await supabase.from('user_profiles').select('*').eq('id', query).maybeSingle();
+      if (dataByUid) {
+        userProfile = dataByUid;
+      } else {
+        const { data: dataByUsername } = await supabase.from('user_profiles').select('*').ilike('username', query).maybeSingle();
+        if (dataByUsername) userProfile = dataByUsername;
+      }
+
+      if (userProfile) {
+        setSyncedPilot(userProfile);
+        fetchPilotInventory(userProfile.id, activeCategory);
+      } else {
+        alert("⚠️ No se encontró ningún piloto con ese UID, username o correo.");
+      }
+    } catch (e: any) {
+      alert(`Error al buscar piloto: ${e.message}`);
+    } finally {
+      setPilotSyncLoading(false);
+    }
+  };
+
+  // Cargar Inventario del Piloto
+  const fetchPilotInventory = async (userId: string, category: AssetCategory) => {
+    const { userTable } = SEED_TABLE_MAPPING[category];
+    try {
+      const { data } = await supabase.from(userTable).select('*').eq('user_id', userId);
+      setPilotUserAssets(data || []);
+    } catch (e) {
+      setPilotUserAssets([]);
+    }
+  };
+
+  useEffect(() => {
+    if (syncedPilot) {
+      fetchPilotInventory(syncedPilot.id, activeCategory);
+    }
+  }, [activeCategory, syncedPilot]);
+
+  // 3. Inyectar Asset a Piloto
+  const handleInjectAssetToPilot = async (asset: any) => {
+    if (!syncedPilot) {
+      alert("Debes sincronizar un piloto primero en la consola superior.");
+      return;
+    }
+
+    const { userTable } = SEED_TABLE_MAPPING[activeCategory];
+    const assetId = asset.ship_id || asset.id;
+
+    try {
+      const payload: any = {
+        user_id: syncedPilot.id,
+        quantity: injectQty,
+        current_level: injectLevel,
+        created_at: new Date().toISOString()
+      };
+
+      if (activeCategory === 'Naves') payload.ship_id = assetId;
+      else if (activeCategory === 'Estructuras') payload.structure_id = assetId;
+      else if (activeCategory === 'Tools') payload.tool_id = assetId;
+      else if (activeCategory === 'Tecnologías') payload.technology_id = assetId;
+      else if (activeCategory === 'Defensas') payload.defense_id = assetId;
+      else if (activeCategory === 'Insignias') payload.badge_id = assetId;
+      else if (activeCategory === 'Blueprints') payload.blueprint_id = assetId;
+      else if (activeCategory === 'Licencias') payload.license_id = assetId;
+      else if (activeCategory === 'Astrobots') payload.astrobot_id = assetId;
+      else payload.item_id = assetId;
+
+      const { error } = await supabase.from(userTable).insert([payload]);
+      if (error) throw error;
+
+      alert(`✅ ¡ACTIVO INYECTADO! ${asset.name || asset.ship_name || assetId} añadido al piloto ${syncedPilot.username || syncedPilot.id}.`);
+      fetchPilotInventory(syncedPilot.id, activeCategory);
+    } catch (e: any) {
+      alert(`Error al inyectar activo: ${e.message}`);
+    }
+  };
+
+  // 4. Eliminar Asset del Piloto
+  const handleRemoveUserAsset = async (userAssetId: string) => {
+    if (!syncedPilot || !window.confirm("¿Confirmas la eliminación de este activo del inventario del piloto?")) return;
+    const { userTable } = SEED_TABLE_MAPPING[activeCategory];
+
+    try {
+      const { error } = await supabase.from(userTable).delete().eq('id', userAssetId);
+      if (error) throw error;
+
+      alert("🗑️ Activo eliminado del inventario del piloto.");
+      fetchPilotInventory(syncedPilot.id, activeCategory);
+    } catch (e: any) {
+      alert(`Error al eliminar: ${e.message}`);
+    }
+  };
+
+  // Filtrado de Semillas
+  const filteredSeedAssets = useMemo(() => {
+    return seedAssets.filter(item => {
+      const name = String(item.ship_name || item.name || item.id || '').toLowerCase();
+      const id = String(item.ship_id || item.id || '').toLowerCase();
+      const matchesSearch = name.includes(searchQuery.toLowerCase()) || id.includes(searchQuery.toLowerCase());
+      
+      if (selectedRarity === 'Todas') return matchesSearch;
+      const rarity = String(item.rarity || '').toLowerCase();
+      return matchesSearch && rarity === selectedRarity.toLowerCase();
+    });
+  }, [seedAssets, searchQuery, selectedRarity]);
+
+  // Lista de Rarezas Dinámicas
+  const availableRarities = useMemo(() => {
+    const set = new Set<string>();
+    seedAssets.forEach(a => {
+      if (a.rarity) set.add(String(a.rarity).toUpperCase());
+    });
+    return ['Todas', ...Array.from(set)];
+  }, [seedAssets]);
 
   return (
-    <div className="p-4 md:p-6 space-y-6 w-full bg-zinc-950 text-zinc-100 min-h-screen font-mono text-xs">
+    <div className="p-6 bg-[#080b10] min-h-screen text-slate-100 font-mono text-xs space-y-6 rounded-xl border border-cyan-500/20 text-left select-none relative">
 
-      {/* HEADER COPIADO FIELMENTE DEL PROTOCOLO ORIGINAL */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-zinc-900 shattered-crests pb-4">
-        <div>
-          <span className="text-[10px] font-bold text-red-500 tracking-widest uppercase block">NÚCLEOS DE OPERACIÓN GENERAL</span>
-          <h1 className="text-lg md:text-xl font-black tracking-tight text-white uppercase mt-0.5">MATRIZ DE COMPONENTES DE VUELO</h1>
-          <p className="text-[11px] text-zinc-500 font-sans mt-0.5">Ingeniería de datos relacionales en Supabase para el balance de SASORILABS.IO.</p>
+      {/* HEADER DE LA TABLA OPERATIVA */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-[#05070a] p-4 border border-cyan-500/30 rounded-xl flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <Database className="text-cyan-400 animate-pulse" size={20} />
+            <div>
+              <span className="text-[9px] text-zinc-500 font-bold block uppercase">TABLA OPERATIVA POSTGRES ACTIVA</span>
+              <span className="text-cyan-300 font-black text-sm">"public"."{activeTableUsed || 'sin_tabla'}"</span>
+            </div>
+          </div>
         </div>
-        <button onClick={loadCentralMatrixData} className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded text-zinc-300 transition-colors flex items-center gap-1.5 cursor-pointer">
-          <RefreshCw className="w-3.5 h-3.5" /> RE-SINCRONIZAR CENTRAL
-        </button>
+
+        <div className="bg-[#05070a] p-4 border border-cyan-500/30 rounded-xl flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-3">
+            <Layers className="text-emerald-400" size={20} />
+            <div>
+              <span className="text-[9px] text-zinc-500 font-bold block uppercase">VOLUMEN DE ASSETS EXPUESTOS</span>
+              <span className="text-emerald-400 font-black text-sm">{seedAssets.length} registros vinculados</span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => fetchSeedAssets(activeCategory)}
+              className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-cyan-400 rounded-lg transition-colors cursor-pointer flex items-center gap-2 font-bold uppercase text-[9px]"
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refrescar
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* ENLACE COGNITIVO DEL PILOTO (BARRA SUPERIOR AUDITORÍA) */}
-      <div className="bg-zinc-900/40 p-3 border border-zinc-850 rounded-xl flex flex-col sm:flex-row items-center gap-3">
-        <span className="text-zinc-400 font-bold flex items-center gap-1.5 whitespace-nowrap"><Search className="w-4 h-4 text-red-500" /> Consola de Enlace:</span>
-        <input
-          type="text"
-          placeholder="Ingrese UID de cuenta, Correo o dApp Wallet..."
-          className="w-full bg-black border border-zinc-800 p-2 rounded text-white focus:outline-none focus:border-red-500 font-mono text-xs"
-          value={playerSearchQuery}
-          onChange={e => setPlayerSearchQuery(e.target.value)}
-        />
-        <button onClick={handleLinkPilotTerminal} className="px-4 py-2 bg-red-650 hover:bg-red-600 text-white rounded font-bold uppercase whitespace-nowrap transition-colors cursor-pointer">
-          SINCRO_PILOTO
-        </button>
-      </div>
+      {/* AVISO DE TABLA VACÍA + BOTÓN AUTO-INYECCIÓN */}
+      {seedAssets.length === 0 && !loading && (
+        <div className="p-4 bg-purple-950/40 border border-purple-800/60 rounded-xl text-purple-300 flex items-center justify-between gap-3 animate-fadeIn shadow-lg shadow-purple-950/50">
+          <div className="flex items-center gap-3">
+            <Database size={24} className="shrink-0 animate-bounce" />
+            <div>
+              <span className="font-black text-[13px] block uppercase tracking-widest">Base de Datos Sin Semillas</span>
+              <span className="text-[10px] text-purple-400/80 font-sans block">La tabla <code>{activeTableUsed || `seed_${activeCategory.toLowerCase()}`}</code> en Supabase se encuentra vacía. No hay datos fundacionales para inyectar en la economía.</span>
+            </div>
+          </div>
 
-      {/* METADATA BANNER DEL PILOTO DETECTADO */}
-      {auditedUser && (
-        <div className="p-3 bg-zinc-900/20 border border-red-500/10 rounded-lg flex flex-wrap justify-between items-center gap-4">
-          <div>
-            <span className="text-[10px] text-zinc-500 block uppercase">Comandante Auditando</span>
-            <strong className="text-sm text-red-500 font-sans">{auditedUser.username}</strong>
-          </div>
-          <div>
-            <span className="text-[10px] text-zinc-500 block uppercase">Correo Vinculado</span>
-            <span className="text-zinc-300">{auditedUser.email || 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-[10px] text-zinc-500 block uppercase">Nivel Forzado C.A.N.</span>
-            <span className="text-amber-400 font-bold">{auditedUser.level}</span>
-          </div>
-          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-bold text-[9px]">CONNECTED_DB</span>
+          <label className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black uppercase text-[10px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xl flex items-center gap-2">
+            <UploadCloud size={14} /> Importar Datos desde CSV (Próximamente)
+          </label>
         </div>
       )}
 
-      {/* PESTAÑAS HORIZONTALES (ESTRUCTURAS / TECNOLOGÍAS / BADGES) */}
-      <div className="flex gap-1 overflow-x-auto border-b border-zinc-900 pb-2 no-scrollbar">
-        {(['estructuras', 'tecnologias', 'badges'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); setMatrixSearchQuery(''); }}
-            className={`px-4 py-2 text-[11px] font-extrabold tracking-wider transition-all rounded uppercase whitespace-nowrap ${activeTab === tab ? 'bg-red-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
-              }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      {/* BANNER DE ERROR SI LA TABLA TIENE PROBLEMAS */}
+      {errorMsg && seedAssets.length === 0 && (
+        <div className="p-4 bg-red-950/40 border border-red-800/60 rounded-xl text-red-400 flex items-center gap-3 animate-fadeIn">
+          <AlertTriangle size={18} className="shrink-0 text-red-400" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
 
-      {/* ADICIONAL: CONSOLA DE FILTRADO INTERNO DE RAREZA */}
-      <div className="flex flex-col sm:flex-row items-center gap-4 text-[11px] text-zinc-500">
-        <span>Filtrar Rejilla:</span>
-        <input
-          type="text"
-          placeholder="Buscar por alias o ID..."
-          value={matrixSearchQuery}
-          onChange={e => setMatrixSearchQuery(e.target.value)}
-          className="bg-black border border-zinc-850 rounded p-1 px-2 text-white outline-none w-full sm:w-48"
-        />
-        <select value={matrixRarityFilter} onChange={e => setMatrixRarityFilter(e.target.value)} className="bg-black border border-zinc-850 rounded p-1 text-zinc-400 outline-none cursor-pointer">
-          <option value="all">Rarezas (Todas)</option>
-          <option value="Common">Common</option>
-          <option value="Rare">Rare</option>
-          <option value="Epic">Epic</option>
-          <option value="Legendary">Legendary</option>
-          <option value="Exclusive">Exclusive</option>
-          <option value="Halloween">Halloween</option>
-          <option value="Christmas">Christmas</option>
-        </select>
-      </div>
-
-      {/* REJILLA DE CONTROL COMPUESTA DE DOBLE COLUMNA */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* COLUMNA IZQUIERDA: REGISTROS SEMILLA COMPILADOS (2/3) */}
-        <div className="lg:col-span-2 bg-zinc-900/10 border border-zinc-900 p-4 rounded-xl space-y-4">
-          <span className="text-[11px] font-bold text-red-500 uppercase tracking-widest block">REGISTROS SEMILLA DE LA TABLA GLOBAL (Supabase)</span>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-            {/* RENDER DE TARJETAS DE ESTRUCTURAS */}
-            {activeTab === 'estructuras' && filteredStructures.map(item => (
-              <div key={item.id} className="bg-black/60 p-3 border border-zinc-850 rounded-lg space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="text-cyan-400 font-bold text-xs font-sans">{item.name}</h4>
-                    <span className="text-[9.5px] text-zinc-500 block mt-0.5">ID: {item.id} • Fab: {item.company}</span>
-                  </div>
-                  <span className="text-[8px] border border-zinc-800 px-1 rounded text-zinc-400 uppercase bg-zinc-900">{item.rarity}</span>
-                </div>
-                <p className="text-zinc-400 text-[11px] font-sans leading-relaxed line-clamp-2">{item.description}</p>
-
-                {/* REJILLA DINÁMICA DE COSTES ESCALADOS LEVEL 1-10 NATIVO */}
-                <div className="border-t border-zinc-900 pt-2 space-y-0.5 text-[10.5px]">
-                  <div className="grid grid-cols-3 font-bold text-zinc-600 text-[9.5px]">
-                    <span>NIVEL</span> <span>METAL</span> <span>CRISTAL</span>
-                  </div>
-                  {[1, 2, 5, 10].map(lvl => (
-                    <div key={lvl} className="grid grid-cols-3 text-zinc-400 py-0.5">
-                      <span>Nivel {lvl}</span>
-                      <span className="text-emerald-400">{formatPureDecimal(item.power_score * 5000 * lvl)}</span>
-                      <span className="text-cyan-400">{formatPureDecimal(item.power_score * 3000 * lvl)}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-zinc-900 pt-1.5 flex justify-between text-[10px] text-zinc-500">
-                  <span>Clase: {item.type}</span>
-                  {auditedUser && (
-                    <button onClick={() => handleAlterAssetLevel(item.id, 1)} className="text-red-500 hover:text-white border border-red-500/20 px-2 py-0.5 rounded uppercase font-bold tracking-wider text-[9px] hover:bg-red-600 transition-colors">
-                      Inyectar Lvl 1
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* RENDER DE TARJETAS DE TECNOLOGÍAS */}
-            {activeTab === 'tecnologias' && filteredTechnologies.map(item => (
-              <div key={item.id} className="bg-black/60 p-3 border border-zinc-850 rounded-lg space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="text-amber-400 font-bold text-xs font-sans">{item.name}</h4>
-                    <span className="text-[9.5px] text-zinc-500 block mt-0.5">ID: {item.id}</span>
-                  </div>
-                  <span className="text-[8px] border border-zinc-800 px-1 rounded text-zinc-400 uppercase bg-zinc-900">{item.rarity}</span>
-                </div>
-                <p className="text-zinc-400 text-[11px] font-sans leading-relaxed line-clamp-2">{item.description}</p>
-                <div className="border-t border-zinc-900 pt-2 flex justify-between text-[10px] text-zinc-500">
-                  <span>Fila: {item.type}</span>
-                  {auditedUser && (
-                    <button onClick={() => handleAlterAssetLevel(item.id, 1)} className="text-red-500 border border-red-500/20 px-2 py-0.5 rounded font-bold hover:bg-red-600 hover:text-white transition-colors text-[9px]">
-                      INYECTAR_WALLET
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* RENDER DE TARJETAS DE BADGES */}
-            {activeTab === 'badges' && filteredBadges.map(item => (
-              <div key={item.id} className="bg-black/60 p-3 border border-zinc-850 rounded-lg space-y-2">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="text-purple-400 font-bold text-xs font-sans">{item.name}</h4>
-                    <span className="text-[9.5px] text-zinc-500 block">Colección: {item.collection}</span>
-                  </div>
-                  <span className="text-[8px] border border-purple-900/30 px-1 rounded text-purple-400 uppercase bg-purple-950/10">{item.rarity}</span>
-                </div>
-                <div className="bg-zinc-950/60 border border-zinc-900 p-2 rounded text-[10.5px] text-zinc-300 leading-tight">
-                  {item.effect}
-                </div>
-                <p className="text-[10px] text-zinc-500 font-sans leading-tight">Duración del time-lock: {item.duration} • Stack: {item.stack}</p>
-                {auditedUser && (
-                  <button onClick={() => handleAlterAssetLevel(item.id, 1)} className="w-full text-center bg-zinc-900 hover:bg-purple-600 border border-zinc-800 text-purple-400 hover:text-white py-1 rounded font-bold uppercase transition-colors text-[9px]">
-                    CONCEDER_BADGE
-                  </button>
-                )}
-              </div>
-            ))}
-
+      {/* CONSOLA DE ENLACE PILOTO */}
+      <div className="bg-[#05070a] p-4 border border-cyan-500/30 rounded-xl space-y-3 shadow-xl relative z-10">
+        <div className="flex flex-col sm:flex-row gap-3 items-center">
+          <div className="relative flex-1 w-full">
+            <Search size={14} className="absolute left-3 top-3 text-cyan-400" />
+            <input
+              type="text"
+              placeholder="Consola de Enlace Piloto: INGRESE UID DE CUENTA, CORREO O DAPP WALLET..."
+              value={pilotSearchInput}
+              onChange={e => setPilotSearchInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSyncPilot()}
+              className="w-full bg-black/80 border border-cyan-950 focus:border-cyan-500 pl-9 pr-4 py-2 rounded-lg text-white font-mono text-xs outline-none uppercase"
+            />
           </div>
+          <button
+            onClick={handleSyncPilot}
+            disabled={pilotSyncLoading}
+            className="w-full sm:w-auto px-6 py-2 bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/50 text-cyan-300 font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            {pilotSyncLoading ? <RefreshCw size={14} className="animate-spin" /> : <UserCheck size={14} />}
+            SINCRO_PILOTO
+          </button>
         </div>
 
-        {/* COLUMNA DERECHA: AUDITORÍA DE INVENTARIO DEL PILOTO SELECCIONADO (1/3) */}
-        <div className="bg-black border border-zinc-900 p-4 rounded-xl space-y-4 h-fit">
-          <span className="text-[11px] font-bold text-zinc-300 uppercase tracking-widest block">AUDITORÍA E INYECCIÓN DE ACTIVOS DEL PILOTO</span>
+        {syncedPilot && (
+          <div className="p-3 bg-cyan-950/30 border border-cyan-500/40 rounded-lg flex flex-wrap justify-between items-center text-[10.5px] animate-fadeIn">
+            <div className="space-x-3">
+              <span>Piloto Enlazado: <strong className="text-white">{syncedPilot.username || 'Comandante'}</strong></span>
+              <span>UID: <code className="text-cyan-400">{syncedPilot.id}</code></span>
+            </div>
+            <span className="text-emerald-400 font-bold">● ONLINE / SINCRONIZADO</span>
+          </div>
+        )}
+      </div>
 
-          {!auditedUser ? (
-            <div className="p-6 text-center text-zinc-600 border border-dashed border-zinc-850 rounded-lg leading-relaxed text-[11px] font-sans">
-              Sin piloto acoplado al módulo. Utilice la consola superior para buscar un capitán (email o ID) y auditar sus activos síncronos en caliente.
+      {/* TABS DE CATEGORÍAS DE ACTIVOS */}
+      <div className="flex border-b border-cyan-950 overflow-x-auto gap-1 pb-1 scrollbar-thin">
+        {(Object.keys(SEED_TABLE_MAPPING) as AssetCategory[]).map(cat => {
+          const IconComp = SEED_TABLE_MAPPING[cat].icon;
+          return (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`px-4 py-2.5 font-black uppercase text-[10px] tracking-wider rounded-t-lg transition-all cursor-pointer flex items-center gap-2 border-b-2 whitespace-nowrap ${
+                activeCategory === cat
+                  ? 'bg-cyan-950/40 text-cyan-300 border-cyan-400 font-black shadow-md'
+                  : 'text-zinc-500 border-transparent hover:text-zinc-300'
+              }`}
+            >
+              <IconComp size={13} />
+              <span>{cat}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* FILTROS DE BÚSQUEDA Y RAREZA */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-[#05070a] p-3 rounded-xl border border-cyan-950">
+        <div className="relative w-full sm:w-96">
+          <Search size={13} className="absolute left-3 top-2.5 text-zinc-500" />
+          <input
+            type="text"
+            placeholder={`BUSCAR EN ${activeTableUsed.toUpperCase() || activeCategory.toUpperCase()}...`}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full bg-black/60 border border-zinc-800 pl-9 pr-3 py-1.5 rounded-lg text-white font-mono text-xs outline-none uppercase"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <span className="text-zinc-500 text-[10px] uppercase font-bold">Rarezas:</span>
+          <select
+            value={selectedRarity}
+            onChange={e => setSelectedRarity(e.target.value)}
+            className="bg-black/60 border border-zinc-800 p-1.5 rounded-lg text-cyan-300 text-xs font-mono outline-none cursor-pointer uppercase"
+          >
+            {availableRarities.map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* GRID PRINCIPAL DE ASSETS & PANEL DE INYECCIÓN DE ACTIVOS */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* REJILLA DE TARJETAS SEMILLA */}
+        <div className="lg:col-span-2 space-y-3">
+          <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">
+            REGISTROS SEMILLA EN "PUBLIC"."{(activeTableUsed || 'sin_tabla').toUpperCase()}" ({filteredSeedAssets.length})
+          </span>
+
+          {filteredSeedAssets.length === 0 ? (
+            <div className="p-12 text-center text-zinc-600 italic border border-dashed border-zinc-900 rounded-xl flex flex-col items-center gap-3">
+              <Database size={32} className="text-zinc-800" />
+              <span>{loading ? 'Sincronizando registros semilla de Supabase...' : 'No hay datos en la tabla. Importa las semillas CSV desde el dashboard principal.'}</span>
             </div>
           ) : (
-            <div className="space-y-3">
-              <span className="text-[10px] text-zinc-500 block border-b border-zinc-900 pb-1 uppercase">Módulos en Órbita / Inventario</span>
-
-              {/* COMPONENTES FILTRADOS SEGÚN LA PESTAÑA DEL ADMINISTRADOR */}
-              {activeTab === 'estructuras' && structuresList.map(seed => {
-                const userStruct = playerInventory.find(item => item.asset_id === seed.id && item.asset_type === 'estructura');
-                const currentLevel = userStruct ? userStruct.current_level : 0;
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[650px] overflow-y-auto pr-1 pb-4">
+              {filteredSeedAssets.map((asset, idx) => {
+                const id = asset.ship_id || asset.id || `asset-${idx}`;
+                const name = asset.ship_name || asset.name || id;
+                const rarity = String(asset.rarity || 'Common').toUpperCase();
+                const rawImg = asset.image_url || asset.avatar_url || asset.avatar;
+                const imgUrl = resolveImageUrl(rawImg, id, asset.fileExtension);
 
                 return (
-                  <div key={seed.id} className="p-2.5 bg-zinc-900/60 border border-zinc-850 rounded-md flex justify-between items-center gap-3">
-                    <div className="max-w-[65%]">
-                      <span className="font-bold text-zinc-200 block truncate">{seed.name}</span>
-                      <span className="text-[10px] font-mono text-zinc-500">Nivel de Amplificación: <strong className={currentLevel > 0 ? 'text-red-500' : 'text-zinc-600'}>{currentLevel}</strong></span>
+                  <div
+                    key={id}
+                    className="p-3 bg-black/60 border border-cyan-950 hover:border-cyan-500/60 rounded-xl space-y-2.5 transition-all flex flex-col justify-between shadow-lg"
+                  >
+                    <div className="space-y-2">
+                      <div className="w-full h-32 bg-black rounded-lg border border-cyan-950 overflow-hidden relative group flex items-center justify-center p-2">
+                        {rawImg || asset.fileExtension ? (
+                          <img src={imgUrl} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform drop-shadow-[0_0_10px_rgba(34,211,238,0.2)]" alt={name} />
+                        ) : (
+                          <span className="text-zinc-800 text-[10px] font-black uppercase">Sin Imagen</span>
+                        )}
+                        <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/80 text-cyan-300 border border-cyan-800 rounded text-[8px] font-black uppercase shadow-md">
+                          {rarity}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="font-bold text-white text-[11px] block uppercase truncate" title={name}>{name}</span>
+                        <span className="text-[9px] text-zinc-500 font-mono block truncate" title={id}>ID: {id}</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => handleAlterAssetLevel(seed.id, -1)} disabled={currentLevel === 0} className="p-1 px-2 bg-black border border-zinc-800 rounded font-bold hover:bg-zinc-800 text-zinc-400 disabled:opacity-20 cursor-pointer">-1</button>
-                      <button onClick={() => handleAlterAssetLevel(seed.id, 1)} className="p-1 px-2 bg-black border border-zinc-800 rounded font-bold hover:bg-zinc-800 text-emerald-400 cursor-pointer">+1</button>
-                      <button onClick={() => handleAlterAssetLevel(seed.id, -currentLevel)} disabled={currentLevel === 0} className="p-1 px-1.5 bg-red-950/20 border border-red-900/30 text-red-500 rounded font-bold hover:bg-red-600 hover:text-white disabled:opacity-20 cursor-pointer">✕</button>
+                    <div className="flex gap-2 pt-2 border-t border-cyan-950">
+                      <button
+                        onClick={() => setInspectAsset(asset)}
+                        className="flex-1 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-cyan-300 font-bold text-[9px] uppercase rounded border border-zinc-800 cursor-pointer flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Info size={11} /> Detalles
+                      </button>
+
+                      <button
+                        onClick={() => handleInjectAssetToPilot(asset)}
+                        disabled={!syncedPilot}
+                        className="flex-1 py-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 font-bold text-[9px] uppercase rounded border border-emerald-800 cursor-pointer flex items-center justify-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={syncedPilot ? "Inyectar activo al piloto enlazado" : "Enlaza un piloto primero en la consola superior"}
+                      >
+                        <Plus size={11} /> Inyectar
+                      </button>
                     </div>
                   </div>
                 );
               })}
-
-              {activeTab === 'tecnologias' && technologiesList.map(seed => {
-                const userTech = playerInventory.find(item => item.asset_id === seed.id && item.asset_type === 'tecnologia');
-                const currentLevel = userTech ? userTech.current_level : 0;
-
-                return (
-                  <div key={seed.id} className="p-2.5 bg-zinc-900/60 border border-zinc-850 rounded-md flex justify-between items-center gap-3">
-                    <div className="max-w-[65%]">
-                      <span className="font-bold text-zinc-200 block truncate">{seed.name}</span>
-                      <span className="text-[10px] font-mono text-zinc-500">Nivel: <strong className={currentLevel > 0 ? 'text-red-500' : 'text-zinc-600'}>{currentLevel}</strong></span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => handleAlterAssetLevel(seed.id, -1)} disabled={currentLevel === 0} className="p-1 px-2 bg-black border border-zinc-800 rounded font-bold hover:bg-zinc-800 text-zinc-400 disabled:opacity-20 cursor-pointer">-1</button>
-                      <button onClick={() => handleAlterAssetLevel(seed.id, 1)} className="p-1 px-2 bg-black border border-zinc-800 rounded font-bold hover:bg-zinc-800 text-emerald-400 cursor-pointer">+1</button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {activeTab === 'badges' && badgesList.map(seed => {
-                const hasBadge = playerInventory.some(item => item.asset_id === seed.id && item.asset_type === 'badge');
-
-                return (
-                  <div key={seed.id} className="p-2 bg-zinc-900/40 border border-zinc-850 rounded flex justify-between items-center text-[11px]">
-                    <span className={`font-medium ${hasBadge ? 'text-purple-400 font-bold' : 'text-zinc-500'}`}>{seed.name}</span>
-                    <button
-                      onClick={() => handleAlterAssetLevel(seed.id, hasBadge ? -1 : 1)}
-                      className={`px-2 py-0.5 rounded font-mono text-[9px] font-bold uppercase transition-all ${hasBadge ? 'bg-red-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
-                        }`}
-                    >
-                      {hasBadge ? 'Revocar' : 'Otorgar'}
-                    </button>
-                  </div>
-                );
-              })}
-
             </div>
           )}
         </div>
 
+        {/* PANEL DERECHO: AUDITORÍA E INYECCIÓN DE ACTIVOS EN VIVO */}
+        <div className="bg-[#05070a] border border-cyan-500/30 p-5 rounded-xl space-y-4 shadow-2xl flex flex-col justify-between sticky top-6 self-start max-h-[85vh]">
+          <div className="space-y-4">
+            <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider block border-b border-cyan-950 pb-3">
+              AUDITORÍA E INYECCIÓN DE ACTIVOS EN VIVO
+            </span>
+
+            {!syncedPilot ? (
+              <div className="p-8 text-center text-zinc-600 text-xs italic border border-dashed border-zinc-900 rounded-xl leading-relaxed">
+                Sin piloto acoplado al módulo. Utilice la consola superior para buscar un capitán (email o ID) y auditar sus activos síncronos en caliente.
+              </div>
+            ) : (
+              <div className="space-y-4 animate-fadeIn">
+                <div className="bg-black/60 p-3 rounded-lg border border-cyan-950 space-y-2">
+                  <span className="text-cyan-300 font-bold text-[10px] block uppercase">Parámetros de Inyección Directa:</span>
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div>
+                      <span className="text-zinc-500 block text-[8px] uppercase">Cantidad:</span>
+                      <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={injectQty} onChange={e => setInjectQty(Number(e.target.value))} />
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[8px] uppercase">Nivel (LVL):</span>
+                      <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-400 font-bold" value={injectLevel} onChange={e => setInjectLevel(Number(e.target.value))} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-zinc-400 font-bold text-[10px] block uppercase">
+                    Inventario Activo del Piloto ({pilotUserAssets.length}):
+                  </span>
+
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
+                    {pilotUserAssets.length === 0 ? (
+                      <span className="text-zinc-600 text-[9.5px] italic block text-center py-4">
+                        El piloto no posee activos registrados en [{activeCategory}].
+                      </span>
+                    ) : (
+                      pilotUserAssets.map((uAsset, idx) => (
+                        <div key={uAsset.id || idx} className="p-2 bg-black border border-zinc-850 hover:border-red-900/50 rounded flex justify-between items-center text-[10px] transition-colors group">
+                          <div className="truncate pr-2">
+                            <span className="text-white font-bold block truncate max-w-[180px]">{uAsset.ship_id || uAsset.item_id || uAsset.structure_id || uAsset.technology_id || uAsset.defense_id || uAsset.badge_id || uAsset.blueprint_id || uAsset.license_id || uAsset.astrobot_id || uAsset.tool_id || 'Activo Oculto'}</span>
+                            <span className="text-[8.5px] text-cyan-400">LVL {uAsset.current_level || uAsset.level || 1} | Qty: {uAsset.quantity || uAsset.amount || 1}</span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveUserAsset(uAsset.id)}
+                            className="p-1.5 text-zinc-600 group-hover:text-red-400 cursor-pointer bg-zinc-950 rounded border border-transparent group-hover:border-red-900/50 transition-colors"
+                            title="Eliminar registro"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
+
+      {/* MODAL INSPECTOR COMPLETO DE ASSET */}
+      {inspectAsset && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex items-center justify-center p-4 font-mono">
+          <div className="w-full max-w-xl bg-[#080b10] border border-cyan-500/50 rounded-2xl p-6 space-y-4 shadow-2xl text-left max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-cyan-950 pb-3">
+              <span className="text-cyan-400 font-bold text-xs uppercase flex items-center gap-2">
+                <Info size={15} /> Inspección Detallada de Semilla
+              </span>
+              <button onClick={() => setInspectAsset(null)} className="text-zinc-500 hover:text-white cursor-pointer"><X size={18} /></button>
+            </div>
+            
+            <div className="flex items-center gap-4 bg-black/50 p-4 rounded-xl border border-zinc-900">
+              <div className="w-20 h-20 shrink-0 bg-zinc-950 border border-zinc-800 rounded-lg flex items-center justify-center p-2">
+                 <img src={resolveImageUrl(inspectAsset.image_url || inspectAsset.avatar_url || inspectAsset.avatar, inspectAsset.ship_id || inspectAsset.id, inspectAsset.fileExtension)} className="max-w-full max-h-full object-contain" alt="" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white uppercase">{inspectAsset.ship_name || inspectAsset.name || inspectAsset.id}</h3>
+                <code className="text-cyan-400 text-[10px]">{inspectAsset.ship_id || inspectAsset.id}</code>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[10px]">
+              {Object.entries(inspectAsset).filter(([k]) => !['image_url', 'avatar_url', 'avatar', '_sourceTable'].includes(k)).map(([key, val]) => (
+                <div key={key} className="p-2.5 bg-black/60 border border-zinc-900 rounded-lg">
+                  <span className="text-zinc-500 block text-[8px] uppercase font-bold mb-0.5">{key}</span>
+                  <span className="text-zinc-200 font-bold font-mono break-words">
+                    {val !== null && val !== undefined && val !== '' ? String(val) : <span className="text-zinc-700 italic">null</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-cyan-950 flex justify-end">
+              <button onClick={() => setInspectAsset(null)} className="px-5 py-2 bg-cyan-950 hover:bg-cyan-900 text-cyan-300 font-bold text-xs rounded-lg uppercase cursor-pointer transition-colors shadow-lg">
+                Cerrar Inspector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
-}
+};
+
+export default AdminAssetMatrixModule;

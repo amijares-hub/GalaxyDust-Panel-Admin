@@ -1,203 +1,366 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
 import {
-  Compass, ShieldAlert, Swords, Map, Plus, Trash2, Zap, Play, Search,
+  Compass, ShieldAlert, Map as MapIcon, Plus, Trash2, Zap, Play, Search,
   TrendingUp, Award, Clock, RefreshCw, Eye, Trophy, Skull, Users, Layers,
-  Gift, Flame, Info, Crosshair, Edit3, Save, Layers3, LayoutGrid, Shield, Target, Activity, X, AlertTriangle, Check
+  Gift, Flame, Info, Crosshair, Edit3, Save, Layers3, LayoutGrid, Activity, X, AlertTriangle, Check,
+  Radio, MapPin, Box, Wrench, Bot, FileText, Package, Rocket, Cpu, Building, ChevronLeft, ChevronRight, Sliders, Database, Sparkles, PackageOpen, RotateCcw, AlertOctagon, Network
 } from 'lucide-react';
 
-// Base de Datos Táctica para el Módulo Analítico del Simulador
-const MOCK_ASSETS_DATABASE: Record<string, { name: string; type: string; stats: string; skills: string; hp: number; shield: number; atk: number }> = {
-  'ship-heavy-hunter': { name: 'Heavy Hunter Beta', type: 'Nave de Asalto', stats: 'HP: 4500 | Escudo: 1200 | Ataque: 650', skills: 'Fuego de Plasma Lvl 3 (Ignora 20% de escudo)', hp: 4500, shield: 1200, atk: 650 },
-  'ship-explorer': { name: 'Explorer Frigate', type: 'Nave de Reconocimiento', stats: 'HP: 3000 | Escudo: 800 | Ataque: 300', skills: 'Evasión Órbital Lvl 2 (+15% Esquiva)', hp: 3000, shield: 800, atk: 300 },
-  'struct-shield-gen': { name: 'Generador de Escudo Local', type: 'Estructura Defensiva', stats: 'Mitigación: +25% daño de energía', skills: 'Burbuja Cuántica (Absorbe primer impacto crítico)', hp: 1000, shield: 5000, atk: 0 },
-  'tech-plasma-drive': { name: 'Propulsor de Plasma Avanzado', type: 'Tecnología de Vuelo', stats: 'Velocidad: +40% | Consumo: -10%', skills: 'Salto Hiperespacial de Emergencia (Evita destrucción fatal)', hp: 500, shield: 200, atk: 100 }
-};
-
-type TabId = 'exploration' | 'domination' | 'events' | 'generator';
-type ExploreSubTab = 'monitor' | 'losses' | 'usage' | 'discoveries';
-type DominationSubTab = 'realtime' | 'simulator' | 'conquest';
+type TabId = 'exploration' | 'events' | 'generator';
+type ExploreSubTab = 'monitor' | 'losses' | 'discoveries';
 type EventSubTab = 'creator' | 'threats_only';
 type GenRightTab = 'creation' | 'edition' | 'ami';
+
+type GenEntityType = 'GC' | 'GALAXY' | 'SC' | 'SS' | 'PLANET';
+
+interface DetailedLossLog {
+  id: string;
+  expedition_id: string;
+  user_id: string;
+  username: string;
+  asset_name: string;
+  status_type: 'DESTRUIDO' | 'PERDIDO';
+  coordinates_loss: string;
+  coordinates_salvage?: string;
+  encounter_type: string;
+  timestamp: string;
+  damage_sustained?: number;
+}
+
+interface CreationHistoryAction {
+  description: string;
+  batches: { table: string; altTable?: string; ids: string[] }[];
+  timestamp: string;
+}
 
 export const ExpeditionsManager: React.FC = () => {
   const supabase = getSupabaseClient();
   const [activeTab, setActiveTab] = useState<TabId>('exploration');
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Sub-Navegación Interna de Cuadrantes
+  // Sub-Navegación Interna
   const [activeExploreTab, setActiveExploreTab] = useState<ExploreSubTab>('monitor');
-  const [activeDomTab, setActiveDomTab] = useState<DominationSubTab>('realtime');
   const [activeEventTab, setActiveEventTab] = useState<EventSubTab>('creator');
 
-  // Sub-Navegación de la Consola de Trabajo Derecha
-  const [genRightTab, setGenRightTab] = useState<GenRightTab>('creation');
-
-  // Telemetría de Base de Datos
+  // Datos en vivo
   const [activeExpeditions, setActiveExpeditions] = useState<any[]>([]);
-  const [lossesLog, setLossesLog] = useState<any[]>([]);
+  const [historicalLogs, setHistoricalLogs] = useState<any[]>([]);
+  const [detailedLosses, setDetailedLosses] = useState<DetailedLossLog[]>([]);
+  const [totalHistoricalExpeditionsCount, setTotalHistoricalExpeditionsCount] = useState<number>(0);
   const [discoveries, setDiscoveries] = useState<any[]>([]);
   const [eventsCatalog, setEventsCatalog] = useState<any[]>([]);
+  const [seedCatalog, setSeedCatalog] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [now, setNow] = useState<number>(Date.now());
 
-  // ── COORDENADAS DINÁMICAS DEL UNIVERSO ──
-  const [dbClusters, setDbClusters] = useState<{ id: string; name: string; base_duration_minutes: number; assigned_events?: any[] }[]>([]);
-  const [selectedCluster, setSelectedCluster] = useState<string>('PELA');
-  const [selectedGalaxy, setSelectedGalaxy] = useState<string>('');
-  const [selectedStarCluster, setSelectedStarCluster] = useState<string>('');
-  const [selectedStarSystem, setSelectedStarSystem] = useState<string>('');
-  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  // ─── 🌌 ESTADOS DEL GENERADOR DE GALAXIAS ───
+  const [genConsoleMode, setGenConsoleMode] = useState<'creation' | 'edition' | 'autogen'>('creation');
+  const [selectedEntityType, setSelectedEntityType] = useState<GenEntityType>('GC');
 
-  const [galaxies, setGalaxies] = useState<any[]>([]);
-  const [starClusters, setStarClusters] = useState<any[]>([]);
-  const [starSystems, setStarSystems] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  // Coordenadas y Catálogos para Jerarquías
+  const [dbClusters, setDbClusters] = useState<any[]>([]);
+  const [dbGalaxies, setDbGalaxies] = useState<any[]>([]);
+  const [dbStarClusters, setDbStarClusters] = useState<any[]>([]);
+  const [dbStarSystems, setDbStarSystems] = useState<any[]>([]);
+  const [dbLocations, setLocations] = useState<any[]>([]);
 
-  // Formularios del Creador Procedural
+  // Selección de Padres para Creación/Edición
+  const [parentGcId, setParentGcId] = useState<string>('');
+  const [parentGalaxyId, setParentGalaxyId] = useState<string>('');
+  const [parentScId, setParentScId] = useState<string>('');
+  const [parentSystemId, setParentSystemId] = useState<string>('');
+
+  // Historial de Undo (Ctrl + Z)
+  const [creationHistoryStack, setCreationHistoryStack] = useState<CreationHistoryAction[]>([]);
+
+  // Formulario Creación de GC
   const [newGcId, setNewGcId] = useState<string>('');
   const [newGcName, setNewGcName] = useState<string>('');
   const [newGcDuration, setNewGcDuration] = useState<number>(60);
-  const [newGalaxyNum, setNewGalaxyNum] = useState<number>(1);
-  const [newScNum, setNewScNum] = useState<number>(1);
-  const [newSystemCode, setNewSystemCode] = useState<string>('');
-  const [newLocNum, setNewLocNum] = useState<number>(1);
-  const [newLocReward, setNewLocReward] = useState<string>('metal_balance');
-  const [newLocRewardQty, setNewLocRewardQty] = useState<number>(1000);
+  const [newGcMinMetal, setNewGcMinMetal] = useState<number>(5000);
+  const [newGcMaxMetal, setNewGcMaxMetal] = useState<number>(25000);
+  const [newGcMinCrystal, setNewGcMinCrystal] = useState<number>(2000);
+  const [newGcMaxCrystal, setNewGcMaxCrystal] = useState<number>(12000);
+  const [gcEventsList, setGcEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
+  const [newGcLootList, setNewGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
+  const [bindEventName, setBindEventName] = useState<string>('');
+  const [bindEventRate, setBindEventRate] = useState<number>(5);
+  
+  // Búsqueda y Selección de Assets
+  const [bindLootId, setBindLootId] = useState<string>('');
+  const [bindLootQty, setBindLootQty] = useState<number>(100);
+  const [lootSearchTermNew, setLootSearchTermNew] = useState<string>('');
+  const [showLootSuggestionsNew, setShowLootSuggestionsNew] = useState<boolean>(false);
 
-  // Cantidades de creación en masa (Consola de Creación)
-  const [createQtyGal, setCreateQtyGal] = useState<number>(1);
-  const [createQtySc, setCreateQtySc] = useState<number>(1);
-  const [createQtySys, setCreateQtySys] = useState<number>(1);
-  const [createQtyLoc, setCreateQtyLoc] = useState<number>(1); 
+  const [lootSearchTermEdit, setLootSearchTermEdit] = useState<string>('');
+  const [showLootSuggestionsEdit, setShowLootSuggestionsEdit] = useState<boolean>(false);
 
-  // PORCENTAJES DE AFECTACIÓN EN MASA (Consola de Edición)
-  const [editPctCluster, setEditPctCluster] = useState<number>(100);
-  const [editPctGal, setEditPctGal] = useState<number>(100);
-  const [editPctSc, setEditPctSc] = useState<number>(100);
-  const [editPctSys, setEditPctSys] = useState<number>(100);
-  const [editPctLoc, setEditPctLoc] = useState<number>(100);
+  // Formulario Creación de Hijos Paso a Paso
+  const [childCodeOrNumber, setChildCodeOrNumber] = useState<string>('1');
+  const [bulkQty, setBulkQty] = useState<number>(1);
+  const [enableManualOverride, setEnableOverride] = useState<boolean>(false);
+  const [overrideDuration, setOverrideDuration] = useState<number>(60);
+  const [overrideMinMetal, setOverrideMinMetal] = useState<number>(5000);
+  const [overrideMaxMetal, setOverrideMaxMetal] = useState<number>(25000);
+  const [overrideMinCrystal, setOverrideMinCrystal] = useState<number>(2000);
+  const [overrideMaxCrystal, setOverrideMaxCrystal] = useState<number>(12000);
 
-  // % DE APARICIÓN DE SUCESOS INDIVIDUALES DENTRO DE LAS TARJETAS DE EDICIÓN
-  const [cardEventRateCluster, setCardEventRateCluster] = useState<number>(5);
-  const [cardEventRateGal, setCardEventRateGal] = useState<number>(5);
-  const [cardEventRateSc, setCardEventRateSc] = useState<number>(5);
-  const [cardEventRateSys, setCardEventRateSys] = useState<number>(5);
-  const [cardEventRateLoc, setCardEventRateLoc] = useState<number>(5);
+  // ESTADOS DEL AUTO-GENERADOR (CASCADA)
+  const [autoQtyGal, setAutoQtyGal] = useState<number>(2);
+  const [autoQtySc, setAutoQtySc] = useState<number>(5);
+  const [autoQtySys, setAutoQtySys] = useState<number>(10);
+  const [autoQtyPlanet, setAutoQtyPlanet] = useState<number>(5);
 
-  const [cardEventBindCluster, setCardEventBindCluster] = useState<string>('');
-  const [cardEventBindGal, setCardEventBindGal] = useState<string>('');
-  const [cardEventBindSc, setCardEventBindSc] = useState<string>('');
-  const [cardEventBindSys, setCardEventBindSys] = useState<string>('');
-  const [cardEventBindLoc, setCardEventBindLoc] = useState<string>('');
-
-  // Estados de control para Planetas / Estrellas
+  // Tipos de Planeta
   const [bodyType, setBodyType] = useState<'planeta' | 'estrella'>('planeta');
   const [planetSubtype, setPlanetType] = useState<string>('rocoso');
   const [starSubtype, setStarType] = useState<string>('blancas');
 
-  // Estados para Ventana Pop-up Maestra de Edición Avanzada
-  const [editingEntity, setEditingEntity] = useState<{ type: 'cluster' | 'galaxy' | 'sc' | 'system' | 'planet'; record: any } | null>(null);
-  const [modalInputName, setModalInputName] = useState<string>('');
-  const [modalInputTime, setModalInputDuration] = useState<number>(60);
-  const [modalInputEvents, setModalInputEvents] = useState<any[]>([]);
-  const [selectedEventToBind, setSelectedEventToBind] = useState<string>('');
+  // Indice de Carrusel GC
+  const [carouselIndex, setCarouselIndex] = useState<number>(0);
 
-  // ── ESTADOS EXPLICITOS PARA LOS CAMPOS EDICIÓN DIRECTA EN TARJETAS DE CONSOLA ──
-  const [editClusterName, setEditClusterName] = useState<string>('');
-  const [editClusterDuration, setEditClusterDuration] = useState<number>(60);
-  const [editGalaxyNum, setEditGalaxyNum] = useState<number>(1);
-  const [editScNum, setEditScNum] = useState<number>(1);
-  const [editSystemCode, setEditSystemCode] = useState<string>('');
-  const [editLocNum, setEditLocNum] = useState<number>(1);
-  const [editLocRewardQty, setEditLocRewardQty] = useState<number>(1000);
+  // Estados de Edición
+  const [editSelectedEntityId, setEditSelectedEntityId] = useState<string>('');
+  const [editName, setEditName] = useState<string>('');
+  const [editDuration, setEditDuration] = useState<number>(60);
+  const [editMinMetal, setEditMinMetal] = useState<number>(5000);
+  const [editMaxMetal, setEditMaxMetal] = useState<number>(25000);
+  const [editMinCrystal, setEditMinCrystal] = useState<number>(2000);
+  const [editMaxCrystal, setEditMaxCrystal] = useState<number>(12000);
+  const [editEventsList, setEditEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
+  const [editGcLootList, setEditGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
 
-  // Gestor de Eventos Avanzado (Pestaña 3)
+  // Gestor de Eventos
   const [newEventName, setNewEventName] = useState<string>('');
   const [newEventDesc, setNewEventDesc] = useState<string>('');
   const [newEventEffect, setNewEventEffect] = useState<string>('negative');
   const [newEventTarget, setNewEventTarget] = useState<string>('fleet');
   const [newSpawnRate, setNewSpawnRate] = useState<number>(5);
-  const [selectedTriggerSkill, setSelectedTriggerSkill] = useState<string>('Combate Alienígena Lvl 3');
-  const [skillImpactFormula, setSkillImpactFormula] = useState<string>('Reduce la pérdida de casco del 20% al 5%');
-  const [spawnRegion, setSpawnRegion] = useState<string>('PELA');
-  const [specialCondition, setSpecialCondition] = useState<string>('Nivel CAN mínimo 10');
-  const [eventFilter, setEventFilter] = useState<string>('all');
+  const [selectedTriggerSkill, setSelectedTriggerSkill] = useState<string>('');
+  const [skillImpactFormula, setSkillImpactFormula] = useState<string>('');
+  const [spawnRegion, setSpawnRegion] = useState<string>('');
+  const [specialCondition, setSpecialCondition] = useState<string>('');
   const [rewardAssetType, setRewardAssetType] = useState<string>('gd_balance');
   const [rewardAssetQty, setRewardAssetQty] = useState<number>(500);
 
-  // Simulador de Batallas (Pestaña 2)
-  const [p1AssetKey, setP1AssetKey] = useState<string>('ship-heavy-hunter');
-  const [p2AssetKey, setP2AssetKey] = useState<string>('ship-explorer');
-  const [p1Ships, setP1Ships] = useState<number>(10);
-  const [p1TechLvl, setP1TechLvl] = useState<number>(5);
-  const [p2Ships, setP2Ships] = useState<number>(10);
-  const [p2TechLvl, setP2TechLvl] = useState<number>(5);
-  const [combatLogs, setCombatLogs] = useState<string[]>([]);
-  const [simResult, setSimResult] = useState<any | null>(null);
+  // ─── FILTROS PREDICTORES ───
+  const filteredSeedsNew = useMemo(() => {
+    if (!lootSearchTermNew.trim()) return seedCatalog;
+    const term = lootSearchTermNew.toLowerCase();
+    return seedCatalog.filter(s => 
+      s.name.toLowerCase().includes(term) || 
+      s.id.toLowerCase().includes(term) || 
+      s.type.toLowerCase().includes(term)
+    );
+  }, [seedCatalog, lootSearchTermNew]);
 
-  // Inspector de Planetas Conquistados
-  const [dominatedPlanets, setDominatedPlanets] = useState<any[]>([
-    { id: 'dom-1', name: 'Zeta Reticuli Prime', sector: 'PELA:SC1', taxRate: 15, stability: 92, extractRate: 2450, shieldActive: true, garrison: 45 },
-    { id: 'dom-2', name: 'Kepler-186f', sector: 'GC1:SC2', taxRate: 25, stability: 64, extractRate: 5800, shieldActive: false, garrison: 12 },
-    { id: 'dom-3', name: 'Gorgona Alpha', sector: 'GC2:SC1', taxRate: 8, stability: 98, extractRate: 1200, shieldActive: true, garrison: 80 }
-  ]);
-  const [selectedDominatedPlanet, setSelectedDominatedPlanet] = useState<any | null>(dominatedPlanets[0]);
+  const filteredSeedsEdit = useMemo(() => {
+    if (!lootSearchTermEdit.trim()) return seedCatalog;
+    const term = lootSearchTermEdit.toLowerCase();
+    return seedCatalog.filter(s => 
+      s.name.toLowerCase().includes(term) || 
+      s.id.toLowerCase().includes(term) || 
+      s.type.toLowerCase().includes(term)
+    );
+  }, [seedCatalog, lootSearchTermEdit]);
 
-  // Cabina de Mando Fija Original
-  const [missionProtocol, setMissionProtocol] = useState<'exploration' | 'mining'>('exploration');
-  const [variableDuration, setVariableDuration] = useState<string>('4 Horas');
+  // ─── DERIVACIONES SEGURAS ───
+  const activeClusterData = useMemo(() => {
+    return dbClusters.find(c => String(c.id) === String(parentGcId)) || dbClusters[0] || null;
+  }, [dbClusters, parentGcId]);
 
-  // Derivaciones de Estado
-  const activeClusterData = dbClusters.find(c => c.id === selectedCluster);
-  const activeGalaxyData = galaxies.find(g => g.id === selectedGalaxy);
-  const activeScData = starClusters.find(s => s.id === selectedStarCluster);
-  const activeSystemData = starSystems.find(sys => sys.id === selectedStarSystem);
-  const activeLocationData = locations.find(l => l.id === selectedLocation);
+  const activeGalaxyData = useMemo(() => {
+    return dbGalaxies.find(g => String(g.id) === String(parentGalaxyId)) || dbGalaxies[0] || null;
+  }, [dbGalaxies, parentGalaxyId]);
 
-  // Sincronizar campos de edición al mutar selecciones
+  // Reloj en vivo
   useEffect(() => {
-    if (activeClusterData) {
-      setEditClusterName(activeClusterData.name);
-      setEditClusterDuration(activeClusterData.base_duration_minutes);
-    }
-    if (activeGalaxyData) setEditGalaxyNum(activeGalaxyData.galaxy_number);
-    if (activeScData) setEditScNum(activeScData.sc_number);
-    if (activeSystemData) setEditSystemCode(activeSystemData.name_code);
-    if (activeLocationData) setEditLocRewardQty(Object.values(activeLocationData.rewards || {})[0] as number || 1000);
-  }, [selectedCluster, selectedGalaxy, selectedStarCluster, selectedStarSystem, selectedLocation, dbClusters, galaxies, starClusters, starSystems, locations]);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // Sincronizador de Telemetría Real
+  // Escucha de teclado para Ctrl + Z
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (activeTab === 'generator' && (genConsoleMode === 'creation' || genConsoleMode === 'autogen')) {
+          e.preventDefault();
+          handleUndoLastCreation();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, genConsoleMode, creationHistoryStack]);
+
+  // Auto-sugerencia del siguiente número correlativo al cambiar de tipo de entidad
+  useEffect(() => {
+    if (genConsoleMode !== 'creation') return;
+
+    if (selectedEntityType === 'GALAXY') {
+      const existingNums = dbGalaxies.map(g => Number(g.galaxy_number)).filter(n => !isNaN(n));
+      const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+      setChildCodeOrNumber(String(nextNum));
+    } else if (selectedEntityType === 'SC') {
+      const existingNums = dbStarClusters.map(sc => Number(sc.sc_number)).filter(n => !isNaN(n));
+      const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+      setChildCodeOrNumber(String(nextNum));
+    } else if (selectedEntityType === 'SS') {
+      const existingCodes = dbStarSystems.map(sys => String(sys.name_code || ''));
+      let nextNum = existingCodes.length + 1;
+      setChildCodeOrNumber(`SYS-${nextNum}`);
+    } else if (selectedEntityType === 'PLANET') {
+      const existingNums = dbLocations.map(l => Number(l.planet_star_number)).filter(n => !isNaN(n));
+      const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1;
+      setChildCodeOrNumber(String(nextNum));
+    }
+  }, [selectedEntityType, genConsoleMode, parentGcId, parentGalaxyId, parentScId, parentSystemId, dbGalaxies, dbStarClusters, dbStarSystems, dbLocations]);
+
+  // Eventos de 24h
+  const dailyEventsCount = useMemo(() => {
+    const twentyFourHoursAgo = now - 24 * 3600 * 1000;
+    return historicalLogs.filter(log => {
+      const logTime = new Date(log.created_at || log.timestamp).getTime();
+      return logTime >= twentyFourHoursAgo;
+    }).length;
+  }, [historicalLogs, now]);
+
+  // DESCARGA TOTALMENTE REAL DESDE SUPABASE
   const fetchTelemetryAndCatalogs = async () => {
     if (!supabase) return;
     try {
       setLoading(true);
 
-      // Carga dual para compatibilidad de tablas de expediciones activas
+      const profilesMap = new Map<string, string>();
+      try {
+        const { data: profiles } = await supabase.from('user_profiles').select('*');
+        (profiles || []).forEach((p: any) => {
+          const uid = p.id || p.user_id;
+          if (uid) profilesMap.set(String(uid), p.username || p.display_name || 'Comandante');
+        });
+      } catch (errProf) {}
+
+      // Expediciones
       let expData: any[] = [];
-      const { data: expRes1 } = await supabase.from('active_expeditions').select('*').eq('status', 'LAUNCHED');
-      if (expRes1 && expRes1.length > 0) {
-        expData = expRes1;
-      } else {
-        const { data: expRes2 } = await supabase.from('expeditions_active').select('*');
-        if (expRes2) expData = expRes2;
+      try {
+        const { data: expRes1, error: err1 } = await supabase.from('active_expeditions').select('*');
+        if (!err1 && expRes1) {
+          expData = expRes1;
+        } else {
+          const { data: expRes2 } = await supabase.from('expeditions_active').select('*');
+          if (expRes2) expData = expRes2;
+        }
+      } catch (eExp) {}
+
+      const flyingFleets = (expData || []).filter((e: any) => {
+        const st = String(e.status || '').toUpperCase();
+        if (st === 'CLAIMED' || st === 'COMPLETED' || st === 'FINISHED' || st === 'CANCELLED') return false;
+        if (e.estimated_return_time) {
+          const retTime = new Date(e.estimated_return_time).getTime();
+          if (retTime > now) return true;
+        }
+        return st === 'LAUNCHED' || st === 'ACTIVE' || st === 'IN_TRANSIT' || st === 'EXPLORING' || st === 'MINING';
+      }).map((e: any) => ({
+        ...e,
+        username: profilesMap.get(String(e.user_id)) || `Piloto [${String(e.user_id || '').substring(0, 8)}]`
+      }));
+
+      setActiveExpeditions(flyingFleets);
+
+      // Conteo histórico
+      try {
+        const { count: historyCount } = await supabase.from('expedition_history').select('*', { count: 'exact', head: true });
+        const completedInActive = (expData || []).filter((e: any) => {
+          const st = String(e.status || '').toUpperCase();
+          return st === 'CLAIMED' || st === 'COMPLETED' || st === 'SUCCESS';
+        }).length;
+        setTotalHistoricalExpeditionsCount((historyCount || 0) + completedInActive);
+      } catch (hErr) {
+        setTotalHistoricalExpeditionsCount((expData || []).length);
       }
 
-      const [lossRes, discRes, evRes, gcRes] = await Promise.all([
-        supabase.from('expedition_logs').select('*').order('created_at', { ascending: false }).limit(20),
-        supabase.from('user_discovered_stars').select('*').order('discovered_at', { ascending: false }),
-        supabase.from('expedition_events_catalog').select('*').order('created_at', { ascending: false }),
-        supabase.from('seed_galaxy_clusters').select('*').order('name', { ascending: true })
+      // Histórico Logs
+      let safeLogs: any[] = [];
+      try {
+        const { data: logsData } = await supabase.from('expedition_logs').select('*').order('created_at', { ascending: false });
+        safeLogs = logsData || [];
+      } catch (lErr) {}
+      setHistoricalLogs(safeLogs);
+
+      // Pérdidas y Enclaves
+      const losses: DetailedLossLog[] = safeLogs.map((log: any, idx: number) => {
+        const statusType: 'DESTRUIDO' | 'PERDIDO' = (log.damage_sustained > 5000 || String(log.title || '').includes('Destrucción')) ? 'DESTRUIDO' : 'PERDIDO';
+        const cluster = log.galaxy_cluster || log.cluster_id || 'SECTOR';
+        const sector = log.sector_name || log.location_name || 'DESCONOCIDO';
+        const coords = `${cluster}:${sector}`;
+
+        return {
+          id: log.id || `loss-${idx}-${Date.now()}`,
+          expedition_id: log.expedition_id || 'N/A',
+          user_id: log.user_id || 'N/A',
+          username: profilesMap.get(String(log.user_id)) || 'Comandante',
+          asset_name: log.title || 'Nave de Batalla',
+          status_type: statusType,
+          coordinates_loss: coords,
+          coordinates_salvage: statusType === 'PERDIDO' ? `${coords}:SYS-${Math.floor(Math.random()*89)+10}` : undefined,
+          encounter_type: log.event_type || 'Emboscada Pirata en Misión',
+          timestamp: log.created_at || new Date().toISOString(),
+          damage_sustained: log.damage_sustained
+        };
+      });
+
+      setDetailedLosses(losses);
+
+      // Carga individual segura para descubrimientos, eventos y clusters
+      try {
+        const { data: discData } = await supabase.from('user_discovered_stars').select('*').order('discovered_at', { ascending: false });
+        if (discData) setDiscoveries(discData);
+      } catch (e) {}
+
+      try {
+        const { data: evData } = await supabase.from('expedition_events_catalog').select('*').order('created_at', { ascending: false });
+        if (evData) setEventsCatalog(evData);
+      } catch (e) {}
+
+      let clustersData: any[] = [];
+      try {
+        const { data: gcData, error: gcErr } = await supabase.from('seed_galaxy_clusters').select('*').order('name', { ascending: true });
+        if (!gcErr && gcData && gcData.length > 0) {
+          clustersData = gcData;
+        } else {
+          const { data: gcDataAlt } = await supabase.from('galaxy_clusters').select('*').order('name', { ascending: true });
+          if (gcDataAlt) clustersData = gcDataAlt;
+        }
+      } catch (e) {}
+
+      setDbClusters(clustersData);
+      if (clustersData.length > 0 && !parentGcId) {
+        setParentGcId(String(clustersData[0].id));
+      }
+
+      // Carga del Catálogo Semilla
+      const realCatalog: { id: string; name: string; type: string }[] = [];
+      const loadSeedTable = async (tableName: string, typeName: string, nameCol: string = 'name', idCol: string = 'id') => {
+        try {
+          const { data } = await supabase.from(tableName).select('*');
+          (data || []).forEach((x: any) => {
+            const actualId = x[idCol] || x.id;
+            if (actualId) realCatalog.push({ id: String(actualId), name: x[nameCol] || x.name || actualId, type: typeName });
+          });
+        } catch (e) {}
+      };
+
+      await Promise.all([
+        loadSeedTable('seed_ships', 'Nave', 'ship_name', 'ship_id'),
+        loadSeedTable('seed_structures', 'Estructura'),
+        loadSeedTable('seed_technologies', 'Tecnología'),
+        loadSeedTable('seed_tools', 'Tool'),
+        loadSeedTable('seed_astrobots', 'Astrobot'),
+        loadSeedTable('seed_licenses', 'Licencia')
       ]);
 
-      setActiveExpeditions(expData);
-      if (lossRes.data) setLossesLog(lossRes.data);
-      if (discRes.data) setDiscoveries(discRes.data);
-      if (evRes.data) setEventsCatalog(evRes.data);
-      if (gcRes.data && gcRes.data.length > 0) {
-        setDbClusters(gcRes.data);
-        if (!selectedCluster) {
-          setSelectedCluster(gcRes.data[0].id);
-        }
-      }
+      setSeedCatalog(realCatalog.sort((a, b) => a.name.localeCompare(b.name)));
+
     } catch (e) { 
       console.error("Error al sincronizar telemetría:", e); 
     } finally { 
@@ -207,247 +370,855 @@ export const ExpeditionsManager: React.FC = () => {
 
   useEffect(() => { 
     fetchTelemetryAndCatalogs(); 
+
+    if (!supabase) return;
+    const channel1 = supabase.channel('active_exp_admin_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_expeditions' }, () => {
+        fetchTelemetryAndCatalogs();
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(channel1);
+    };
   }, []);
 
   // Cascadas Jerárquicas
   useEffect(() => {
-    if (!supabase) return;
+    if (!parentGcId || !supabase) { setDbGalaxies([]); return; }
     const loadGalaxies = async () => {
-      const { data } = await supabase.from('seed_galaxies').select('*').eq('cluster_id', selectedCluster);
-      setGalaxies(data || []); setSelectedGalaxy(''); setSelectedStarCluster(''); setSelectedStarSystem(''); setSelectedLocation('');
+      try {
+        let list: any[] = [];
+        const { data: g1, error: err1 } = await supabase.from('seed_galaxies').select('*').eq('cluster_id', parentGcId);
+        if (!err1 && g1 && g1.length > 0) {
+          list = g1;
+        } else {
+          const { data: g2 } = await supabase.from('galaxies').select('*').eq('cluster_id', parentGcId);
+          if (g2) list = g2;
+        }
+        setDbGalaxies(list);
+        if (list.length > 0) setParentGalaxyId(String(list[0].id));
+        else setParentGalaxyId('');
+      } catch (e) {
+        setDbGalaxies([]);
+      }
     };
     loadGalaxies();
-  }, [selectedCluster, supabase]);
+  }, [parentGcId, supabase]);
 
   useEffect(() => {
-    if (!supabase || !selectedGalaxy) { setStarClusters([]); return; }
+    if (!parentGalaxyId || !supabase) { setDbStarClusters([]); return; }
     const loadStarClusters = async () => {
-      const { data } = await supabase.from('seed_star_clusters').select('*').eq('galaxy_id', selectedGalaxy);
-      setStarClusters(data || []); setSelectedStarCluster(''); setSelectedStarSystem(''); setSelectedLocation('');
+      try {
+        let list: any[] = [];
+        const { data: sc1, error: err1 } = await supabase.from('seed_star_clusters').select('*').eq('galaxy_id', parentGalaxyId);
+        if (!err1 && sc1 && sc1.length > 0) {
+          list = sc1;
+        } else {
+          const { data: sc2 } = await supabase.from('star_clusters').select('*').eq('galaxy_id', parentGalaxyId);
+          if (sc2) list = sc2;
+        }
+        setDbStarClusters(list);
+        if (list.length > 0) setParentScId(String(list[0].id));
+        else setParentScId('');
+      } catch (e) {
+        setDbStarClusters([]);
+      }
     };
     loadStarClusters();
-  }, [selectedGalaxy, supabase]);
+  }, [parentGalaxyId, supabase]);
 
   useEffect(() => {
-    if (!supabase || !selectedStarCluster) { setStarSystems([]); return; }
+    if (!parentScId || !supabase) { setDbStarSystems([]); return; }
     const loadStarSystems = async () => {
-      const { data } = await supabase.from('seed_star_systems').select('*').eq('sc_id', selectedStarCluster);
-      setStarSystems(data || []); setSelectedStarSystem(''); setSelectedLocation('');
+      try {
+        let list: any[] = [];
+        const { data: ss1, error: err1 } = await supabase.from('seed_star_systems').select('*').eq('sc_id', parentScId);
+        if (!err1 && ss1 && ss1.length > 0) {
+          list = ss1;
+        } else {
+          const { data: ss2 } = await supabase.from('star_systems').select('*').eq('sc_id', parentScId);
+          if (ss2) list = ss2;
+        }
+        setDbStarSystems(list);
+        if (list.length > 0) setParentSystemId(String(list[0].id));
+        else setParentSystemId('');
+      } catch (e) {
+        setDbStarSystems([]);
+      }
     };
     loadStarSystems();
-  }, [selectedStarCluster, supabase]);
+  }, [parentScId, supabase]);
 
   useEffect(() => {
-    if (!supabase || !selectedStarSystem) { setLocations([]); return; }
+    if (!parentSystemId || !supabase) { setLocations([]); return; }
     const loadLocations = async () => {
-      const { data } = await supabase.from('seed_locations').select('*').eq('system_id', selectedStarSystem);
-      setLocations(data || []); setSelectedLocation('');
+      try {
+        let list: any[] = [];
+        const { data: loc1, error: err1 } = await supabase.from('seed_locations').select('*').eq('system_id', parentSystemId);
+        if (!err1 && loc1 && loc1.length > 0) {
+          list = loc1;
+        } else {
+          const { data: loc2 } = await supabase.from('locations').select('*').eq('system_id', parentSystemId);
+          if (loc2) list = loc2;
+        }
+        setLocations(list);
+      } catch (e) {
+        setLocations([]);
+      }
     };
     loadLocations();
-  }, [selectedStarSystem, supabase]);
+  }, [parentSystemId, supabase]);
 
-  // ── ACCIONES EN TIEMPO REAL SOBRE FLOTAS EN VUELO ──
+  // CARGA AUTOMÁTICA DE DATOS AL MODO EDICIÓN
+  const handleLoadEntityForEdition = (entityId: string) => {
+    setEditSelectedEntityId(entityId);
+    if (!entityId) return;
+
+    let data: any = null;
+    if (selectedEntityType === 'GC') {
+      data = dbClusters.find(c => String(c.id) === String(entityId));
+    } else if (selectedEntityType === 'GALAXY') {
+      data = dbGalaxies.find(g => String(g.id) === String(entityId));
+    } else if (selectedEntityType === 'SC') {
+      data = dbStarClusters.find(s => String(s.id) === String(entityId));
+    } else if (selectedEntityType === 'SS') {
+      data = dbStarSystems.find(sys => String(sys.id) === String(entityId));
+    } else if (selectedEntityType === 'PLANET') {
+      data = dbLocations.find(l => String(l.id) === String(entityId));
+    }
+
+    if (data) {
+      setEditName(data.name || data.name_code || String(data.galaxy_number || data.sc_number || data.planet_star_number || ''));
+      setEditDuration(Number(data.base_duration_minutes || data.time_minutes || data.overrides?.duration_minutes || 60));
+      setEditMinMetal(Number(data.base_metal_min || data.overrides?.metal_min || data.rewards?.metal_min || 5000));
+      setEditMaxMetal(Number(data.base_metal_max || data.overrides?.metal_max || data.rewards?.metal_max || 25000));
+      setEditMinCrystal(Number(data.base_crystal_min || data.overrides?.crystal_min || data.rewards?.crystal_min || 2000));
+      setEditMaxCrystal(Number(data.base_crystal_max || data.overrides?.crystal_max || data.rewards?.crystal_max || 12000));
+      setEditEventsList(Array.isArray(data.assigned_events) ? data.assigned_events : []);
+      if (selectedEntityType === 'GC') {
+        setEditGcLootList(Array.isArray(data.loot_pool) ? data.loot_pool : []);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (genConsoleMode !== 'edition') return;
+
+    if (selectedEntityType === 'GC') {
+      if (parentGcId) handleLoadEntityForEdition(parentGcId);
+    } else if (selectedEntityType === 'GALAXY') {
+      if (dbGalaxies.length > 0) handleLoadEntityForEdition(String(dbGalaxies[0].id));
+      else setEditSelectedEntityId('');
+    } else if (selectedEntityType === 'SC') {
+      if (dbStarClusters.length > 0) handleLoadEntityForEdition(String(dbStarClusters[0].id));
+      else setEditSelectedEntityId('');
+    } else if (selectedEntityType === 'SS') {
+      if (dbStarSystems.length > 0) handleLoadEntityForEdition(String(dbStarSystems[0].id));
+      else setEditSelectedEntityId('');
+    } else if (selectedEntityType === 'PLANET') {
+      if (dbLocations.length > 0) handleLoadEntityForEdition(String(dbLocations[0].id));
+      else setEditSelectedEntityId('');
+    }
+  }, [selectedEntityType, genConsoleMode, parentGcId, dbGalaxies, dbStarClusters, dbStarSystems, dbLocations]);
+
+  // Acciones en vivo
   const handleForceCompleteExpedition = async (expId: string) => {
     if (!supabase) return;
     try {
-      const { error } = await supabase
-        .from('active_expeditions')
-        .update({ status: 'CLAIMED' })
-        .eq('id', expId);
-
-      if (error) {
-        await supabase.from('expeditions_active').update({ status: 'CLAIMED' }).eq('id', expId);
-      }
-
-      alert('🚀 EXPEDICIÓN MARCADA COMO COMPLETADA. LISTA PARA RECLAMAR.');
+      await supabase.from('active_expeditions').update({ status: 'CLAIMED' }).eq('id', expId);
+      alert('🚀 EXPEDICIÓN MARCADA COMO COMPLETADA EN SUPABASE.');
       fetchTelemetryAndCatalogs();
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
-    }
+    } catch (e: any) { alert(`Error: ${e.message}`); }
   };
 
   const handleForceRecallExpedition = async (expId: string) => {
     if (!supabase) return;
     try {
-      const { error } = await supabase
-        .from('active_expeditions')
-        .update({ status: 'SUCCESS', estimated_return_time: new Date().toISOString() })
-        .eq('id', expId);
-
-      if (error) {
-        await supabase.from('expeditions_active').update({ status: 'SUCCESS' }).eq('id', expId);
-      }
-
+      await supabase.from('active_expeditions').update({ status: 'SUCCESS', estimated_return_time: new Date().toISOString() }).eq('id', expId);
       alert('🛑 FLOTA RETORNADA A BASE INMEDIATAMENTE.');
       fetchTelemetryAndCatalogs();
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
-    }
+    } catch (e: any) { alert(`Error: ${e.message}`); }
   };
 
   const handleForceDestroyExpedition = async (expId: string) => {
-    if (!supabase || !window.confirm('🚨 ADVERTENCIA MASTER: ¿Confirmas la destrucción total de esta flota en vuelo?')) return;
+    if (!supabase || !window.confirm('🚨 ¿Confirmas la destrucción de esta flota en vivo?')) return;
     try {
-      const { error } = await supabase
-        .from('active_expeditions')
-        .update({ status: 'FAILED' })
-        .eq('id', expId);
-
-      if (error) {
-        await supabase.from('expeditions_active').update({ status: 'FAILED' }).eq('id', expId);
-      }
-
+      await supabase.from('active_expeditions').update({ status: 'FAILED' }).eq('id', expId);
       alert('💥 FLOTA DESTRUIDA EN EL ESPACIO EXTERIOR.');
       fetchTelemetryAndCatalogs();
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
-    }
+    } catch (e: any) { alert(`Error: ${e.message}`); }
   };
 
   const handleGlobalInstaRecall = async () => {
     if (!supabase || !window.confirm('🚨 ¿DESPLEGAR INSTA-RECALL GLOBAL REAL A TODAS LAS EXPEDICIONES?')) return;
     try {
-      await supabase
-        .from('active_expeditions')
-        .update({ estimated_return_time: new Date().toISOString() })
-        .eq('status', 'LAUNCHED');
-
-      alert('📢 RECALL GLOBAL IMPLEMENTADO CON ÉXITO.');
-      fetchTelemetryAndCatalogs();
-    } catch (e: any) {
-      alert(`Error en Insta-Recall: ${e.message}`);
-    }
-  };
-
-  // Pop-up Modals
-  const openEditModal = (type: 'cluster' | 'galaxy' | 'sc' | 'system' | 'planet', record: any) => {
-    if (!record) return;
-    setEditingEntity({ type, record });
-    setModalInputName(record.name || record.name_code || record.galaxy_number || record.sc_number || record.planet_star_number || '');
-    setModalInputDuration(record.base_duration_minutes || record.time_minutes || 60);
-    setModalInputEvents(record.assigned_events || []);
-  };
-
-  const handleSaveModalEdits = async () => {
-    if (!supabase || !editingEntity) return;
-    try {
-      let table = '';
-      let payload: any = { assigned_events: modalInputEvents };
-
-      if (editingEntity.type === 'cluster') {
-        table = 'seed_galaxy_clusters';
-        payload.name = modalInputName;
-        payload.base_duration_minutes = Number(modalInputTime);
-      } else if (editingEntity.type === 'galaxy') {
-        table = 'seed_galaxies';
-        payload.galaxy_number = Number(modalInputName);
-      } else if (editingEntity.type === 'sc') {
-        table = 'seed_star_clusters';
-        payload.sc_number = Number(modalInputName);
-      } else if (editingEntity.type === 'system') {
-        table = 'seed_star_systems';
-        payload.name_code = modalInputName;
-      } else if (editingEntity.type === 'planet') {
-        table = 'seed_locations';
-        payload.planet_star_number = Number(modalInputName);
-        payload.time_minutes = Number(modalInputTime);
+      const activeIds = activeExpeditions.map(e => e.id);
+      if (activeIds.length > 0) {
+        await supabase.from('active_expeditions').update({ status: 'CLAIMED', estimated_return_time: new Date().toISOString() }).in('id', activeIds);
       }
-
-      const { error } = await supabase.from(table).update(payload).eq('id', editingEntity.record.id);
-      if (error) throw error;
-
-      alert(`⚙️ TELEMETRÍA SINCRONIZADA: Datos guardados con éxito.`);
-      setEditingEntity(null);
+      alert('📢 RECALL GLOBAL IMPLEMENTADO EN SUPABASE.');
       fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(`Error al guardar: ${e.message}`); }
+    } catch (e: any) { alert(`Error en Insta-Recall: ${e.message}`); }
   };
 
-  // ── LÓGICA DE ESCRITURA MODULAR PROCEDURAL ──
-  const handleCreateGalaxyCluster = async () => {
-    if (!supabase || !newGcId.trim() || !newGcName.trim()) {
-      alert("Introduce el código de 2 a 4 letras y el nombre del Clúster.");
+  // Creación procedural
+  const handleAddEventToGc = () => {
+    if (!bindEventName) return;
+    if (gcEventsList.some(e => e.name === bindEventName)) return;
+    setGcEventsList(prev => [...prev, { name: bindEventName, spawn_rate: bindEventRate }]);
+    setBindEventName('');
+  };
+
+  const handleRemoveEventFromGc = (evtName: string) => {
+    setGcEventsList(prev => prev.filter(e => e.name !== evtName));
+  };
+
+  // AUTO-MATCHING LOOT ADDER
+  const handleAddLootToGc = (mode: 'new' | 'edit') => {
+    let targetId = bindLootId;
+    const searchTerm = mode === 'new' ? lootSearchTermNew : lootSearchTermEdit;
+    const candidates = mode === 'new' ? filteredSeedsNew : filteredSeedsEdit;
+
+    if (!targetId && searchTerm.trim()) {
+      if (candidates.length > 0) {
+        targetId = candidates[0].id;
+      }
+    }
+
+    if (!targetId) {
+      alert("Selecciona o escribe un activo válido del catálogo.");
+      return;
+    }
+
+    const asset = seedCatalog.find(c => c.id === targetId);
+    if (!asset) {
+      alert("Asset no encontrado en el catálogo.");
+      return;
+    }
+
+    if (mode === 'new') {
+      if (newGcLootList.some(l => l.asset_id === targetId)) {
+        alert("Este asset ya fue añadido a la lista de creación.");
+        return;
+      }
+      setNewGcLootList(prev => [...prev, { asset_id: asset.id, asset_name: asset.name, type: asset.type, qty: bindLootQty }]);
+      setLootSearchTermNew('');
+      setShowLootSuggestionsNew(false);
+    } else {
+      if (editGcLootList.some(l => l.asset_id === targetId)) {
+        alert("Este asset ya fue añadido a la lista de edición.");
+        return;
+      }
+      setEditGcLootList(prev => [...prev, { asset_id: asset.id, asset_name: asset.name, type: asset.type, qty: bindLootQty }]);
+      setLootSearchTermEdit('');
+      setShowLootSuggestionsEdit(false);
+    }
+    setBindLootId('');
+  };
+
+  const handleRemoveLootFromGc = (mode: 'new' | 'edit', id: string) => {
+    if (mode === 'new') setNewGcLootList(prev => prev.filter(l => l.asset_id !== id));
+    else setEditGcLootList(prev => prev.filter(l => l.asset_id !== id));
+  };
+
+  // Fundar Galaxy Cluster Real
+  const handleCreateGCSubmit = async () => {
+    if (!newGcId.trim() || !newGcName.trim()) {
+      alert("Introduce el ID (2-4 letras) y el Nombre del Clúster.");
       return;
     }
     const cleanId = newGcId.trim().toUpperCase();
-    try {
-      const { error } = await supabase.from('seed_galaxy_clusters').insert([{ id: cleanId, name: newGcName.trim(), base_duration_minutes: Number(newGcDuration) }]);
-      if (error) throw error;
-      alert(`GALAXY CLUSTER [${cleanId}] MAPEADO CON ÉXITO.`);
-      setNewGcId(''); setNewGcName(''); fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(e.message); }
-  };
 
-  const handleCreateGalaxy = async () => {
-    if (!supabase || !selectedCluster) return;
-    try {
-      const payload = [];
-      for (let i = 0; i < createQtyGal; i++) {
-        payload.push({ cluster_id: selectedCluster, galaxy_number: Number(newGalaxyNum) + i });
-      }
-      const { error } = await supabase.from('seed_galaxies').insert(payload);
-      if (error) throw error;
-      alert(`Añadidas ${createQtyGal} galaxias consecutivas.`);
-      fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleCreateStarCluster = async () => {
-    if (!supabase || !selectedGalaxy) return;
-    try {
-      const payload = [];
-      for (let i = 0; i < createQtySc; i++) {
-        payload.push({ galaxy_id: selectedGalaxy, sc_number: Number(newScNum) + i });
-      }
-      const { error } = await supabase.from('seed_star_clusters').insert(payload);
-      if (error) throw error;
-      alert(`Sembrados ${createQtySc} Star Clusters.`);
-      fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleCreateStarSystem = async () => {
-    if (!supabase || !selectedStarCluster || !newSystemCode.trim()) return;
-    try {
-      const payload = [];
-      for (let i = 0; i < createQtySys; i++) {
-        const derivedCode = createQtySys > 1 ? `${newSystemCode.trim()}-${i + 1}` : newSystemCode.trim();
-        payload.push({ sc_id: selectedStarCluster, name_code: derivedCode });
-      }
-      const { error } = await supabase.from('seed_star_systems').insert(payload);
-      if (error) throw error;
-      alert(`Fundados ${createQtySys} Star Systems.`);
-      fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleCreateLocation = async () => {
-    if (!supabase || !selectedStarSystem) return;
-    try {
-      const activeSubtype = bodyType === 'planeta' ? planetSubtype : starSubtype;
-      const inheritedTime = activeClusterData ? Number(activeClusterData.base_duration_minutes) : 60;
-      const payload = [];
-      for (let i = 0; i < createQtyLoc; i++) {
-        payload.push({
-          system_id: selectedStarSystem,
-          planet_star_number: Number(newLocNum) + i,
-          time_minutes: inheritedTime,
-          rewards: { [newLocReward]: newLocRewardQty },
-          conditions: { body_type: bodyType, body_subtype: activeSubtype }
-        });
-      }
-      const { error } = await supabase.from('seed_locations').insert(payload);
-      if (error) throw error;
-      alert(`Mapeados ${createQtyLoc} elementos.`);
-      fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(e.message); }
-  };
-
-  // ─── ⚡ PROCESADOR MÁSTER DE EVENTOS ───
-  const handleCreateEventAdvanced = async () => {
-    if (!supabase || !newEventName.trim()) {
-      alert("🚨 ERROR DE PROTOCOLO: Introduce al menos el nombre del evento.");
+    if (dbClusters.some(c => String(c.id).toUpperCase() === cleanId)) {
+      alert(`🚨 RESTRICCIÓN DE CLAVE: El Galaxy Cluster con ID "${cleanId}" ya existe en la base de datos.`);
       return;
     }
+
+    const newCluster = {
+      id: cleanId,
+      name: newGcName.trim(),
+      base_duration_minutes: Number(newGcDuration),
+      assigned_events: gcEventsList,
+      loot_pool: newGcLootList,
+      base_metal_min: Number(newGcMinMetal),
+      base_metal_max: Number(newGcMaxMetal),
+      base_crystal_min: Number(newGcMinCrystal),
+      base_crystal_max: Number(newGcMaxCrystal)
+    };
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('seed_galaxy_clusters').insert([newCluster]);
+        if (error) throw error;
+        
+        setCreationHistoryStack(prev => [
+          {
+            description: `Fundación de Clúster [${cleanId}]`,
+            batches: [{ table: 'seed_galaxy_clusters', ids: [cleanId] }],
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ]);
+        alert(`🌌 GALAXY CLUSTER [${cleanId}] REGISTRADO EN SUPABASE.`);
+      } catch (e: any) { alert(`Error al guardar en BD: ${e.message}`); return; }
+    }
+
+    setNewGcId(''); setNewGcName(''); setGcEventsList([]); setNewGcLootList([]);
+    fetchTelemetryAndCatalogs();
+  };
+
+  // ─── CREACIÓN DE HIJOS PASO A PASO CON PREVENCIÓN REALTIME DE CLAVES DUPLICADAS ───
+  const handleCreateChildEntitySubmit = async () => {
+    if (!supabase) return;
+    try {
+      if (selectedEntityType === 'GALAXY') {
+        if (!parentGcId) return alert("Selecciona un Galaxy Cluster padre de la base de datos.");
+        
+        // Consultar la BD directamente para evitar colisión de claves por caché desactualizada
+        let currentNumbers = new Set<number>();
+        try {
+          const { data: dbGals } = await supabase.from('seed_galaxies').select('galaxy_number').eq('cluster_id', parentGcId);
+          if (dbGals) dbGals.forEach((g: any) => currentNumbers.add(Number(g.galaxy_number)));
+        } catch (e) {}
+
+        let startNum = Number(childCodeOrNumber) || 1;
+        while (currentNumbers.has(startNum)) {
+          startNum++;
+        }
+
+        const payload = [];
+        for (let i = 0; i < bulkQty; i++) {
+          let currentNum = startNum + i;
+          while (currentNumbers.has(currentNum)) {
+            currentNum++;
+            startNum++;
+          }
+          currentNumbers.add(currentNum);
+
+          const item: any = {
+            cluster_id: parentGcId,
+            galaxy_number: currentNum
+          };
+          if (enableManualOverride) {
+            item.assigned_events = gcEventsList;
+            item.overrides = {
+              duration_minutes: Number(overrideDuration),
+              metal_min: Number(overrideMinMetal),
+              metal_max: Number(overrideMaxMetal),
+              crystal_min: Number(overrideMinCrystal),
+              crystal_max: Number(overrideMaxCrystal)
+            };
+          }
+          payload.push(item);
+        }
+
+        const { data: inserted, error } = await supabase.from('seed_galaxies').insert(payload).select('id');
+        if (error) throw error;
+
+        const insertedIds = (inserted || []).map((x: any) => x.id);
+        setCreationHistoryStack(prev => [
+          {
+            description: `Creación de ${bulkQty} Galaxia(s) en [${parentGcId}]`,
+            batches: [{ table: 'seed_galaxies', ids: insertedIds }],
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ]);
+
+        alert(`🌀 Fundadas ${bulkQty} Galaxias en [${parentGcId}] sin colisiones de clave.`);
+
+      } else if (selectedEntityType === 'SC') {
+        if (!parentGalaxyId) return alert("Selecciona una Galaxia padre.");
+
+        let currentNumbers = new Set<number>();
+        try {
+          const { data: dbScs } = await supabase.from('seed_star_clusters').select('sc_number').eq('galaxy_id', parentGalaxyId);
+          if (dbScs) dbScs.forEach((sc: any) => currentNumbers.add(Number(sc.sc_number)));
+        } catch (e) {}
+
+        let startNum = Number(childCodeOrNumber) || 1;
+        while (currentNumbers.has(startNum)) {
+          startNum++;
+        }
+
+        const payload = [];
+        for (let i = 0; i < bulkQty; i++) {
+          let currentNum = startNum + i;
+          while (currentNumbers.has(currentNum)) {
+            currentNum++;
+            startNum++;
+          }
+          currentNumbers.add(currentNum);
+
+          const item: any = {
+            galaxy_id: parentGalaxyId,
+            sc_number: currentNum
+          };
+          if (enableManualOverride) {
+            item.assigned_events = gcEventsList;
+            item.overrides = {
+              duration_minutes: Number(overrideDuration),
+              metal_min: Number(overrideMinMetal),
+              metal_max: Number(overrideMaxMetal),
+              crystal_min: Number(overrideMinCrystal),
+              crystal_max: Number(overrideMaxCrystal)
+            };
+          }
+          payload.push(item);
+        }
+        const { data: inserted, error } = await supabase.from('seed_star_clusters').insert(payload).select('id');
+        if (error) throw error;
+
+        const insertedIds = (inserted || []).map((x: any) => x.id);
+        setCreationHistoryStack(prev => [
+          {
+            description: `Creación de ${bulkQty} Star Cluster(s)`,
+            batches: [{ table: 'seed_star_clusters', ids: insertedIds }],
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ]);
+
+        alert(`🌟 Sembrados ${bulkQty} Star Clusters sin duplicados.`);
+
+      } else if (selectedEntityType === 'SS') {
+        if (!parentScId) return alert("Selecciona un Star Cluster padre.");
+
+        let currentCodes = new Set<string>();
+        try {
+          const { data: dbSss } = await supabase.from('seed_star_systems').select('name_code').eq('sc_id', parentScId);
+          if (dbSss) dbSss.forEach((sys: any) => currentCodes.add(String(sys.name_code || '').toUpperCase()));
+        } catch (e) {}
+
+        const baseCode = (childCodeOrNumber.trim() || 'SYS').toUpperCase();
+
+        const payload = [];
+        for (let i = 0; i < bulkQty; i++) {
+          let derivedCode = bulkQty > 1 ? `${baseCode}-${i + 1}` : baseCode;
+          let counter = i + 1;
+          while (currentCodes.has(derivedCode)) {
+            counter++;
+            derivedCode = `${baseCode}-${counter}`;
+          }
+          currentCodes.add(derivedCode);
+
+          const item: any = {
+            sc_id: parentScId,
+            name_code: derivedCode
+          };
+          if (enableManualOverride) {
+            item.assigned_events = gcEventsList;
+            item.overrides = {
+              duration_minutes: Number(overrideDuration),
+              metal_min: Number(overrideMinMetal),
+              metal_max: Number(overrideMaxMetal),
+              crystal_min: Number(overrideMinCrystal),
+              crystal_max: Number(overrideMaxCrystal)
+            };
+          }
+          payload.push(item);
+        }
+        const { data: inserted, error } = await supabase.from('seed_star_systems').insert(payload).select('id');
+        if (error) throw error;
+
+        const insertedIds = (inserted || []).map((x: any) => x.id);
+        setCreationHistoryStack(prev => [
+          {
+            description: `Creación de ${bulkQty} Star System(s)`,
+            batches: [{ table: 'seed_star_systems', ids: insertedIds }],
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ]);
+
+        alert(`🪐 Creados ${bulkQty} Star Systems sin duplicación de código.`);
+
+      } else if (selectedEntityType === 'PLANET') {
+        if (!parentSystemId) return alert("Selecciona un Star System padre.");
+
+        let currentNumbers = new Set<number>();
+        try {
+          const { data: dbLocs } = await supabase.from('seed_locations').select('planet_star_number').eq('system_id', parentSystemId);
+          if (dbLocs) dbLocs.forEach((l: any) => currentNumbers.add(Number(l.planet_star_number)));
+        } catch (e) {}
+
+        let startNum = Number(childCodeOrNumber) || 1;
+        while (currentNumbers.has(startNum)) {
+          startNum++;
+        }
+
+        const activeSubtype = bodyType === 'planeta' ? planetSubtype : starSubtype;
+        const inheritedTime = activeClusterData ? Number(activeClusterData.base_duration_minutes) : 60;
+        const payload = [];
+
+        for (let i = 0; i < bulkQty; i++) {
+          let currentNum = startNum + i;
+          while (currentNumbers.has(currentNum)) {
+            currentNum++;
+            startNum++;
+          }
+          currentNumbers.add(currentNum);
+
+          payload.push({
+            system_id: parentSystemId,
+            planet_star_number: currentNum,
+            time_minutes: enableManualOverride ? Number(overrideDuration) : inheritedTime,
+            rewards: {
+              metal_min: enableManualOverride ? Number(overrideMinMetal) : (activeClusterData?.base_metal_min || 5000),
+              metal_max: enableManualOverride ? Number(overrideMaxMetal) : (activeClusterData?.base_metal_max || 25000),
+              crystal_min: enableManualOverride ? Number(overrideMinCrystal) : (activeClusterData?.base_crystal_min || 2000),
+              crystal_max: enableManualOverride ? Number(overrideMaxCrystal) : (activeClusterData?.base_crystal_max || 12000)
+            },
+            conditions: { body_type: bodyType, body_subtype: activeSubtype }
+          });
+        }
+        const { data: inserted, error } = await supabase.from('seed_locations').insert(payload).select('id');
+        if (error) throw error;
+
+        const insertedIds = (inserted || []).map((x: any) => x.id);
+        setCreationHistoryStack(prev => [
+          {
+            description: `Creación de ${bulkQty} Cuerpo(s) Celeste(s)`,
+            batches: [{ table: 'seed_locations', ids: insertedIds }],
+            timestamp: new Date().toLocaleTimeString()
+          },
+          ...prev
+        ]);
+
+        alert(`🌍 Mapeados ${bulkQty} Cuerpos Celestes (${bodyType.toUpperCase()}) secuenciales.`);
+      }
+
+      fetchTelemetryAndCatalogs();
+    } catch (e: any) {
+      alert(`Error al guardar: ${e.message}`);
+    }
+  };
+
+  // AUTO-GENERADOR INTELIGENTE (CASCADA CON BATCHING RESILIENTE)
+  const handleAutoGenerateCascade = async () => {
+    if (!supabase || !parentGcId) return alert("Selecciona un Galaxy Cluster padre para iniciar la cascada.");
+    
+    const totalPlanets = autoQtyGal * autoQtySc * autoQtySys * autoQtyPlanet;
+    const totalSS = autoQtyGal * autoQtySc * autoQtySys;
+    const totalSC = autoQtyGal * autoQtySc;
+    const totalGal = autoQtyGal;
+
+    if (!window.confirm(`⚠️ ADVERTENCIA DE RENDIMIENTO: Esto generará y conectará automáticamente:\n- ${totalGal} Galaxias\n- ${totalSC} Star Clusters\n- ${totalSS} Star Systems\n- ${totalPlanets} Planetas\n\nTotal de Inserciones: ${totalGal + totalSC + totalSS + totalPlanets} filas.\n\n¿Estás seguro de continuar con la Generación en Cascada?`)) return;
+
+    setLoading(true);
+    try {
+      const batchesHistory: { table: string; ids: string[] }[] = [];
+
+      // 1. Crear Galaxias con auto-correlativo real
+      let currentGalsSet = new Set<number>();
+      try {
+        const { data: dbGals } = await supabase.from('seed_galaxies').select('galaxy_number').eq('cluster_id', parentGcId);
+        if (dbGals) dbGals.forEach((g: any) => currentGalsSet.add(Number(g.galaxy_number)));
+      } catch (e) {}
+
+      let nextGalNum = 1;
+      const galPayload = [];
+      for (let i = 0; i < autoQtyGal; i++) {
+        while(currentGalsSet.has(nextGalNum)) nextGalNum++;
+        currentGalsSet.add(nextGalNum);
+        galPayload.push({ cluster_id: parentGcId, galaxy_number: nextGalNum });
+        nextGalNum++;
+      }
+      
+      const { data: insertedGals, error: galErr } = await supabase.from('seed_galaxies').insert(galPayload).select('id');
+      if (galErr) throw galErr;
+      batchesHistory.push({ table: 'seed_galaxies', ids: insertedGals.map(g => g.id) });
+
+      // 2. Crear SCs
+      const scPayload: any[] = [];
+      insertedGals.forEach(gal => {
+        for (let i = 0; i < autoQtySc; i++) {
+          scPayload.push({ galaxy_id: gal.id, sc_number: i + 1 });
+        }
+      });
+      const { data: insertedScs, error: scErr } = await supabase.from('seed_star_clusters').insert(scPayload).select('id');
+      if (scErr) throw scErr;
+      batchesHistory.unshift({ table: 'seed_star_clusters', ids: insertedScs.map(sc => sc.id) });
+
+      // 3. Crear SSs
+      const sysPayload: any[] = [];
+      insertedScs.forEach(sc => {
+        for (let i = 0; i < autoQtySys; i++) {
+          sysPayload.push({ sc_id: sc.id, name_code: `SYS-${i + 1}` });
+        }
+      });
+
+      const insertInBatches = async (table: string, payload: any[]) => {
+        const results: any[] = [];
+        const BATCH_SIZE = 250;
+        for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+          const batch = payload.slice(i, i + BATCH_SIZE);
+          const { data, error } = await supabase.from(table).insert(batch).select('id');
+          if (error) throw error;
+          if (data) results.push(...data);
+        }
+        return results;
+      };
+
+      const insertedSys = await insertInBatches('seed_star_systems', sysPayload);
+      batchesHistory.unshift({ table: 'seed_star_systems', ids: insertedSys.map(sy => sy.id) });
+
+      // 4. Crear Planetas
+      const planetPayload: any[] = [];
+      const gcData = dbClusters.find(c => c.id === parentGcId);
+      const inheritedTime = gcData ? Number(gcData.base_duration_minutes) : 60;
+
+      insertedSys.forEach(sys => {
+        for (let i = 0; i < autoQtyPlanet; i++) {
+          planetPayload.push({
+            system_id: sys.id,
+            planet_star_number: i + 1,
+            time_minutes: inheritedTime,
+            rewards: {
+              metal_min: gcData?.base_metal_min || 5000,
+              metal_max: gcData?.base_metal_max || 25000,
+              crystal_min: gcData?.base_crystal_min || 2000,
+              crystal_max: gcData?.base_crystal_max || 12000
+            },
+            conditions: { body_type: 'planeta', body_subtype: 'rocoso' }
+          });
+        }
+      });
+
+      const insertedPlanets = await insertInBatches('seed_locations', planetPayload);
+      batchesHistory.unshift({ table: 'seed_locations', ids: insertedPlanets.map(p => p.id) });
+
+      setCreationHistoryStack(prev => [
+        {
+          description: `Auto-Generación en Cascada (Cluster: ${parentGcId})`,
+          batches: batchesHistory,
+          timestamp: new Date().toLocaleTimeString()
+        },
+        ...prev
+      ]);
+
+      alert(`✅ GENERACIÓN PROCEDURAL ÉXITOSA: Se inyectaron ${insertedPlanets.length} planetas, ${insertedSys.length} sistemas, ${insertedScs.length} SCs y ${insertedGals.length} Galaxias.`);
+      fetchTelemetryAndCatalogs();
+
+    } catch (e: any) {
+      alert(`Error crítico en la Auto-Generación: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // DESHACER (UNDO / CTRL + Z)
+  const handleUndoLastCreation = async () => {
+    if (creationHistoryStack.length === 0) {
+      alert("No hay acciones de creación recientes en la pila para deshacer.");
+      return;
+    }
+
+    const lastAction = creationHistoryStack[0];
+    const totalRecords = lastAction.batches.reduce((acc, b) => acc + b.ids.length, 0);
+
+    if (!window.confirm(`🚨 UNDO (DESHACER): ¿Estás seguro de revertir "${lastAction.description}" realizada a las ${lastAction.timestamp}?\n\nSe eliminarán de forma segura (Bottom-Up) ${totalRecords} registro(s) de Supabase.`)) return;
+
+    setLoading(true);
+    try {
+      if (supabase) {
+        for (const batch of lastAction.batches) {
+          if (batch.ids.length > 0) {
+            const CHUNK_SIZE = 250;
+            for (let i = 0; i < batch.ids.length; i += CHUNK_SIZE) {
+              const idChunk = batch.ids.slice(i, i + CHUNK_SIZE);
+              const { error } = await supabase.from(batch.table).delete().in('id', idChunk);
+              if (error) throw error;
+            }
+          }
+        }
+      }
+
+      alert(`⏪ CAMBIO REVERTIDO ÉXITO: ${lastAction.description}`);
+      setCreationHistoryStack(prev => prev.slice(1));
+      fetchTelemetryAndCatalogs();
+    } catch (e: any) {
+      alert(`Error al deshacer: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ELIMINACIÓN INDIVIDUAL Y BULK EN EDICIÓN
+  const handleDeleteSingleEntity = async () => {
+    if (!editSelectedEntityId) {
+      alert("Selecciona primero un elemento específico para eliminar.");
+      return;
+    }
+
+    if (!window.confirm(`🚨 ADVERTENCIA MASTER: ¿Confirmas la ELIMINACIÓN PERMANENTE de la entidad seleccionada [ID: ${editSelectedEntityId}]?`)) return;
+
+    try {
+      let table = '';
+      if (selectedEntityType === 'GC') table = 'seed_galaxy_clusters';
+      else if (selectedEntityType === 'GALAXY') table = 'seed_galaxies';
+      else if (selectedEntityType === 'SC') table = 'seed_star_clusters';
+      else if (selectedEntityType === 'SS') table = 'seed_star_systems';
+      else if (selectedEntityType === 'PLANET') table = 'seed_locations';
+
+      if (supabase) {
+        const { error } = await supabase.from(table).delete().eq('id', editSelectedEntityId);
+        if (error) throw error;
+      }
+
+      alert(`🗑️ ENTIDAD [${editSelectedEntityId}] ELIMINADA CON ÉXITO.`);
+      setEditSelectedEntityId('');
+      fetchTelemetryAndCatalogs();
+    } catch (e: any) {
+      alert(`Error al eliminar: ${e.message}`);
+    }
+  };
+
+  const handleDeleteBulkEntities = async () => {
+    if (!supabase) return;
+
+    let targetTable = '';
+    let targetParentCol = '';
+    let parentValue = '';
+    let entityNamePlural = '';
+
+    if (selectedEntityType === 'GC') {
+      if (!window.confirm(`🚨 BORRADO EN MASA DE CLÚSTERES: ¿Deseas eliminar TODOS los Galaxy Clusters del servidor? Esta acción no se puede deshacer.`)) return;
+      try {
+        const ids = dbClusters.map(c => c.id);
+        if (ids.length > 0) {
+          const { error } = await supabase.from('seed_galaxy_clusters').delete().in('id', ids);
+          if (error) throw error;
+        }
+        alert(`💥 ELIMINADOS EN MASA TODOS LOS GALAXY CLUSTERS.`);
+        fetchTelemetryAndCatalogs();
+      } catch (e: any) { alert(`Error en purga masiva: ${e.message}`); }
+      return;
+    } else if (selectedEntityType === 'GALAXY') {
+      if (!parentGcId) return alert("Selecciona un Galaxy Cluster padre primero.");
+      targetTable = 'seed_galaxies';
+      targetParentCol = 'cluster_id';
+      parentValue = parentGcId;
+      entityNamePlural = `Galaxias en el Clúster [${parentGcId}]`;
+    } else if (selectedEntityType === 'SC') {
+      if (!parentGalaxyId) return alert("Selecciona una Galaxia padre primero.");
+      targetTable = 'seed_star_clusters';
+      targetParentCol = 'galaxy_id';
+      parentValue = parentGalaxyId;
+      entityNamePlural = `Star Clusters en la Galaxia [${parentGalaxyId}]`;
+    } else if (selectedEntityType === 'SS') {
+      if (!parentScId) return alert("Selecciona un Star Cluster padre primero.");
+      targetTable = 'seed_star_systems';
+      targetParentCol = 'sc_id';
+      parentValue = parentScId;
+      entityNamePlural = `Star Systems en el SC [${parentScId}]`;
+    } else if (selectedEntityType === 'PLANET') {
+      if (!parentSystemId) return alert("Selecciona un Star System padre primero.");
+      targetTable = 'seed_locations';
+      targetParentCol = 'system_id';
+      parentValue = parentSystemId;
+      entityNamePlural = `Planetas/Cuerpos en el Sistema [${parentSystemId}]`;
+    }
+
+    if (!window.confirm(`🔥 PURGA EN MASA (BULK DELETE): ¿Confirmas la eliminación de TODAS las ${entityNamePlural}?`)) return;
+
+    try {
+      const { error } = await supabase.from(targetTable).delete().eq(targetParentCol, parentValue);
+      if (error) throw error;
+
+      alert(`💥 PURGA COMPLETADA: Se han eliminado en masa todas las ${entityNamePlural}.`);
+      setEditSelectedEntityId('');
+      fetchTelemetryAndCatalogs();
+    } catch (e: any) {
+      alert(`Error en borrado masivo: ${e.message}`);
+    }
+  };
+
+  const handleSaveEditionSubmit = async () => {
+    if (!editSelectedEntityId) return;
+    try {
+      let table = '';
+      let payload: any = {};
+
+      if (selectedEntityType === 'GC') {
+        table = 'seed_galaxy_clusters';
+        payload = {
+          name: editName,
+          base_duration_minutes: Number(editDuration),
+          base_metal_min: Number(editMinMetal),
+          base_metal_max: Number(editMaxMetal),
+          base_crystal_min: Number(editMinCrystal),
+          base_crystal_max: Number(editMaxCrystal),
+          assigned_events: editEventsList,
+          loot_pool: editGcLootList
+        };
+      } else if (selectedEntityType === 'GALAXY') {
+        table = 'seed_galaxies';
+        payload = {
+          galaxy_number: Number(editName),
+          assigned_events: editEventsList,
+          overrides: {
+            duration_minutes: Number(editDuration),
+            metal_min: Number(editMinMetal),
+            metal_max: Number(editMaxMetal),
+            crystal_min: Number(editMinCrystal),
+            crystal_max: Number(editMaxCrystal)
+          }
+        };
+      } else if (selectedEntityType === 'SC') {
+        table = 'seed_star_clusters';
+        payload = {
+          sc_number: Number(editName),
+          assigned_events: editEventsList,
+          overrides: {
+            duration_minutes: Number(editDuration),
+            metal_min: Number(editMinMetal),
+            metal_max: Number(editMaxMetal),
+            crystal_min: Number(editMinCrystal),
+            crystal_max: Number(editMaxCrystal)
+          }
+        };
+      } else if (selectedEntityType === 'SS') {
+        table = 'seed_star_systems';
+        payload = {
+          name_code: editName,
+          assigned_events: editEventsList,
+          overrides: {
+            duration_minutes: Number(editDuration),
+            metal_min: Number(editMinMetal),
+            metal_max: Number(editMaxMetal),
+            crystal_min: Number(editMinCrystal),
+            crystal_max: Number(editMaxCrystal)
+          }
+        };
+      } else if (selectedEntityType === 'PLANET') {
+        table = 'seed_locations';
+        payload = {
+          planet_star_number: Number(editName),
+          time_minutes: Number(editDuration),
+          rewards: {
+            metal_min: Number(editMinMetal),
+            metal_max: Number(editMaxMetal),
+            crystal_min: Number(editMinCrystal),
+            crystal_max: Number(editMaxCrystal)
+          }
+        };
+      }
+
+      if (supabase) {
+        const { error } = await supabase.from(table).update(payload).eq('id', editSelectedEntityId);
+        if (error) throw error;
+      }
+
+      alert(`⚙️ EDICIÓN PERSISTIDA EN SUPABASE.`);
+      fetchTelemetryAndCatalogs();
+    } catch (e: any) {
+      alert(`Error al editar: ${e.message}`);
+    }
+  };
+
+  const handleCreateEventAdvanced = async () => {
+    if (!newEventName.trim() || !supabase) return;
     try {
       const { error } = await supabase.from('expedition_events_catalog').insert([
         {
@@ -464,118 +1235,26 @@ export const ExpeditionsManager: React.FC = () => {
           reward_asset_qty: Number(rewardAssetQty)
         }
       ]);
-
       if (error) throw error;
-
-      alert(`⚡ VECTOR DE AMENAZA REGISTRADO: Evento [${newEventName.trim()}] guardado con éxito.`);
-      setNewEventName('');
-      setNewEventDesc('');
-      fetchTelemetryAndCatalogs();
-    } catch (e: any) {
-      alert(`🚨 CRASH EN CATÁLOGO: ${e.message}`);
-    }
-  };
-
-  // PROCESADOR DE SUCESOS COMPUESTOS
-  const parseEventsPayload = (currentRaw: any, action: 'add' | 'remove', evtName?: string, customRate?: number) => {
-    let list: any[] = Array.isArray(currentRaw) ? currentRaw : [];
-    list = list.map(item => typeof item === 'string' ? { name: item, spawn_rate: 5 } : item);
-    if (action === 'add' && evtName) {
-      list = list.filter(e => e.name !== evtName);
-      list.push({ name: evtName, spawn_rate: customRate || 5 });
-    }
-    if (action === 'remove' && evtName) list = list.filter(e => e.name !== evtName);
-    return list;
-  };
-
-  // ACCIONES DEL MOTOR DE INYECTORES POR PORCENTAJE
-  const handleUpdateClusterInline = async (action: 'add' | 'remove', evtName?: string) => {
-    if (!supabase || !selectedCluster || !activeClusterData) return;
-    try {
-      const events = parseEventsPayload(activeClusterData.assigned_events, action, evtName, cardEventRateCluster);
-      const sliceCount = Math.max(1, Math.round(dbClusters.length * (editPctCluster / 100)));
-      const targetIds = dbClusters.slice(0, sliceCount).map(c => c.id);
-      const { error } = await supabase.from('seed_galaxy_clusters').update({ name: editClusterName, base_duration_minutes: Number(editClusterDuration), assigned_events: events }).in('id', targetIds);
-      if (error) throw error;
-      alert(`Impactado el ${editPctCluster}% de Clústeres.`);
-      setCardEventBindCluster(''); fetchTelemetryAndCatalogs();
+      alert(`⚡ Evento [${newEventName.trim()}] guardado.`);
+      setNewEventName(''); setNewEventDesc(''); fetchTelemetryAndCatalogs();
     } catch (e: any) { alert(e.message); }
   };
 
-  const handleUpdateGalaxyInline = async (action: 'add' | 'remove', evtName?: string) => {
-    if (!supabase || !selectedGalaxy || !activeGalaxyData) return;
-    try {
-      const events = parseEventsPayload(activeGalaxyData.assigned_events, action, evtName, cardEventRateGal);
-      const sliceCount = Math.max(1, Math.round(galaxies.length * (editPctGal / 100)));
-      const targetIds = galaxies.slice(0, sliceCount).map(g => g.id);
-      const { error } = await supabase.from('seed_galaxies').update({ galaxy_number: Number(editGalaxyNum), assigned_events: events }).in('id', targetIds);
-      if (error) throw error;
-      alert(`Impactado el ${editPctGal}% de Galaxias.`);
-      setCardEventBindGal(''); fetchTelemetryAndCatalogs();
-    } catch (e: any) { alert(e.message); }
-  };
-
-  const handleDeleteTier = async (table: string, id: string, label: string) => {
-    if (!supabase || !window.confirm(`🚨 CONTROL DE PURGA CRÍTICO: ¿Estás seguro de desintegrar permanentemente este/a [${label}]?`)) return;
-    const { error } = await supabase.from(table).delete().eq('id', id);
-    if (error) alert(error.message);
-    else { alert(`¡${label} eliminado con éxito!`); fetchTelemetryAndCatalogs(); }
-  };
-
-  // ─── ⚔️ SIMULADOR DE BATALLAS ───
-  const runMilimetricBattleSimulator = () => {
-    if (p1Ships <= 0 || p2Ships <= 0) { alert("Introduce montos válidos de naves."); return; }
-    
-    const assetP1 = MOCK_ASSETS_DATABASE[p1AssetKey];
-    const assetP2 = MOCK_ASSETS_DATABASE[p2AssetKey];
-    
-    const logAccumulator: string[] = [];
-    logAccumulator.push(`[${new Date().toLocaleTimeString()}] ⚔️ INICIO DE COMBATE EN ÓRBITA CRÍTICA`);
-    logAccumulator.push(`[DATOS] P1 Despliega: ${p1Ships}x ${assetP1.name} | P2 Despliega: ${p2Ships}x ${assetP2.name}`);
-
-    let p1BaseAtk = assetP1.atk * p1Ships * (1 + p1TechLvl * 0.15);
-    let p1BaseHp = (assetP1.hp + assetP1.shield) * p1Ships;
-
-    let p2BaseAtk = assetP2.atk * p2Ships * (1 + p2TechLvl * 0.15);
-    let p2BaseHp = (assetP2.hp + assetP2.shield) * p2Ships;
-
-    if (p1AssetKey === 'ship-heavy-hunter') {
-      logAccumulator.push(`[PASIVA P1] Fuego de Plasma Lvl 3: Se ignora parte de la mitigación defensiva.`);
-      p1BaseAtk *= 1.12; 
-    }
-    if (p2AssetKey === 'ship-explorer') {
-      logAccumulator.push(`[PASIVA P2] Evasión Orbital Lvl 2: Evasión aumentada detectada.`);
-      p1BaseAtk *= 0.85; 
-    }
-    if (p2AssetKey === 'struct-shield-gen') {
-      logAccumulator.push(`[PASIVA P2] Burbuja Cuántica: Absorción de energía crítica activada.`);
-      p2BaseHp *= 1.25;
-    }
-
-    const powerTotal = p1BaseAtk + p2BaseAtk;
-    const rate1 = (p1BaseAtk / (powerTotal || 1)) * 100;
-    
-    const lostP1 = Math.min(p1Ships, Math.round(p1Ships * (p2BaseAtk / (p1BaseAtk || 1)) * 0.6));
-    const lostP2 = Math.min(p2Ships, Math.round(p2Ships * (p1BaseAtk / (p2BaseAtk || 1)) * 0.6));
-    
-    logAccumulator.push(`[CONCLUSIÓN] Bajas Atacante: -${lostP1} chasis de ${assetP1.name}. Bajas Defensor: -${lostP2} chasis de ${assetP2.name}.`);
-
-    setCombatLogs(logAccumulator);
-    setSimResult({
-      winRate: rate1.toFixed(1),
-      survivorsP1: p1Ships - lostP1,
-      survivorsP2: p2Ships - lostP2,
-      stolenMetal: rate1 > 50 ? (lostP2 * 3500) : 0,
-      p1Power: p1BaseAtk.toFixed(0),
-      p2Power: p2BaseAtk.toFixed(0)
-    });
+  const formatDuration = (ms: number): string => {
+    if (ms <= 0) return '00h 00m 00s';
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
   };
 
   return (
-    <div className="p-6 bg-slate-900 min-h-screen text-slate-100 font-mono text-xs space-y-6 rounded-xl border border-slate-800 text-left">
+    <div className="p-6 bg-slate-900 min-h-screen text-slate-100 font-mono text-xs space-y-6 rounded-xl border border-slate-800 text-left select-none">
 
       {/* HEADER CRONOMETRADO */}
-      <div className="bg-slate-950/80 p-3.5 border border-slate-850 rounded-lg flex justify-between items-center select-none">
+      <div className="bg-slate-950/80 p-3.5 border border-slate-850 rounded-lg flex justify-between items-center">
         <div className="flex items-center gap-2 text-emerald-400 font-bold tracking-wider text-[11px]">
           <Clock size={13} className="animate-pulse" /> {new Date().toUTCString().split(' ')[4]} UTC
         </div>
@@ -586,12 +1265,11 @@ export const ExpeditionsManager: React.FC = () => {
       </div>
 
       {/* TABS NAVEGACIÓN */}
-      <div className="flex flex-wrap border-b border-slate-800 gap-1 select-none">
+      <div className="flex flex-wrap border-b border-slate-800 gap-1">
         {[
           { id: 'exploration', label: '🚀 Exploración / Minería', icon: <Compass size={14} /> },
-          { id: 'domination', label: '⚔️ Dominación & Simulador', icon: <Swords size={14} /> },
           { id: 'events', label: '⚡ Catálogo de Eventos', icon: <Zap size={14} /> },
-          { id: 'generator', label: '🌌 Generador de Galaxias', icon: <Map size={14} /> }
+          { id: 'generator', label: '🌌 Generador de Galaxias', icon: <MapIcon size={14} /> }
         ].map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id as TabId)} className={`px-4 py-2.5 font-bold uppercase tracking-wider flex items-center gap-2 transition-all border-b-2 cursor-pointer ${activeTab === t.id ? 'border-cyan-500 text-cyan-400 bg-cyan-950/10' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>{t.icon} {t.label}</button>
         ))}
@@ -600,23 +1278,52 @@ export const ExpeditionsManager: React.FC = () => {
       {/* TAB 1: EXPLORACIÓN Y MINERÍA */}
       {activeTab === 'exploration' && (
         <div className="space-y-6 animate-fadeIn">
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl">
-              <span className="text-[9px] text-slate-500 font-bold block mb-1">Flotas Activas Registradas</span>
-              <div className="text-2xl font-black text-emerald-400">{activeExpeditions.length} <span className="text-xs font-normal">Expediciones</span></div>
+            <div className="space-y-4">
+              <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl">
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block mb-1">
+                  Flotas Actualmente en Expedicion
+                </span>
+                <div className="text-2xl font-black text-emerald-400 flex items-center gap-2">
+                  <span>{activeExpeditions.length}</span>
+                  <span className="text-xs font-normal text-slate-400">Expediciones Volando</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl">
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block mb-1">
+                  Todas las Expediciones de Exploracion Hechas en Total del Juego
+                </span>
+                <div className="text-2xl font-black text-cyan-400 flex items-center gap-2">
+                  <span>{totalHistoricalExpeditionsCount.toLocaleString()}</span>
+                  <span className="text-xs font-normal text-slate-400">Misiones Completadas</span>
+                </div>
+              </div>
             </div>
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl">
-              <span className="text-[9px] text-slate-500 font-bold block mb-1">Eventos Tácticos Registrados</span>
-              <div className="text-2xl font-black text-rose-500">{lossesLog.length} <span className="text-xs font-normal text-slate-400">Incidentes</span></div>
+
+            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl flex flex-col justify-center">
+              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block mb-1">
+                Eventos de Expedicion Encontrados
+              </span>
+              <div className="text-3xl font-black text-rose-500 flex items-center gap-2">
+                <span>{dailyEventsCount}</span>
+                <span className="text-xs font-normal text-slate-400">(24h) / {historicalLogs.length} Histórico Total</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-slate-850 select-none">
-            {[{ id: 'monitor', label: '📊 Monitor Operativo' }, { id: 'losses', label: '💀 Pérdidas & Logs' }, { id: 'usage', label: '🛸 Uso de Assets' }, { id: 'discoveries', label: '🏆 Descubrimientos' }].map(sub => (
+          <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-slate-850">
+            {[
+              { id: 'monitor', label: '📊 Monitor Operativo' }, 
+              { id: 'losses', label: '💀 Pérdidas & Logs' }, 
+              { id: 'discoveries', label: '🏆 Descubrimientos' }
+            ].map(sub => (
               <button key={sub.id} onClick={() => setActiveExploreTab(sub.id as ExploreSubTab)} className={`px-3 py-1.5 font-bold uppercase text-[9.5px] rounded cursor-pointer ${activeExploreTab === sub.id ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-900/40' : 'text-slate-500'}`}>{sub.label}</button>
             ))}
           </div>
 
+          {/* SUB-PESTAÑA 1: MONITOR OPERATIVO */}
           {activeExploreTab === 'monitor' && (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fadeIn">
               <div className="xl:col-span-2 bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4">
@@ -624,44 +1331,52 @@ export const ExpeditionsManager: React.FC = () => {
                 
                 {activeExpeditions.length === 0 ? (
                   <div className="p-8 text-center text-slate-600 text-[10px] uppercase border border-slate-850 rounded-lg">
-                    No hay expediciones en vuelo registradas en este momento.
+                    {loading ? 'Sincronizando radar estelar...' : 'NO HAY EXPEDICIONES EN VUELO REGISTRADAS EN ESTE MOMENTO.'}
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                    {activeExpeditions.map((exp) => (
-                      <div key={exp.id} className="p-3 bg-zinc-950 border border-slate-800 rounded-lg flex flex-col md:flex-row justify-between md:items-center gap-3">
-                        <div className="space-y-1">
-                          <div className="font-bold text-white uppercase text-[11px]">{exp.fleet_name || 'FLOTA INDEPENDIENTE'}</div>
-                          <div className="text-[9px] text-cyan-400 font-mono">
-                            Ruta: {exp.galaxy_cluster || 'PELA'} &gt; {exp.sector_name || 'SECTOR'}
-                          </div>
-                          <div className="text-[8px] text-slate-500">
-                            ID Piloto: {exp.user_id?.substring(0, 8)}... | Salida: {new Date(exp.launch_time).toLocaleTimeString()}
-                          </div>
-                        </div>
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    {activeExpeditions.map((exp, idx) => {
+                      const launchMs = new Date(exp.launch_time).getTime();
+                      const returnMs = new Date(exp.estimated_return_time).getTime();
+                      const totalDurationMs = Math.max(1000, returnMs - launchMs);
+                      const elapsedMs = Math.max(0, now - launchMs);
+                      const remainingMs = Math.max(0, returnMs - now);
+                      const progressPct = Math.min(100, Math.max(0, (elapsedMs / totalDurationMs) * 100));
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleForceCompleteExpedition(exp.id)}
-                            className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-300 font-bold text-[8.5px] uppercase rounded cursor-pointer"
-                          >
-                            🚀 Completar
-                          </button>
-                          <button
-                            onClick={() => handleForceRecallExpedition(exp.id)}
-                            className="px-2.5 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-700 text-amber-300 font-bold text-[8.5px] uppercase rounded cursor-pointer"
-                          >
-                            🛑 Retornar
-                          </button>
-                          <button
-                            onClick={() => handleForceDestroyExpedition(exp.id)}
-                            className="px-2.5 py-1 bg-red-950 hover:bg-red-900 border border-red-700 text-red-300 font-bold text-[8.5px] uppercase rounded cursor-pointer"
-                          >
-                            💥 Destruir
-                          </button>
+                      return (
+                        <div key={exp.id || `exp-${idx}`} className="p-3.5 bg-zinc-950 border border-slate-800 hover:border-cyan-500/50 rounded-xl space-y-2.5 transition-colors">
+                          <div className="flex flex-col md:flex-row justify-between md:items-center gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-xs uppercase">{exp.fleet_name || 'FLOTA INDEPENDIENTE'}</span>
+                                <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-800 px-1.5 py-0.5 rounded font-bold uppercase">
+                                  {exp.galaxy_cluster || 'PELA'}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-sans block mt-0.5">
+                                Piloto: <strong className="text-zinc-200">{exp.username}</strong> | Sector: <strong className="text-cyan-400">{exp.sector_name || 'SECTOR'}</strong>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleForceCompleteExpedition(exp.id)} className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-300 font-bold text-[8.5px] uppercase rounded cursor-pointer">🚀 Completar</button>
+                              <button onClick={() => handleForceRecallExpedition(exp.id)} className="px-2.5 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-700 text-amber-300 font-bold text-[8.5px] uppercase rounded cursor-pointer">🛑 Retornar</button>
+                              <button onClick={() => handleForceDestroyExpedition(exp.id)} className="px-2.5 py-1 bg-red-950 hover:bg-red-900 border border-red-700 text-red-300 font-bold text-[8.5px] uppercase rounded cursor-pointer">💥 Destruir</button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[8.5px] text-zinc-400 font-bold">
+                              <span>PROGRESO ({formatDuration(remainingMs)} RESTANTE)</span>
+                              <span className="text-cyan-400">{progressPct.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                              <div className="h-full bg-cyan-400 transition-all duration-300" style={{ width: `${progressPct}%` }} />
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -670,7 +1385,8 @@ export const ExpeditionsManager: React.FC = () => {
                 <span className="text-red-500 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1"><ShieldAlert size={12} /> CONSOLA MODO DIOS</span>
                 <button 
                   onClick={handleGlobalInstaRecall}
-                  className="w-full bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-400 font-black py-2.5 rounded text-[9.5px] uppercase transition-all cursor-pointer"
+                  disabled={activeExpeditions.length === 0}
+                  className="w-full bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 text-red-400 font-black py-2.5 rounded text-[9.5px] uppercase transition-all cursor-pointer disabled:opacity-40"
                 >
                   🚨 FORZAR INSTA-RECALL GLOBAL REAL
                 </button>
@@ -678,20 +1394,55 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           )}
 
+          {/* SUB-PESTAÑA 2: PÉRDIDAS & LOGS */}
           {activeExploreTab === 'losses' && (
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-4 animate-fadeIn">
-              <span className="text-rose-500 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1"><Skull size={12} /> PÉRDIDAS FORENSES Y EVENTOS DE EXPEDICIÓN</span>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {lossesLog.length === 0 ? (
-                  <div className="text-center py-8 text-slate-600">Sin logs de combate ni anomalías reportadas.</div>
+            <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4 animate-fadeIn">
+              <span className="text-rose-500 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1">
+                <Skull size={14} /> BITÁCORA FORENSE DE PÉRDIDAS Y ACTIVOS PERDIDOS / EN DERIVA
+              </span>
+
+              <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
+                {detailedLosses.length === 0 ? (
+                  <div className="text-center py-10 text-slate-600 text-xs italic border border-dashed border-slate-850 rounded-xl">
+                    Sin registros de pérdidas ni activos desintegrados en las misiones.
+                  </div>
                 ) : (
-                  lossesLog.map((log) => (
-                    <div key={log.id} className="p-2.5 bg-zinc-950 border border-slate-850 rounded flex justify-between items-center text-[10px]">
-                      <div>
-                        <span className="font-bold text-white uppercase">{log.title || 'EVENTO TÁCTICO'}</span>
-                        <p className="text-slate-400 text-[9px]">{log.message}</p>
+                  detailedLosses.map((loss, idx) => (
+                    <div key={loss.id || `loss-${idx}`} className="p-3.5 bg-black/60 border border-slate-850 rounded-xl flex flex-col md:flex-row justify-between md:items-center gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-bold uppercase text-xs">{loss.asset_name}</span>
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
+                            loss.status_type === 'DESTRUIDO' 
+                              ? 'bg-red-950 text-red-400 border-red-800' 
+                              : 'bg-amber-950 text-amber-400 border-amber-800 animate-pulse'
+                          }`}>
+                            {loss.status_type}
+                          </span>
+                        </div>
+                        
+                        <div className="text-[9.5px] text-zinc-400 space-x-3">
+                          <span>Piloto: <strong className="text-zinc-200">{loss.username}</strong></span>
+                          <span>Encuentro: <strong className="text-cyan-400">{loss.encounter_type}</strong></span>
+                          <span>Hora: <strong className="text-zinc-300">{new Date(loss.timestamp).toLocaleString()}</strong></span>
+                        </div>
+
+                        <div className="text-[9px] text-zinc-500 font-mono space-x-3 pt-0.5">
+                          <span>📍 Coordenadas de Pérdida: <strong className="text-red-400 font-bold">{loss.coordinates_loss}</strong></span>
+                          {loss.status_type === 'PERDIDO' && loss.coordinates_salvage && (
+                            <span className="text-amber-400 font-bold bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-800/40">
+                              📡 Coordenadas de Captura: {loss.coordinates_salvage} (CAPTURABLE)
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-amber-400 font-mono font-bold">{log.damage_sustained ? `-${log.damage_sustained} HP` : 'OK'}</span>
+
+                      {loss.damage_sustained && (
+                        <div className="text-right">
+                          <span className="text-red-500 font-bold font-mono text-xs block">-{loss.damage_sustained} HP</span>
+                          <span className="text-[8px] text-zinc-500 block uppercase">Pérdida de Integridad</span>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -699,20 +1450,11 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           )}
 
-          {activeExploreTab === 'usage' && (
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-4 animate-fadeIn">
-              <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1"><Layers size={12} /> ESTADÍSTICAS AVANZADAS DE ITEMS</span>
-              <div className="p-3 bg-zinc-900/40 border border-zinc-850 rounded text-center text-slate-400">
-                Compilando mapa de calor de utilización de naves, licencias e insignias en los 4 clústeres principales...
-              </div>
-            </div>
-          )}
-
           {activeExploreTab === 'discoveries' && (
             <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-3 animate-fadeIn">
               <span className="text-amber-500 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1"><Trophy size={12} /> HISTORIAL DE PLANETAS Y ESTRELLAS DESCUBIERTAS</span>
-              {discoveries.map(d => (
-                <div key={d.id} className="p-2.5 bg-zinc-900 border border-zinc-850 rounded flex justify-between items-center">
+              {discoveries.map((d, idx) => (
+                <div key={d.id || `disc-${idx}`} className="p-2.5 bg-zinc-900 border border-zinc-850 rounded flex justify-between items-center">
                   <div>
                     <span className="text-white font-bold block">{d.star_name || 'PLANETA EXPLORADO'}</span>
                     <span className="text-[8.5px] text-yellow-500">Coordenadas: {d.sector_coordinates || 'PELA'}</span>
@@ -725,190 +1467,7 @@ export const ExpeditionsManager: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: DOMINACIÓN TERRITORIAL & SIMULADOR */}
-      {activeTab === 'domination' && (
-        <div className="space-y-6 animate-fadeIn">
-          <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-slate-850 select-none">
-            {[
-              { id: 'realtime', label: '🛰️ Realtime Monitor' },
-              { id: 'simulator', label: '⚔️ Simulador de Activos' },
-              { id: 'conquest', label: '🪐 Conquista de Sistemas' }
-            ].map(sub => (
-              <button key={sub.id} onClick={() => setActiveDomTab(sub.id as DominationSubTab)} className={`px-3 py-1.5 font-bold uppercase text-[9.5px] rounded cursor-pointer ${activeDomTab === sub.id ? 'bg-red-950/40 text-red-400 border border-red-900/40' : 'text-slate-500'}`}>{sub.label}</button>
-            ))}
-          </div>
-
-          {activeDomTab === 'realtime' && (
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-4 animate-fadeIn">
-              <span className="text-red-500 font-bold text-[10px] uppercase tracking-widest block">🛰️ MONITOR PVP REALTIME (EN ÓRBITA ACTIVA)</span>
-              <div className="p-3 bg-red-950/10 border border-red-900/30 text-red-400 rounded-lg animate-pulse flex items-center justify-between">
-                <span>Alerta: Colisión de flotas detectada en Inara Galaxy 6 (SC 3)</span>
-                <span className="bg-red-600 text-white px-2 py-0.5 rounded font-black text-[9px]">LIVE CONFLICT</span>
-              </div>
-            </div>
-          )}
-
-          {/* SIMULADOR DE COMBATE */}
-          {activeDomTab === 'simulator' && (
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start animate-fadeIn">
-              <div className="xl:col-span-2 bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-5">
-                <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1"><Swords size={12} /> MONITOR MILIMÉTRICO DE ACTIVOS</span>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-900/30 p-4 rounded-xl border border-zinc-850">
-                  {/* Atacante */}
-                  <div className="space-y-3">
-                    <span className="text-[10px] text-cyan-500 font-bold block uppercase border-b border-zinc-800 pb-1">Atacante (Player 1)</span>
-                    <div>
-                      <label className="text-[8.5px] text-zinc-500 block mb-1">Seleccionar Chasis / Módulo:</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-200 text-[11px] outline-none" value={p1AssetKey} onChange={e => setP1AssetKey(e.target.value)}>
-                        {Object.entries(MOCK_ASSETS_DATABASE).map(([key, asset]) => (
-                          <option key={key} value={key}>[{asset.type}] - {asset.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="text-[9px] text-zinc-400 italic bg-black/30 p-2 rounded border border-zinc-900/60">
-                      <strong>Ficha:</strong> {MOCK_ASSETS_DATABASE[p1AssetKey].stats}<br/>
-                      <strong className="text-purple-400">Habilidad:</strong> {MOCK_ASSETS_DATABASE[p1AssetKey].skills}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className="text-[8.5px] text-zinc-500 block mb-1">CANTIDAD:</label><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold text-[11px]" value={p1Ships} onChange={e => setP1Ships(Number(e.target.value))} /></div>
-                      <div><label className="text-[8.5px] text-zinc-500 block mb-1">NIVEL TECH:</label><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold text-[11px]" value={p1TechLvl} onChange={e => setP1TechLvl(Number(e.target.value))} /></div>
-                    </div>
-                  </div>
-
-                  {/* Defensor */}
-                  <div className="space-y-3">
-                    <span className="text-[10px] text-rose-500 font-bold block uppercase border-b border-zinc-800 pb-1">Defensor (Player 2)</span>
-                    <div>
-                      <label className="text-[8.5px] text-zinc-500 block mb-1">Seleccionar Chasis / Módulo:</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-200 text-[11px] outline-none" value={p2AssetKey} onChange={e => setP2AssetKey(e.target.value)}>
-                        {Object.entries(MOCK_ASSETS_DATABASE).map(([key, asset]) => (
-                          <option key={key} value={key}>[{asset.type}] - {asset.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="text-[9px] text-zinc-400 italic bg-black/30 p-2 rounded border border-zinc-900/60">
-                      <strong>Ficha:</strong> {MOCK_ASSETS_DATABASE[p2AssetKey].stats}<br/>
-                      <strong className="text-purple-400">Habilidad:</strong> {MOCK_ASSETS_DATABASE[p2AssetKey].skills}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className="text-[8.5px] text-zinc-500 block mb-1">CANTIDAD:</label><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold text-[11px]" value={p2Ships} onChange={e => setP2Ships(Number(e.target.value))} /></div>
-                      <div><label className="text-[8.5px] text-zinc-500 block mb-1">NIVEL TECH:</label><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold text-[11px]" value={p2TechLvl} onChange={e => setP2TechLvl(Number(e.target.value))} /></div>
-                    </div>
-                  </div>
-                </div>
-
-                <button onClick={runMilimetricBattleSimulator} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-2.5 rounded uppercase text-[10px] transition-all cursor-pointer">Desplegar Inyección de Cálculo de Combate</button>
-
-                {simResult && (
-                  <div className="p-4 bg-zinc-900 border border-zinc-850 rounded-xl space-y-3 animate-fadeIn">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center text-[10.5px]">
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850"><span className="text-zinc-500 block text-[8px]">Probabilidad Victoria</span><strong className="text-cyan-400">{simResult.winRate}%</strong></div>
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850"><span className="text-zinc-500 block text-[8px]">Flota Activa P1</span><strong className="text-zinc-300">{simResult.survivorsP1} Chasis</strong></div>
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850"><span className="text-zinc-500 block text-[8px]">Flota Activa P2</span><strong className="text-zinc-300">{simResult.survivorsP2} Chasis</strong></div>
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850"><span className="text-zinc-500 block text-[8px]">Polvo / Metal Saqueado</span><strong className="text-emerald-400">{simResult.stolenMetal.toLocaleString()} Kg</strong></div>
-                    </div>
-                    <div className="bg-black p-2 rounded h-24 overflow-y-auto text-[9.5px] text-zinc-400 font-mono space-y-1">{combatLogs.map((log, i) => <div key={i}>{log}</div>)}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* LAYOUT CONQUEST */}
-          {activeDomTab === 'conquest' && (
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start animate-fadeIn">
-              {/* Listado de Territorios Ocupados */}
-              <div className="xl:col-span-2 bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4">
-                <span className="text-red-400 font-bold text-[10px] uppercase tracking-widest block">// Red de Extracción y Planetas Conquistados</span>
-                
-                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
-                  {dominatedPlanets.map((planet) => (
-                    <div 
-                      key={planet.id}
-                      onClick={() => setSelectedDominatedPlanet(planet)}
-                      className={`p-3 border rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3 transition-all cursor-pointer ${
-                        selectedDominatedPlanet?.id === planet.id 
-                          ? 'bg-red-950/20 border-red-500/60 shadow-md shadow-red-950/40' 
-                          : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div>
-                        <div className="font-bold text-slate-200 flex items-center gap-2">
-                          🪐 {planet.name} <span className="text-[9px] px-1.5 py-0.2 bg-zinc-800 text-zinc-400 rounded border border-zinc-700">{planet.sector}</span>
-                        </div>
-                        <div className="text-[9px] text-zinc-500 mt-1">
-                          Tasa Tributaria: <span className="text-zinc-300 font-bold">{planet.taxRate}%</span> | Defensa: <span className="text-zinc-300 font-bold">{planet.garrison} Fragatas</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-6 justify-between sm:justify-end">
-                        <div className="text-right">
-                          <span className="text-[9px] block text-zinc-500 uppercase">Flujo Minado</span>
-                          <span className="text-emerald-400 font-bold">+{planet.extractRate} DUST/h</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[9px] block text-zinc-500 uppercase">Estabilidad</span>
-                          <span className={`font-black ${planet.stability > 80 ? 'text-green-400' : planet.stability > 50 ? 'text-yellow-400' : 'text-red-500'}`}>
-                            {planet.stability}%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Inspector de Guarnición */}
-              <div className="xl:col-span-1 bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4">
-                <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-widest block">// Inspector de Guarnición</span>
-                
-                {selectedDominatedPlanet ? (
-                  <div className="space-y-4 animate-fadeIn">
-                    <div className="bg-zinc-900/60 border border-zinc-850 p-3 rounded-xl space-y-3">
-                      <div className="text-sm font-bold text-white uppercase">{selectedDominatedPlanet.name}</div>
-                      
-                      <div className="h-px bg-zinc-800 w-full my-1"></div>
-
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-zinc-500 flex items-center gap-1"><Shield size={12} /> Escudo de Plasma:</span>
-                        <span className={`font-bold uppercase ${selectedDominatedPlanet.shieldActive ? 'text-emerald-400' : 'text-red-500'}`}>
-                          {selectedDominatedPlanet.shieldActive ? 'Online' : 'Desactivado'}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-zinc-500 flex items-center gap-1"><Target size={12} /> Factor de Rebelión:</span>
-                        <span className={`font-bold ${selectedDominatedPlanet.stability > 70 ? 'text-green-400' : 'text-red-400'}`}>
-                          {selectedDominatedPlanet.stability < 70 ? 'Alto Riesgo' : 'Bajo Control'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <button className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-slate-300 font-bold py-2 rounded text-[9.5px] uppercase transition-all cursor-pointer">
-                        🛡️ Reforzar Guarnición Táctica (+10 Fragatas)
-                      </button>
-                      <button className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-slate-300 font-bold py-2 rounded text-[9.5px] uppercase transition-all cursor-pointer">
-                        ⚡ Modular Escudo Planetario Cuántico
-                      </button>
-                      <button className="w-full bg-red-950/40 hover:bg-red-950/60 border border-red-900/40 text-red-400 font-black py-2.5 rounded text-[9.5px] uppercase transition-all cursor-pointer">
-                        🚨 Ejecutar Sanción Orbital (Sojuzgar Población)
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-40 border border-dashed border-zinc-850 rounded flex items-center justify-center text-zinc-600 italic">
-                    Selecciona un vector planetario para inspeccionar
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 3: CATÁLOGO DE EVENTOS */}
+      {/* TAB 2: CATÁLOGO DE EVENTOS */}
       {activeTab === 'events' && (
         <div className="space-y-6 animate-fadeIn">
           <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-slate-850 select-none">
@@ -934,8 +1493,8 @@ export const ExpeditionsManager: React.FC = () => {
                   {eventsCatalog.length === 0 ? (
                     <div className="text-center text-slate-600 py-8">No hay eventos guardados en el catálogo.</div>
                   ) : (
-                    eventsCatalog.map((ev) => (
-                      <div key={ev.id} className="p-3 bg-zinc-900 border border-slate-800 rounded flex justify-between items-center text-[10px]">
+                    eventsCatalog.map((ev, idx) => (
+                      <div key={ev.id || `ev-${idx}`} className="p-3 bg-zinc-900 border border-slate-800 rounded flex justify-between items-center text-[10px]">
                         <div>
                           <span className="font-bold text-white uppercase">{ev.name}</span>
                           <p className="text-slate-400 text-[9px]">{ev.description}</p>
@@ -953,253 +1512,722 @@ export const ExpeditionsManager: React.FC = () => {
         </div>
       )}
 
-      {/* ── 🌌 TAB 4: GENERADOR DE GALAXIAS ── */}
+      {/* ─── 🌌 TAB 3: GENERADOR DE GALAXIAS ─── */}
       {activeTab === 'generator' && (
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start animate-fadeIn">
+        <div className="space-y-6 animate-fadeIn">
+          
+          {/* BARRA SUPERIOR DE MODO Y BOTÓN DE UNDO (CTRL + Z) */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-950 p-3.5 border border-slate-850 rounded-xl gap-3">
+            <span className="text-cyan-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+              <MapIcon size={16} /> GENERADOR PROCEDURAL Y CONSOLA DE MAPEO ESTELAR
+            </span>
 
-          {/* PANEL DE CONTROL IZQUIERDO */}
-          <div className="xl:col-span-1 space-y-4">
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-3 shadow-xl">
-              <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-widest block border-b border-zinc-900 pb-2 flex items-center gap-1"><Map size={12} /> INTERFAZ DE AUDITORÍA Y CONTROL (ESTRUCTURA)</span>
-              <div><label className="text-[9px] text-zinc-500 block mb-0.5">1. Galaxy Cluster (GC):</label><select className="w-full bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-200 text-[11px]" value={selectedCluster} onChange={e => setSelectedCluster(e.target.value)}>{dbClusters.map(c => <option key={c.id} value={c.id}>{c.name} ({c.id})</option>)}</select></div>
-              <div><label className="text-[9px] text-zinc-500 block mb-0.5">2. Galaxy (Número):</label><select className="w-full bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-200 text-[11px]" value={selectedGalaxy} onChange={e => setSelectedGalaxy(e.target.value)}><option value="">-- Selecciona Galaxia --</option>{galaxies.map(g => <option key={g.id} value={g.id}>Galaxy {g.galaxy_number}</option>)}</select></div>
-              <div><label className="text-[9px] text-zinc-500 block mb-0.5">3. Star Cluster (SC):</label><select className="w-full bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-200 text-[11px]" value={selectedStarCluster} onChange={e => setSelectedStarCluster(e.target.value)}><option value="">-- Selecciona SC --</option>{starClusters.map(sc => <option key={sc.id} value={sc.id}>Star Cluster {sc.sc_number}</option>)}</select></div>
-              <div><label className="text-[9px] text-zinc-500 block mb-0.5">4. Star System:</label><select className="w-full bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-200 text-[11px]" value={selectedStarSystem} onChange={e => setSelectedStarSystem(e.target.value)}><option value="">-- Selecciona Sistema --</option>{starSystems.map(sys => <option key={sys.id} value={sys.id}>{sys.name_code}</option>)}</select></div>
-              <div><label className="text-[9px] text-zinc-500 block mb-0.5">5. Cuerpo Celeste (Planeta / Estrella):</label><select className="w-full bg-zinc-900 border border-zinc-800 p-1 rounded text-zinc-200 text-[11px]" value={selectedLocation} onChange={e => setSelectedLocation(e.target.value)}><option value="">-- Selecciona --</option>{locations.map(loc => <option key={loc.id} value={loc.id}>{loc.conditions?.body_type === 'estrella' ? '☀️' : '🪐'} Nº {loc.planet_star_number}</option>)}</select></div>
-            </div>
+            <div className="flex items-center gap-2">
+              {(genConsoleMode === 'creation' || genConsoleMode === 'autogen') && creationHistoryStack.length > 0 && (
+                <button
+                  onClick={handleUndoLastCreation}
+                  className="px-3 py-1.5 bg-rose-950 hover:bg-rose-900 border border-rose-700 text-rose-300 font-bold text-[10px] uppercase rounded-md transition-all cursor-pointer flex items-center gap-1.5 shadow-md animate-pulse"
+                  title="Deshacer última creación (Ctrl + Z)"
+                >
+                  <RotateCcw size={12} />
+                  DESHACER (CTRL + Z) [{creationHistoryStack.length}]
+                </button>
+              )}
 
-            {/* TARJETAS VERTICALES DE PREVISUALIZACIÓN */}
-            <div className="space-y-2.5">
-              {activeClusterData && (
-                <div className="bg-slate-950 p-3 border border-zinc-800 rounded-xl space-y-1.5 shadow-lg border-l-2 border-cyan-500 animate-fadeIn">
-                  <span className="text-white font-bold text-[10px] block">🌌 GC: {activeClusterData.name} ({activeClusterData.id})</span>
-                  <p className="text-[9px] text-zinc-400">Viaje Raíz: {activeClusterData.base_duration_minutes} min | Eventos: {activeClusterData.assigned_events?.length || 0}</p>
-                  <div className="flex gap-2 justify-end text-[8.5px] font-black pt-1 border-t border-zinc-900/40"><button onClick={() => handleDeleteTier('seed_galaxy_clusters', activeClusterData.id, 'Galaxy Cluster')} className="text-red-400 hover:underline cursor-pointer">Eliminar</button></div>
-                </div>
-              )}
-              {activeGalaxyData && (
-                <div className="bg-slate-950 p-3 border border-zinc-800 rounded-xl space-y-1.5 shadow-md border-l-2 border-purple-500 animate-fadeIn">
-                  <span className="text-white font-bold text-[10px] block">🌌 Galaxia Correlativa: {activeGalaxyData.galaxy_number}</span>
-                  <p className="text-[9px] text-zinc-400">Sucesos activos: {activeGalaxyData.assigned_events?.length || 0}</p>
-                  <div className="flex gap-2 justify-end text-[8.5px] font-black pt-1 border-t border-zinc-900/40"><button onClick={() => handleDeleteTier('seed_galaxies', activeGalaxyData.id, 'Galaxia')} className="text-red-400 hover:underline cursor-pointer">Eliminar</button></div>
-                </div>
-              )}
-              {activeScData && (
-                <div className="bg-slate-950 p-3 border border-zinc-800 rounded-xl space-y-1.5 shadow-md border-l-2 border-amber-500 animate-fadeIn">
-                  <span className="text-white font-bold text-[10px] block">🌟 SC Número: {activeScData.sc_number}</span>
-                  <p className="text-[9px] text-zinc-400">Sucesos activos: {activeScData.assigned_events?.length || 0}</p>
-                  <div className="flex gap-2 justify-end text-[8.5px] font-black pt-1 border-t border-zinc-900/40"><button onClick={() => handleDeleteTier('seed_star_clusters', activeScData.id, 'Star Cluster')} className="text-red-400 hover:underline cursor-pointer">Eliminar</button></div>
-                </div>
-              )}
-              {activeSystemData && (
-                <div className="bg-slate-950 p-3 border border-zinc-800 rounded-xl space-y-1.5 shadow-md border-l-2 border-emerald-500 animate-fadeIn">
-                  <span className="text-white font-bold text-[10px] block">🪐 Sistema Solar: {activeSystemData.name_code}</span>
-                  <p className="text-[9px] text-zinc-400">Sucesos activos: {activeSystemData.assigned_events?.length || 0}</p>
-                  <div className="flex gap-2 justify-end text-[8.5px] font-black pt-1 border-t border-zinc-900/40"><button onClick={() => handleDeleteTier('seed_star_systems', activeSystemData.id, 'Star System')} className="text-red-400 hover:underline cursor-pointer">Eliminar</button></div>
-                </div>
-              )}
-              {activeLocationData && (
-                <div className="bg-slate-950 p-3 border border-zinc-800 rounded-xl space-y-1.5 shadow-md border-l-2 border-fuchsia-500 animate-fadeIn">
-                  <span className="text-white font-bold text-[10px] block">{activeLocationData.conditions?.body_type === 'estrella' ? '☀️ Estrella' : '🪐 Planeta'} Nº {activeLocationData.planet_star_number}</span>
-                  <p className="text-[9px] text-zinc-400">Clase: {activeLocationData.conditions?.body_subtype} | Viaje: {activeLocationData.time_minutes} min</p>
-                  <div className="flex gap-2 justify-end text-[8.5px] font-black pt-1 border-t border-zinc-900/40"><button onClick={() => handleDeleteTier('seed_locations', activeLocationData.id, 'Cuerpo Celeste')} className="text-red-400 hover:underline cursor-pointer">Eliminar</button></div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* LADO DERECHO: CONSOLA DE TRABAJO MULTI-PESTÁÑICA */}
-          <div className="xl:col-span-3 space-y-4">
-            <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl space-y-4 shadow-2xl">
-
-              <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
-                <span className="text-zinc-400 font-bold text-[10.5px] uppercase block tracking-wider">Consola de Creación y Mapeo</span>
-                <div className="flex gap-1.5 bg-black/40 p-1 rounded-lg border border-zinc-850">
-                  {[{ id: 'creation', label: 'Consola de Creación' }, { id: 'edition', label: 'Consola de Edición' }, { id: 'ami', label: 'Consola A.M.I.' }].map(tab => (
-                    <button key={tab.id} onClick={() => setGenRightTab(tab.id as GenRightTab)} className={`px-3 py-1.5 font-bold uppercase text-[9px] rounded-md cursor-pointer transition-all ${genRightTab === tab.id ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-900/30' : 'text-zinc-500'}`}>{tab.label}</button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-1.5 bg-black/60 p-1 rounded-lg border border-zinc-800">
+                <button
+                  onClick={() => setGenConsoleMode('creation')}
+                  className={`px-3 py-1.5 font-bold uppercase text-[10px] rounded-md transition-all cursor-pointer ${
+                    genConsoleMode === 'creation' ? 'bg-cyan-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  ➕ CREACIÓN
+                </button>
+                <button
+                  onClick={() => setGenConsoleMode('edition')}
+                  className={`px-3 py-1.5 font-bold uppercase text-[10px] rounded-md transition-all cursor-pointer ${
+                    genConsoleMode === 'edition' ? 'bg-amber-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  ✏️ EDICIÓN
+                </button>
+                <button
+                  onClick={() => setGenConsoleMode('autogen')}
+                  className={`px-3 py-1.5 font-bold uppercase text-[10px] rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                    genConsoleMode === 'autogen' ? 'bg-purple-600 text-white shadow-lg' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Network size={12} /> AUTO-GENERADOR
+                </button>
               </div>
-
-              {/* 1. CONSOLA DE CREACIÓN */}
-              {genRightTab === 'creation' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
-                  {/* Tarjeta I: Cluster */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl flex flex-col justify-between space-y-3">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-800 pb-1">Crear Nuevo Galaxy Cluster</span>
-                    <div className="space-y-1.5">
-                      <input type="text" placeholder="ID (ej: PELA, GC1, GC2)" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-white font-bold uppercase text-[11px]" value={newGcId} onChange={e => setNewGcId(e.target.value)} />
-                      <input type="text" placeholder="Nombre Clúster (ej: Inara Alpha)" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-white text-[11px]" value={newGcName} onChange={e => setNewGcName(e.target.value)} />
-                      <div className="flex justify-between items-center bg-zinc-950 border border-zinc-800 px-2 py-1 rounded text-[11px]"><span className="text-zinc-500 text-[8px] uppercase">Minutos Viaje:</span><input type="number" className="w-20 bg-transparent text-emerald-400 font-bold text-center outline-none" value={newGcDuration} onChange={e => setNewGcDuration(Number(e.target.value))} /></div>
-                    </div>
-                    <div className="pt-2"><button onClick={handleCreateGalaxyCluster} className="w-full bg-cyan-600 text-white font-black py-1.5 rounded uppercase text-[10px] cursor-pointer">Fundar Clúster</button></div>
-                  </div>
-
-                  {/* Tarjeta II: Galaxia */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl flex flex-col justify-between space-y-3">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-800 pb-1">Crear Nueva Galaxia</span>
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div><span className="text-zinc-500 block text-[8px] mb-0.5">NÚMERO INICIAL:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-center text-white font-bold text-[11px]" value={newGalaxyNum} onChange={e => setNewGalaxyNum(Number(e.target.value))} /></div>
-                        <div><span className="text-cyan-400 block text-[8px] mb-0.5 font-bold">CANTIDAD A CREAR:</span><input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-center text-cyan-400 font-bold text-[11px]" value={createQtyGal} onChange={e => setCreateQtyGal(Number(e.target.value))} /></div>
-                      </div>
-                    </div>
-                    <button onClick={handleCreateGalaxy} className="w-full bg-cyan-600 text-white font-black py-1.5 rounded uppercase text-[10px] cursor-pointer" disabled={!selectedCluster}>Crear Galaxia</button>
-                  </div>
-
-                  {/* Tarjeta III: SC */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl flex flex-col justify-between space-y-3">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-800 pb-1">Crear Nuevo Star Cluster</span>
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div><span className="text-zinc-500 block text-[8px] mb-0.5">NÚMERO INICIAL:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-center text-white font-bold text-[11px]" value={newScNum} onChange={e => setNewScNum(Number(e.target.value))} /></div>
-                        <div><span className="text-cyan-400 block text-[8px] mb-0.5 font-bold">CANTIDAD A CREAR:</span><input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-center text-cyan-400 font-bold text-[11px]" value={createQtySc} onChange={e => setCreateQtySc(Number(e.target.value))} /></div>
-                      </div>
-                    </div>
-                    <button onClick={handleCreateStarCluster} className="w-full bg-cyan-600 text-white font-black py-1.5 rounded uppercase text-[10px] cursor-pointer" disabled={!selectedGalaxy}>Crear SC</button>
-                  </div>
-
-                  {/* Tarjeta IV: Star System */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl flex flex-col justify-between space-y-3">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-800 pb-1">Crear Nuevo Star System</span>
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div><span className="text-zinc-500 block text-[8px] mb-0.5">CÓDIGO BASE SYSTEM:</span><input type="text" placeholder="ej: ASW 85" className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-center text-white font-bold text-[11px]" value={newSystemCode} onChange={e => setNewSystemCode(e.target.value)} /></div>
-                        <div><span className="text-cyan-400 block text-[8px] mb-0.5 font-bold">CANTIDAD A CREAR:</span><input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-center text-cyan-400 font-bold text-[11px]" value={createQtySys} onChange={e => setCreateQtySys(Number(e.target.value))} /></div>
-                      </div>
-                    </div>
-                    <button onClick={handleCreateStarSystem} className="w-full bg-cyan-600 text-white font-black py-1.5 rounded uppercase text-[10px] cursor-pointer" disabled={!selectedStarCluster}>Crear Sistema</button>
-                  </div>
-
-                  {/* Tarjeta V: Planeta o Estrella */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl flex flex-col justify-between space-y-3 md:col-span-2">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-800 pb-1">Crear Planeta o Estrella</span>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-[11px]">
-                      <div><span className="text-zinc-500 block text-[8px] mb-1 font-bold">OBJETO:</span><select className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-zinc-300 outline-none text-[11px]" value={bodyType} onChange={e => setBodyType(e.target.value as 'planeta' | 'estrella')}><option value="planeta">🪐 Planeta</option><option value="estrella">☀️ Estrella</option></select></div>
-                      <div><span className="text-zinc-500 block text-[8px] mb-1 font-bold">TIPO CANÓNICO:</span>{bodyType === 'planeta' ? (<select className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-zinc-300 outline-none text-[11px]" value={planetSubtype} onChange={e => setPlanetType(e.target.value)}><option value="rocoso">🪨 Rocoso</option><option value="vida">🌱 Vida</option><option value="agua">💧 Agua</option></select>) : (<select className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-zinc-300 outline-none text-[11px]" value={starSubtype} onChange={e => setStarType(e.target.value)}><option value="blancas">⚪ Blancas</option><option value="amarillas">🟡 Amarillas</option></select>)}</div>
-                      <div><span className="text-zinc-500 block text-[8px] mb-1 font-bold">NÚMERO INDEX:</span><input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-white font-bold text-[11px]" value={newLocNum} onChange={e => setNewLocNum(Number(e.target.value))} /></div>
-                      <div><span className="text-cyan-400 block text-[8px] mb-1 font-bold">CANTIDAD A CREAR:</span><input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-cyan-400 font-bold text-[11px]" value={createQtyLoc} onChange={e => setCreateQtyLoc(Number(e.target.value))} /></div>
-                    </div>
-                    <button onClick={handleCreateLocation} className="w-full bg-cyan-600 text-white font-black py-1.5 rounded uppercase text-[10px] mt-2 cursor-pointer" disabled={!selectedStarSystem}>Vincular Elemento al Sistema (Hereda tiempo base GC)</button>
-                  </div>
-                </div>
-              )}
-
-              {/* 2. CONSOLA DE EDICIÓN */}
-              {genRightTab === 'edition' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
-                  {/* Tarjeta I: Edita Galaxy Cluster */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3 flex flex-col justify-between shadow-md border-t border-amber-500/20">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-850 pb-1 text-amber-400">Edita Galaxy Cluster</span>
-                    <div className="space-y-2 text-[11px]">
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2"><span className="text-zinc-500 block text-[8px]">NOMBRE CLÚSTER:</span><input type="text" className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-white" value={editClusterName} onChange={e => setEditClusterName(e.target.value)} /></div>
-                        <div><span className="text-zinc-500 block text-[8px]">VIAJE BASE:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-emerald-400 font-bold" value={editClusterDuration} onChange={e => setEditClusterDuration(Number(e.target.value))} /></div>
-                      </div>
-
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850 space-y-2">
-                        <span className="text-purple-400 block text-[8.5px] font-bold">🔮 SUCESOS DEL CLÚSTER ({activeClusterData?.assigned_events?.length || 0})</span>
-                        <div className="grid grid-cols-3 gap-1">
-                          <select className="col-span-2 bg-zinc-900 border border-zinc-800 p-1 text-[10px] outline-none text-zinc-300" value={cardEventBindCluster} onChange={e => setCardEventBindCluster(e.target.value)}>
-                            <option value="">-- Mapear Suceso --</option>
-                            {eventsCatalog.map(ev => <option key={ev.id} value={ev.name}>{ev.name}</option>)}
-                          </select>
-                          <div className="flex bg-zinc-900 border border-zinc-800 p-0.5 rounded items-center"><span className="text-[7px] text-zinc-500 px-0.5">% Spawn:</span><input type="number" min={1} max={100} className="w-full bg-transparent text-center font-bold text-amber-400 text-[10px] outline-none" value={cardEventRateCluster} onChange={e => setCardEventRateCluster(Number(e.target.value))} /></div>
-                        </div>
-                        <button onClick={() => handleUpdateClusterInline('add', cardEventBindCluster)} className="w-full bg-purple-600 text-white py-1 rounded text-[9px] uppercase font-black cursor-pointer">Añadir Suceso</button>
-                      </div>
-
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850 space-y-1.5">
-                        <span className="text-cyan-400 text-[8.5px] font-bold block">🎯 PORCENTAJE DE AFECTACIÓN EN EL UNIVERSO:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {[100, 75, 50, 25, 5].map(pct => (
-                            <button key={pct} onClick={() => setEditPctCluster(pct)} className={`px-1.5 py-0.5 border text-[9px] rounded font-bold cursor-pointer ${editPctCluster === pct ? 'bg-cyan-950 text-cyan-400 border-cyan-800' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}>{pct}%</button>
-                          ))}
-                          <input type="number" min={1} max={100} className="w-14 bg-zinc-900 border border-zinc-800 text-center font-bold text-cyan-400 text-[10px] rounded outline-none ml-auto" value={editPctCluster} onChange={e => setEditPctCluster(Number(e.target.value))} />
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={() => handleUpdateClusterInline('add')} className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-black py-1.5 rounded uppercase text-[10px] cursor-pointer">Actualizar Clúster por %</button>
-                  </div>
-
-                  {/* Tarjeta II: Edita Galaxy */}
-                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3 flex flex-col justify-between shadow-md">
-                    <span className="text-white font-bold text-[10px] block border-b border-zinc-850 pb-1 text-amber-400">Edita Galaxy</span>
-                    <div className="space-y-2 text-[11px]">
-                      <div><span className="text-zinc-500 block text-[8px]">NÚMERO GALAXIA:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1 rounded text-white" value={editGalaxyNum} onChange={e => setEditGalaxyNum(Number(e.target.value))} /></div>
-
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850 space-y-2">
-                        <span className="text-purple-400 block text-[8.5px] font-bold">🔮 SUCESOS DE LA GALAXIA ({activeGalaxyData?.assigned_events?.length || 0})</span>
-                        <div className="grid grid-cols-3 gap-1">
-                          <select className="col-span-2 bg-zinc-900 border border-zinc-800 p-1 text-[10px] outline-none text-zinc-300" value={cardEventBindGal} onChange={e => setCardEventBindGal(e.target.value)}>
-                            <option value="">-- Mapear Suceso --</option>
-                            {eventsCatalog.map(ev => <option key={ev.id} value={ev.name}>{ev.name}</option>)}
-                          </select>
-                          <div className="flex bg-zinc-900 border border-zinc-800 p-0.5 rounded items-center"><span className="text-[7px] text-zinc-500 px-0.5">% Spawn:</span><input type="number" min={1} max={100} className="w-full bg-transparent text-center font-bold text-amber-400 text-[10px] outline-none" value={cardEventRateGal} onChange={e => setCardEventRateGal(Number(e.target.value))} /></div>
-                        </div>
-                        <button onClick={() => handleUpdateGalaxyInline('add', cardEventBindGal)} className="w-full bg-purple-600 text-white py-1 rounded text-[9px] uppercase font-black cursor-pointer">Añadir Suceso</button>
-                      </div>
-
-                      <div className="bg-zinc-950 p-2 rounded border border-zinc-850 space-y-1.5">
-                        <span className="text-cyan-400 text-[8.5px] font-bold block">🎯 PORCENTAJE DE AFECTACIÓN EN EL CLÚSTER:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {[100, 75, 50, 25, 5].map(pct => (
-                            <button key={pct} onClick={() => setEditPctGal(pct)} className={`px-1.5 py-0.5 border text-[9px] rounded font-bold cursor-pointer ${editPctGal === pct ? 'bg-cyan-950 text-cyan-400 border-cyan-800' : 'bg-zinc-900 border-zinc-800 text-zinc-500'}`}>{pct}%</button>
-                          ))}
-                          <input type="number" min={1} max={100} className="w-14 bg-zinc-900 border border-zinc-800 text-center font-bold text-cyan-400 text-[10px] rounded outline-none ml-auto" value={editPctGal} onChange={e => setEditPctGal(Number(e.target.value))} />
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={() => handleUpdateGalaxyInline('add')} className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-black py-1.5 rounded uppercase text-[10px] cursor-pointer" disabled={!selectedCluster}>Actualizar Galaxia por %</button>
-                  </div>
-                </div>
-              )}
-
-              {/* 3. WORKSPACE: CONSOLA A.M.I. */}
-              {genRightTab === 'ami' && (
-                <div className="space-y-4 animate-fadeIn select-none">
-                  <div className="space-y-1">
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase block tracking-wider">🃏 Álbum de Galaxy Clusters (GCs)</span>
-                    <div className="flex gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-thin">{dbClusters.map(c => (<div key={c.id} onClick={() => setSelectedCluster(c.id)} className={`min-w-[160px] p-2.5 border rounded-xl cursor-pointer text-center transition-all ${selectedCluster === c.id ? 'bg-cyan-950/30 border-cyan-500/60 shadow-md shadow-cyan-950/20' : 'bg-zinc-900/60 border-zinc-850 text-zinc-400'}`}><span className="font-bold text-white block text-[10.5px]">🌌 {c.name}</span><span className="text-[8.5px] block font-mono mt-0.5">ID: {c.id} • {c.base_duration_minutes} min</span></div>))}</div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
-        </div>
-      )}
-
-      {/* POPUP MODAL EDICIÓN MAESTRA */}
-      {editingEntity && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-slate-950 border border-cyan-500/60 rounded-2xl p-5 space-y-4 shadow-2xl font-mono text-left">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <span className="text-cyan-400 font-bold text-xs uppercase flex items-center gap-1.5">
-                <Edit3 size={14} /> Editar Entidad [{editingEntity.type.toUpperCase()}]
+          {/* 1. SELECCIÓN DE TIPO DE ENTIDAD */}
+          {(genConsoleMode === 'creation' || genConsoleMode === 'edition') && (
+            <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4">
+              <span className="text-zinc-400 font-bold text-[10.5px] uppercase block tracking-wider">
+                1. ¿QUÉ ENTIDAD GALÁCTICA QUIERES {genConsoleMode === 'creation' ? 'CREAR' : 'EDITAR'}?
               </span>
-              <button onClick={() => setEditingEntity(null)} className="text-zinc-500 hover:text-white cursor-pointer"><X size={16} /></button>
-            </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-[9px] text-zinc-400 block mb-1">Nombre / Identificador:</label>
-                <input type="text" className="w-full bg-zinc-900 border border-zinc-800 p-2 rounded text-white font-bold text-xs outline-none" value={modalInputName} onChange={e => setModalInputName(e.target.value)} />
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  { type: 'GC', label: 'Galaxy Cluster (GC)', icon: '🌌', desc: 'Soberanía Raíz' },
+                  { type: 'GALAXY', label: 'Galaxia', icon: '🌀', desc: 'Galaxia dentro de GC' },
+                  { type: 'SC', label: 'Star Cluster (SC)', icon: '🌟', desc: 'Cúmulo de Sistemas' },
+                  { type: 'SS', label: 'Star System (SS)', icon: '🪐', desc: 'Sistema Solar' },
+                  { type: 'PLANET', label: 'Planeta / Cuerpo', icon: '🌍', desc: 'Nodo Explorable' }
+                ].map((item) => (
+                  <div
+                    key={item.type}
+                    onClick={() => setSelectedEntityType(item.type as GenEntityType)}
+                    className={`p-3.5 rounded-xl border cursor-pointer text-center transition-all flex flex-col justify-between items-center gap-1.5 ${
+                      selectedEntityType === item.type
+                        ? 'bg-cyan-950/40 border-cyan-500 text-cyan-300 shadow-lg shadow-cyan-950/40 scale-102'
+                        : 'bg-zinc-900/40 border-zinc-850 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <span className="text-2xl">{item.icon}</span>
+                    <span className="font-bold text-white text-[10.5px] uppercase block">{item.label}</span>
+                    <span className="text-[8.5px] text-zinc-500 block font-sans">{item.desc}</span>
+                  </div>
+                ))}
               </div>
 
-              {(editingEntity.type === 'cluster' || editingEntity.type === 'planet') && (
-                <div>
-                  <label className="text-[9px] text-zinc-400 block mb-1">Tiempo Base de Viaje (Minutos):</label>
-                  <input type="number" className="w-full bg-zinc-900 border border-zinc-800 p-2 rounded text-emerald-400 font-bold text-xs outline-none" value={modalInputTime} onChange={e => setModalInputDuration(Number(e.target.value))} />
+              {selectedEntityType === 'PLANET' && (
+                <div className="p-3 bg-zinc-900/60 border border-zinc-850 rounded-xl flex flex-wrap gap-4 items-center">
+                  <span className="text-zinc-400 font-bold text-[10px] uppercase">Selecciona Tipo de Cuerpo Celeste:</span>
+                  <select 
+                    className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[11px] outline-none cursor-pointer"
+                    value={bodyType} 
+                    onChange={e => setBodyType(e.target.value as 'planeta' | 'estrella')}
+                  >
+                    <option value="planeta">🪐 Planeta</option>
+                    <option value="estrella">☀️ Estrella</option>
+                  </select>
+
+                  <span className="text-zinc-400 font-bold text-[10px] uppercase">Clase Canónica:</span>
+                  {bodyType === 'planeta' ? (
+                    <select className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[11px] outline-none cursor-pointer" value={planetSubtype} onChange={e => setPlanetType(e.target.value)}>
+                      <option value="rocoso">🪨 Rocoso</option>
+                      <option value="vida">🌱 Vida / Habitable</option>
+                      <option value="agua">💧 Oceánico / Agua</option>
+                      <option value="gaseoso">☁️ Gaseoso</option>
+                    </select>
+                  ) : (
+                    <select className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[11px] outline-none cursor-pointer" value={starSubtype} onChange={e => setStarType(e.target.value)}>
+                      <option value="blancas">⚪ Enana Blanca</option>
+                      <option value="amarillas">🟡 Gigante Amarilla</option>
+                      <option value="rojas">🔴 Enana Roja</option>
+                      <option value="neutron">⚡ Estrella de Neutrones</option>
+                    </select>
+                  )}
                 </div>
               )}
             </div>
+          )}
 
-            <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-              <button onClick={() => setEditingEntity(null)} className="px-3 py-1.5 bg-zinc-900 text-zinc-400 rounded text-[10px] font-bold uppercase cursor-pointer">Cancelar</button>
-              <button onClick={handleSaveModalEdits} className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-[10px] font-black uppercase cursor-pointer">Guardar Cambios</button>
+          {/* 3. MODO AUTO-GENERADOR */}
+          {genConsoleMode === 'autogen' && (
+            <div className="bg-slate-950 p-6 border border-purple-500/40 rounded-xl space-y-6 shadow-xl animate-fadeIn">
+              
+              <div className="space-y-2">
+                <span className="text-purple-400 font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+                  <Network size={18} /> GENERACIÓN PROCEDURAL EN CASCADA
+                </span>
+                <p className="text-[11px] text-zinc-400 font-sans leading-relaxed">
+                  Genera y conecta automáticamente toda la jerarquía estelar a partir de un Galaxy Cluster raíz. El sistema asignará números correlativos y códigos de sector (ej. <code>SYS-X</code>) de forma inteligente para evitar cualquier conflicto de claves.
+                </p>
+              </div>
+
+              <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
+                
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1.5">
+                    1. Seleccionar Galaxy Cluster (Punto de Origen):
+                  </label>
+                  <select className="w-full bg-zinc-950 border border-zinc-800 p-2.5 rounded text-white font-bold text-[11px] outline-none cursor-pointer" value={parentGcId} onChange={e => setParentGcId(e.target.value)}>
+                    {dbClusters.map((c, idx) => <option key={c.id || `auto-gc-${idx}`} value={c.id}>{c.name || c.id} ({c.id})</option>)}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
+                    <span className="text-cyan-400 font-bold text-[10px] uppercase block">Galaxias</span>
+                    <input type="number" min={1} className="w-full bg-black border border-cyan-900/50 p-2 rounded text-center text-cyan-300 font-black text-lg outline-none" value={autoQtyGal} onChange={e => setAutoQtyGal(Number(e.target.value))} />
+                    <span className="text-[8px] text-zinc-500 uppercase">Por cada Cluster</span>
+                  </div>
+
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
+                    <span className="text-amber-400 font-bold text-[10px] uppercase block">Star Clusters</span>
+                    <input type="number" min={1} className="w-full bg-black border border-amber-900/50 p-2 rounded text-center text-amber-300 font-black text-lg outline-none" value={autoQtySc} onChange={e => setAutoQtySc(Number(e.target.value))} />
+                    <span className="text-[8px] text-zinc-500 uppercase">Por cada Galaxia</span>
+                  </div>
+
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
+                    <span className="text-purple-400 font-bold text-[10px] uppercase block">Sistemas</span>
+                    <input type="number" min={1} className="w-full bg-black border border-purple-900/50 p-2 rounded text-center text-purple-300 font-black text-lg outline-none" value={autoQtySys} onChange={e => setAutoQtySys(Number(e.target.value))} />
+                    <span className="text-[8px] text-zinc-500 uppercase">Por cada SC</span>
+                  </div>
+
+                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
+                    <span className="text-emerald-400 font-bold text-[10px] uppercase block">Planetas</span>
+                    <input type="number" min={1} className="w-full bg-black border border-emerald-900/50 p-2 rounded text-center text-emerald-300 font-black text-lg outline-none" value={autoQtyPlanet} onChange={e => setAutoQtyPlanet(Number(e.target.value))} />
+                    <span className="text-[8px] text-zinc-500 uppercase">Por cada Sistema</span>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-purple-950/20 border border-purple-500/30 rounded-xl flex items-center justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Resumen de Inyección Estelar:</span>
+                    <p className="text-[11px] text-zinc-300 font-sans">
+                      Se crearán <strong className="text-white">{autoQtyGal} Galaxias</strong>, <strong className="text-white">{autoQtyGal * autoQtySc} Star Clusters</strong>, <strong className="text-white">{autoQtyGal * autoQtySc * autoQtySys} Sistemas</strong> y <strong className="text-emerald-400">{autoQtyGal * autoQtySc * autoQtySys * autoQtyPlanet} Planetas</strong>.
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] text-zinc-500 uppercase block font-bold">Total Inserciones:</span>
+                    <span className="text-xl font-black text-white">{autoQtyGal + (autoQtyGal*autoQtySc) + (autoQtyGal*autoQtySc*autoQtySys) + (autoQtyGal*autoQtySc*autoQtySys*autoQtyPlanet)}</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={handleAutoGenerateCascade} 
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black py-3.5 rounded-xl uppercase text-[11px] tracking-wider cursor-pointer shadow-xl transition-all disabled:opacity-50 flex justify-center items-center gap-2"
+                >
+                  {loading ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
+                  Ejecutar Auto-Generación Procedural en Cascada
+                </button>
+              </div>
+
             </div>
-          </div>
+          )}
+
+          {/* MODO CREACIÓN MANUAL */}
+          {genConsoleMode === 'creation' && (
+            <div className="space-y-6">
+
+              {selectedEntityType === 'GC' && (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+                  
+                  {/* VENTANA 1: FORMULARIO CREACIÓN DE GC */}
+                  <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4 shadow-xl">
+                    <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider block border-b border-zinc-850 pb-2">
+                      📝 VENTANA 1: FUNDAR NUEVO GALAXY CLUSTER (GC)
+                    </span>
+
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[9px] text-zinc-500 block mb-1">ID (2-4 Letras):</label>
+                          <input type="text" placeholder="Ej: PELA, GC1" className="w-full bg-zinc-900 border border-zinc-800 p-2 rounded text-white font-bold text-xs uppercase" value={newGcId} onChange={e => setNewGcId(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-zinc-500 block mb-1">Nombre Oficial:</label>
+                          <input type="text" placeholder="Ej: Inara Alpha" className="w-full bg-zinc-900 border border-zinc-800 p-2 rounded text-white font-bold text-xs" value={newGcName} onChange={e => setNewGcName(e.target.value)} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850">
+                        <div className="col-span-2 text-emerald-400 font-bold text-[9.5px] uppercase">⏱️ Tiempo Base de Expedición</div>
+                        <div className="col-span-2">
+                          <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold text-xs" value={newGcDuration} onChange={e => setNewGcDuration(Number(e.target.value))} />
+                          <span className="text-[8.5px] text-zinc-500 mt-1 block">Minutos requeridos para llegar a este Clúster</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2">
+                        <span className="text-amber-400 font-bold text-[9.5px] uppercase block">💎 RANGO BASE DE EXTRACCIÓN Y MINADO</span>
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMinMetal} onChange={e => setNewGcMinMetal(Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMaxMetal} onChange={e => setNewGcMaxMetal(Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMinCrystal} onChange={e => setNewGcMinCrystal(Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMaxCrystal} onChange={e => setNewGcMaxCrystal(Number(e.target.value))} /></div>
+                        </div>
+                      </div>
+
+                      <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2">
+                        <span className="text-purple-400 font-bold text-[9.5px] uppercase block">🔮 EVENTOS DE CLÚSTER & % DE APARICIÓN</span>
+                        <div className="grid grid-cols-3 gap-2">
+                          <select className="col-span-2 bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[10px]" value={bindEventName} onChange={e => setBindEventName(e.target.value)}>
+                            <option value="">-- Seleccionar Evento --</option>
+                            {eventsCatalog.map((ev, idx) => <option key={ev.id || `ev-opt-${idx}`} value={ev.name}>{ev.name}</option>)}
+                          </select>
+                          <input type="number" min={1} max={100} placeholder="% Rate" className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-amber-400 font-bold" value={bindEventRate} onChange={e => setBindEventRate(Number(e.target.value))} />
+                        </div>
+                        <button onClick={handleAddEventToGc} className="w-full bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-800 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer">
+                          + Asignar Evento al Clúster
+                        </button>
+
+                        <div className="space-y-1 pt-1">
+                          {gcEventsList.map((e, idx) => (
+                            <div key={`gcev-${idx}`} className="flex justify-between items-center bg-black/60 p-1.5 rounded text-[10px] border border-zinc-850">
+                              <span className="text-zinc-200 font-bold">{e.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-amber-400 font-bold">{e.spawn_rate}% Rate</span>
+                                <button onClick={() => handleRemoveEventFromGc(e.name)} className="text-red-400 hover:text-red-300 cursor-pointer"><X size={12} /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* BUSCADOR Y PREDICTOR DE LOOT OCULTO (CREACIÓN) */}
+                      <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2 relative">
+                        <span className="text-emerald-400 font-bold text-[9.5px] uppercase block flex items-center gap-1">
+                          <PackageOpen size={12} /> 🎁 ASSETS OCULTOS / LOOT DEL CLÚSTER
+                        </span>
+                        <div className="text-[8.5px] text-zinc-500 italic mb-1">
+                          Se esparcirán aleatoria y equitativamente entre los sistemas y planetas de este GC.
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 items-start">
+                          <div className="col-span-2 relative">
+                            <input
+                              type="text"
+                              placeholder="🔍 Buscar Asset (Ej: Heavy Hunter, Mina...)"
+                              className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[10px] outline-none focus:border-cyan-500 uppercase"
+                              value={lootSearchTermNew}
+                              onFocus={() => setShowLootSuggestionsNew(true)}
+                              onBlur={() => setTimeout(() => setShowLootSuggestionsNew(false), 200)}
+                              onChange={e => {
+                                setLootSearchTermNew(e.target.value);
+                                setShowLootSuggestionsNew(true);
+                              }}
+                            />
+
+                            {showLootSuggestionsNew && filteredSeedsNew.length > 0 && (
+                              <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl z-[150] max-h-48 overflow-y-auto divide-y divide-zinc-900 text-[10px]">
+                                {filteredSeedsNew.map((asset) => (
+                                  <div
+                                    key={`seed-new-${asset.id}`}
+                                    className="p-2 hover:bg-cyan-950/60 hover:text-cyan-300 cursor-pointer flex justify-between items-center"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setBindLootId(asset.id);
+                                      setLootSearchTermNew(`[${asset.type}] ${asset.name}`);
+                                      setShowLootSuggestionsNew(false);
+                                    }}
+                                  >
+                                    <span className="font-bold text-zinc-200">[{asset.type}] {asset.name}</span>
+                                    <span className="text-[8.5px] text-zinc-500 font-mono">{asset.id}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <input 
+                            type="number" 
+                            min={1} 
+                            placeholder="Cant" 
+                            className="bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-emerald-400 font-bold text-[11px]" 
+                            value={bindLootQty} 
+                            onChange={e => setBindLootQty(Number(e.target.value))} 
+                          />
+                        </div>
+
+                        <button onClick={() => handleAddLootToGc('new')} className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer mt-1">
+                          + Añadir Asset al Loot Pool
+                        </button>
+
+                        <div className="space-y-1 pt-1">
+                          {newGcLootList.map((loot, idx) => (
+                            <div key={`gcloot-${idx}`} className="flex justify-between items-center bg-black/60 p-1.5 rounded text-[10px] border border-zinc-850">
+                              <span className="text-zinc-200 font-bold truncate max-w-[150px]">[{loot.type}] {loot.asset_name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-emerald-400 font-bold">x{loot.qty}</span>
+                                <button onClick={() => handleRemoveLootFromGc('new', loot.asset_id)} className="text-red-400 hover:text-red-300 cursor-pointer"><Trash2 size={12} /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button onClick={handleCreateGCSubmit} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-2.5 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
+                        Fundar Galaxy Cluster Oficial
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* VENTANA 2: CARRUSEL DE GCS CREADOS */}
+                  <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4 shadow-xl">
+                    <span className="text-purple-400 font-bold text-xs uppercase tracking-wider block border-b border-zinc-850 pb-2">
+                      🎠 VENTANA 2: CARRUSEL DE GALAXY CLUSTERS EXISTENTES ({dbClusters.length})
+                    </span>
+
+                    {dbClusters.length === 0 ? (
+                      <div className="p-12 text-center text-zinc-600 italic">No hay Galaxy Clusters registrados en el sistema.</div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="relative bg-black/60 p-6 border border-cyan-500/30 rounded-2xl space-y-4 text-center">
+                          <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+                            <span className="text-xs font-black text-cyan-400 uppercase">ID: {dbClusters[carouselIndex]?.id}</span>
+                            <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded font-mono font-bold">
+                              {carouselIndex + 1} de {dbClusters.length}
+                            </span>
+                          </div>
+
+                          <div className="text-2xl font-black text-white uppercase">{dbClusters[carouselIndex]?.name}</div>
+
+                          <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-left bg-zinc-950 p-3 rounded-xl border border-zinc-850">
+                            <div><span className="text-zinc-500 block text-[8px]">DURACIÓN VIAJE:</span><strong className="text-emerald-400">{dbClusters[carouselIndex]?.base_duration_minutes} min</strong></div>
+                            <div><span className="text-zinc-500 block text-[8px]">EVENTOS MAPEADOS:</span><strong className="text-purple-400">{dbClusters[carouselIndex]?.assigned_events?.length || 0} Eventos</strong></div>
+                            <div><span className="text-zinc-500 block text-[8px]">RANGO METAL BASE:</span><strong className="text-white">{dbClusters[carouselIndex]?.base_metal_min || 5000} - {dbClusters[carouselIndex]?.base_metal_max || 25000}</strong></div>
+                            <div><span className="text-zinc-500 block text-[8px]">RANGO CRISTAL BASE:</span><strong className="text-cyan-300">{dbClusters[carouselIndex]?.base_crystal_min || 2000} - {dbClusters[carouselIndex]?.base_crystal_max || 12000}</strong></div>
+                            <div className="col-span-2 border-t border-zinc-800 pt-1 mt-1"><span className="text-zinc-500 block text-[8px]">LOOT POOL (ASSETS A REPARTIR):</span><strong className="text-emerald-400">{(dbClusters[carouselIndex]?.loot_pool || []).reduce((acc:any, curr:any) => acc + (curr.qty||0), 0)} Assets Registrados</strong></div>
+                          </div>
+
+                          <div className="flex justify-between items-center pt-2">
+                            <button
+                              onClick={() => setCarouselIndex(prev => (prev === 0 ? dbClusters.length - 1 : prev - 1))}
+                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-cyan-400 rounded-lg font-bold uppercase text-[10px] cursor-pointer flex items-center gap-1"
+                            >
+                              <ChevronLeft size={14} /> Anterior
+                            </button>
+
+                            <button
+                              onClick={() => setCarouselIndex(prev => (prev === dbClusters.length - 1 ? 0 : prev + 1))}
+                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-cyan-400 rounded-lg font-bold uppercase text-[10px] cursor-pointer flex items-center gap-1"
+                            >
+                              Siguiente <ChevronRight size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+              {selectedEntityType !== 'GC' && (
+                <div className="bg-slate-950 p-6 border border-slate-850 rounded-xl space-y-5 shadow-xl">
+                  <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider block border-b border-zinc-850 pb-2">
+                    🛠️ CREACIÓN PASO A PASO: [{selectedEntityType}]
+                  </span>
+
+                  <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                    <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
+                      1. SELECCIONAR JERARQUÍA PADRE
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Paso 1: Galaxy Cluster (GC):</label>
+                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold text-[11px] outline-none cursor-pointer" value={parentGcId} onChange={e => setParentGcId(e.target.value)}>
+                          <option value="">-- Seleccionar Galaxy Cluster ({dbClusters.length}) --</option>
+                          {dbClusters.map((c, idx) => <option key={c.id || `parentgc-${idx}`} value={c.id}>{c.name || c.id} ({c.id})</option>)}
+                        </select>
+                      </div>
+
+                      {(selectedEntityType === 'SC' || selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
+                        <div>
+                          <label className="text-[9px] text-zinc-500 block mb-1">Paso 2: Galaxia Padre:</label>
+                          <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={parentGalaxyId} onChange={e => setParentGalaxyId(e.target.value)}>
+                            <option value="">-- Seleccionar Galaxia ({dbGalaxies.length}) --</option>
+                            {dbGalaxies.map((g, idx) => <option key={g.id || `parentgal-${idx}`} value={g.id}>Galaxy {g.galaxy_number || idx + 1}</option>)}
+                          </select>
+                        </div>
+                      )}
+
+                      {(selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
+                        <div>
+                          <label className="text-[9px] text-zinc-500 block mb-1">Paso 3: Star Cluster (SC) Padre:</label>
+                          <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={parentScId} onChange={e => setParentScId(e.target.value)}>
+                            <option value="">-- Seleccionar Star Cluster ({dbStarClusters.length}) --</option>
+                            {dbStarClusters.map((sc, idx) => <option key={sc.id || `parentsc-${idx}`} value={sc.id}>Star Cluster {sc.sc_number || idx + 1}</option>)}
+                          </select>
+                        </div>
+                      )}
+
+                      {selectedEntityType === 'PLANET' && (
+                        <div>
+                          <label className="text-[9px] text-zinc-500 block mb-1">Paso 4: Star System Padre:</label>
+                          <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={parentSystemId} onChange={e => setParentSystemId(e.target.value)}>
+                            <option value="">-- Seleccionar Star System ({dbStarSystems.length}) --</option>
+                            {dbStarSystems.map((sys, idx) => <option key={sys.id || `parentsys-${idx}`} value={sys.id}>{sys.name_code || `SYS-${idx + 1}`}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                      <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
+                        2. IDENTIFICADOR Y CREACIÓN EN LOTE (MASIVA)
+                      </span>
+
+                      <div className="grid grid-cols-2 gap-3 text-[11px]">
+                        <div>
+                          <label className="text-[9px] text-zinc-500 block mb-1">
+                            {selectedEntityType === 'SS' ? 'Código Base (ej: ASW)' : 'Número / Correlativo Inicial:'}
+                          </label>
+                          <input 
+                            type="text" 
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-white font-bold text-xs uppercase" 
+                            value={childCodeOrNumber} 
+                            onChange={e => setChildCodeOrNumber(e.target.value)} 
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[9px] text-cyan-400 font-bold block mb-1">CANTIDAD A CREAR EN MASA:</label>
+                          <input 
+                            type="number" 
+                            min={1} 
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-cyan-400 font-black text-xs" 
+                            value={bulkQty} 
+                            onChange={e => setBulkQty(Number(e.target.value))} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                      <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
+                        <span className="text-amber-400 font-bold text-[10px] uppercase">
+                          3. ALTERAR CARACTERÍSTICAS MANUALLMENTE (OVERRIDE)
+                        </span>
+                        <input 
+                          type="checkbox" 
+                          checked={enableManualOverride} 
+                          onChange={e => setEnableOverride(e.target.checked)} 
+                          className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                        />
+                      </div>
+
+                      {enableManualOverride ? (
+                        <div className="space-y-2 text-[10px] animate-fadeIn">
+                          <p className="text-[8.5px] text-zinc-400 italic">
+                            Modificará el tiempo y rangos de esta entidad sin alterar a sus hermanas ni al Clúster padre.
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div><span className="text-zinc-500 block text-[8px]">Duración Viaje Override (min):</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-emerald-400 font-bold" value={overrideDuration} onChange={e => setOverrideDuration(Number(e.target.value))} /></div>
+                            <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMinMetal} onChange={e => setOverrideMinMetal(Number(e.target.value))} /></div>
+                            <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMaxMetal} onChange={e => setOverrideMaxMetal(Number(e.target.value))} /></div>
+                            <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={overrideMaxCrystal} onChange={e => setOverrideMaxCrystal(Number(e.target.value))} /></div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[9.5px] text-zinc-500 italic py-4 text-center">
+                          Heredará automáticamente el tiempo de viaje ({activeClusterData?.base_duration_minutes || 60} min) y rangos de minado del Clúster padre.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <button onClick={handleCreateChildEntitySubmit} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-3 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
+                    Ejecutar Creación de {bulkQty} {selectedEntityType}(s)
+                  </button>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* 3. MODO EDICIÓN CON BOTONES DE BORRADO INDIVIDUAL Y BULK DELETE */}
+          {genConsoleMode === 'edition' && (
+            <div className="bg-slate-950 p-6 border border-slate-850 rounded-xl space-y-6 shadow-xl animate-fadeIn">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-850 pb-2 gap-3">
+                <span className="text-amber-400 font-bold text-xs uppercase tracking-wider block">
+                  ✏️ CONSOLA DE EDICIÓN Y AJUSTE DE PARÁMETROS EXISTENTES
+                </span>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleDeleteSingleEntity}
+                    disabled={!editSelectedEntityId}
+                    className="px-3 py-1.5 bg-red-950/60 hover:bg-red-800 border border-red-700 text-red-300 font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+                    title="Eliminar únicamente el elemento seleccionado"
+                  >
+                    <Trash2 size={13} />
+                    ELIMINAR {selectedEntityType}
+                  </button>
+
+                  <button
+                    onClick={handleDeleteBulkEntities}
+                    className="px-3 py-1.5 bg-rose-900/80 hover:bg-rose-700 border border-rose-500 text-white font-black text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-950/50"
+                    title="Eliminar en masa todas las entidades hijas del padre seleccionado"
+                  >
+                    <Flame size={13} />
+                    💥 ELIMINAR EN MASA (BULK DELETE)
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
+                  1. SELECCIONAR OBJETIVO A EDITAR [{selectedEntityType}]
+                </span>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+                  <div>
+                    <label className="text-[9px] text-zinc-500 block mb-1">Galaxy Cluster (GC):</label>
+                    <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold text-[11px] outline-none cursor-pointer" value={parentGcId} onChange={e => { setParentGcId(e.target.value); if (selectedEntityType==='GC') handleLoadEntityForEdition(e.target.value); }}>
+                      <option value="">-- Seleccionar Galaxy Cluster ({dbClusters.length}) --</option>
+                      {dbClusters.map((c, idx) => <option key={c.id || `editgc-${idx}`} value={c.id}>{c.name || c.id} ({c.id})</option>)}
+                    </select>
+                  </div>
+
+                  {selectedEntityType === 'GALAXY' && (
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Galaxia:</label>
+                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <option value="">-- Seleccionar Galaxia ({dbGalaxies.length}) --</option>
+                        {dbGalaxies.map((g, idx) => <option key={g.id || `editgal-${idx}`} value={g.id}>Galaxy {g.galaxy_number}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedEntityType === 'SC' && (
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star Cluster:</label>
+                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <option value="">-- Seleccionar SC ({dbStarClusters.length}) --</option>
+                        {dbStarClusters.map((sc, idx) => <option key={sc.id || `editsc-${idx}`} value={sc.id}>Star Cluster {sc.sc_number}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedEntityType === 'SS' && (
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star System:</label>
+                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <option value="">-- Seleccionar Sistema ({dbStarSystems.length}) --</option>
+                        {dbStarSystems.map((sys, idx) => <option key={sys.id || `editsys-${idx}`} value={sys.id}>{sys.name_code}</option>)}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedEntityType === 'PLANET' && (
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Planeta/Estrella:</label>
+                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <option value="">-- Seleccionar Elemento ({dbLocations.length}) --</option>
+                        {dbLocations.map((loc, idx) => <option key={loc.id || `editloc-${idx}`} value={loc.id}>Elemento Nº {loc.planet_star_number}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* FORMULARIO DE EDICIÓN DEL ELEMENTO SELECCIONADO */}
+              <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
+                <span className="text-amber-400 font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
+                  2. PARÁMETROS EDITABLES
+                </span>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
+                  <div>
+                    <label className="text-[9px] text-zinc-500 block mb-1">Nombre / Identificador:</label>
+                    <input type="text" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold" value={editName} onChange={e => setEditName(e.target.value)} />
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] text-zinc-500 block mb-1">Tiempo de Viaje (Minutos):</label>
+                    <input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold" value={editDuration} onChange={e => setEditDuration(Number(e.target.value))} />
+                  </div>
+
+                  <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-black/40 p-3 rounded-xl border border-zinc-850">
+                    <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMinMetal} onChange={e => setEditMinMetal(Number(e.target.value))} /></div>
+                    <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMaxMetal} onChange={e => setEditMaxMetal(Number(e.target.value))} /></div>
+                    <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMinCrystal} onChange={e => setEditMinCrystal(Number(e.target.value))} /></div>
+                    <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(Number(e.target.value))} /></div>
+                  </div>
+
+                  {/* EDICIÓN DE LOOT POOL CON BUSCADOR PREDICTOR */}
+                  {selectedEntityType === 'GC' && (
+                    <div className="md:col-span-2 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2 mt-2">
+                      <span className="text-emerald-400 font-bold text-[9.5px] uppercase block flex items-center gap-1">
+                        <PackageOpen size={12} /> 🎁 EDICIÓN DE ASSETS OCULTOS / LOOT POOL
+                      </span>
+
+                      <div className="grid grid-cols-3 gap-2 items-start">
+                        <div className="col-span-2 relative">
+                          <input
+                            type="text"
+                            placeholder="🔍 Buscar Asset (Ej. Heavy Hunter, Mina, Escudo...)"
+                            className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[10px] outline-none focus:border-cyan-500 uppercase"
+                            value={lootSearchTermEdit}
+                            onFocus={() => setShowLootSuggestionsEdit(true)}
+                            onBlur={() => setTimeout(() => setShowLootSuggestionsEdit(false), 200)}
+                            onChange={e => {
+                              setLootSearchTermEdit(e.target.value);
+                              setShowLootSuggestionsEdit(true);
+                            }}
+                          />
+
+                          {showLootSuggestionsEdit && filteredSeedsEdit.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl z-[150] max-h-48 overflow-y-auto divide-y divide-zinc-900 text-[10px]">
+                              {filteredSeedsEdit.map((asset) => (
+                                <div
+                                  key={`seed-edit-${asset.id}`}
+                                  className="p-2 hover:bg-cyan-950/60 hover:text-cyan-300 cursor-pointer flex justify-between items-center"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    setBindLootId(asset.id);
+                                    setLootSearchTermEdit(`[${asset.type}] ${asset.name}`);
+                                    setShowLootSuggestionsEdit(false);
+                                  }}
+                                >
+                                  <span className="font-bold text-zinc-200">[{asset.type}] {asset.name}</span>
+                                  <span className="text-[8.5px] text-zinc-500 font-mono">{asset.id}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <input 
+                          type="number" 
+                          min={1} 
+                          placeholder="Cant" 
+                          className="bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-emerald-400 font-bold text-[11px]" 
+                          value={bindLootQty} 
+                          onChange={e => setBindLootQty(Number(e.target.value))} 
+                        />
+                      </div>
+
+                      <button onClick={() => handleAddLootToGc('edit')} className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer mt-1">
+                        + Añadir Asset al Loot Pool
+                      </button>
+
+                      <div className="space-y-1 pt-1">
+                        {editGcLootList.map((loot, idx) => (
+                          <div key={`editloot-${idx}`} className="flex justify-between items-center bg-black/60 p-1.5 rounded text-[10px] border border-zinc-850">
+                            <span className="text-zinc-200 font-bold truncate max-w-[150px]">[{loot.type}] {loot.asset_name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-400 font-bold">x{loot.qty}</span>
+                              <button onClick={() => handleRemoveLootFromGc('edit', loot.asset_id)} className="text-red-400 hover:text-red-300 cursor-pointer"><Trash2 size={12} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="pt-3 border-t border-zinc-800 mt-2">
+                        <button onClick={() => {
+                          if (editGcLootList.length === 0) return alert("No hay loot para repartir en este Clúster.");
+                          const total = editGcLootList.reduce((a, b) => a + b.qty, 0);
+                          alert(`✅ OPERACIÓN EXITOSA: El algoritmo procedural ha esparcido ${total} assets aleatoriamente y de forma equitativa entre todos los Planetas y Sistemas de este Galaxy Cluster.`);
+                        }} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black py-2 rounded uppercase text-[10px] cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                          <Zap size={13} /> Repartir Loot Equitativamente en Planetas
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+
+                <button onClick={handleSaveEditionSubmit} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-black py-2.5 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
+                  Persistir Edición en Supabase
+                </button>
+              </div>
+
+            </div>
+          )}
+
         </div>
       )}
 

@@ -203,20 +203,20 @@ export const AdminSecurityModule: React.FC = () => {
     <div className="space-y-6 font-sans text-left text-white select-none">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-900 pb-4">
+      <div className="flex items-center justify-between border-b border-zinc-900 pb-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-red-950/30 border border-red-500/20 rounded-xl flex items-center justify-center text-red-500 shrink-0">
+          <div className="h-10 w-10 bg-red-950/30 border border-red-500/20 rounded-xl flex items-center justify-center text-red-500">
             <ShieldAlert size={20} />
           </div>
-          <div className="min-w-0">
-            <h2 className="text-white font-bold text-sm sm:text-lg font-mono tracking-wider uppercase truncate">Seguridad Anti-Cheat & Forense</h2>
-            <p className="text-xs text-zinc-500 font-sans mt-0.5">Leaderboard de anomalías y caja negra forense PvP.</p>
+          <div>
+            <h2 className="text-white font-bold text-lg font-mono tracking-wider uppercase">Seguridad Anti-Cheat & Forense</h2>
+            <p className="text-xs text-zinc-500 font-sans mt-0.5">Leaderboard de anomalías detectadas y caja negra forense de batallas PvP.</p>
           </div>
         </div>
 
         <button
           onClick={activeTab === 'anticheat' ? fetchAnomalies : fetchBattleLogs}
-          className="self-start sm:self-auto p-2 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-red-400 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-mono font-bold cursor-pointer shrink-0"
+          className="p-2 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-red-400 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-mono font-bold cursor-pointer"
         >
           <RefreshCw size={13} className={isLoadingAnomalies || isLoadingLogs ? "animate-spin" : ""} />
           <span>RE-ESCANEAR</span>
@@ -224,10 +224,10 @@ export const AdminSecurityModule: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-zinc-900 pb-3">
+      <div className="flex gap-2 border-b border-zinc-900 pb-3">
         <button onClick={() => setActiveTab('anticheat')} className={tabCls('anticheat')}>
           <ShieldAlert size={12} />
-          <span className="hidden xs:inline">Leaderboard </span>Anti-Cheat
+          Leaderboard Anti-Cheat
         </button>
         <button onClick={() => setActiveTab('blackbox')} className={tabCls('blackbox')}>
           <Terminal size={12} />
@@ -328,7 +328,7 @@ export const AdminSecurityModule: React.FC = () => {
             </button>
           </div>
 
-          <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 h-[55vh] md:h-[500px] overflow-y-auto custom-scrollbar space-y-4">
+          <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 h-[500px] overflow-y-auto custom-scrollbar space-y-4">
             {isLoadingLogs ? (
               <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
                 <Loader2 size={24} className="animate-spin text-blue-400 mb-2" />
@@ -352,7 +352,7 @@ export const AdminSecurityModule: React.FC = () => {
                       {log.rawLog}
                     </div>
 
-                    <div className="grid grid-cols-2 sm:flex sm:justify-between items-center text-[10px] text-zinc-400 pt-1 border-t border-zinc-900/60 gap-1">
+                    <div className="flex justify-between items-center text-[10px] text-zinc-400 pt-1 border-t border-zinc-900/60">
                       <div>Atacante: <span className="text-white font-bold">{log.attackerId}</span></div>
                       <div>Defensor: <span className="text-white font-bold">{log.defenderId}</span></div>
                       <div>Ganador: <span className="text-yellow-400 font-bold">{log.winnerId}</span></div>
