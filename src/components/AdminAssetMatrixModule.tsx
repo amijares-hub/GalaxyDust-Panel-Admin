@@ -18,54 +18,55 @@ export type AssetCategory =
   | 'Consumibles' 
   | 'Astrobots';
 
+// Mapeo canónico — 'Consumibles' agrupa seed_consumables, seed_bags y seed_packs
 const SEED_TABLE_MAPPING: Record<AssetCategory, { seedTables: string[]; userTable: string; icon: any }> = {
   'Naves': {
-    seedTables: ['seed_ships', 'ships_stadistics', 'ships', 'naves'],
+    seedTables: ['seed_ships'],
     userTable: 'user_ships',
     icon: Rocket
   },
   'Estructuras': {
-    seedTables: ['seed_structures', 'structures_stadistics', 'structures', 'estructuras'],
+    seedTables: ['seed_structures'],
     userTable: 'user_structures',
     icon: Building
   },
   'Defensas': {
-    seedTables: ['seed_defenses', 'defenses_stadistics', 'defenses', 'defensas'],
+    seedTables: ['seed_defenses'],
     userTable: 'user_defenses',
     icon: Shield
   },
   'Tecnologías': {
-    seedTables: ['seed_technologies', 'technologies_stadistics', 'technologies', 'tecnologias'],
+    seedTables: ['seed_technologies'],
     userTable: 'user_technologies',
     icon: Cpu
   },
   'Insignias': {
-    seedTables: ['seed_badges', 'badges_stadistics', 'badges', 'insignias'],
+    seedTables: ['seed_badges'],
     userTable: 'user_badges',
     icon: Award
   },
   'Blueprints': {
-    seedTables: ['seed_blueprints', 'blueprints_stadistics', 'blueprints', 'blue_prints'],
+    seedTables: ['seed_blueprints'],
     userTable: 'user_blueprints',
     icon: Layers3
   },
   'Licencias': {
-    seedTables: ['seed_licenses', 'licenses_stadistics', 'licenses', 'seed_licencias', 'licencias'],
+    seedTables: ['seed_licenses'],
     userTable: 'user_licenses',
     icon: FileText
   },
   'Tools': {
-    seedTables: ['seed_tools', 'tools_stadistics', 'tools', 'herramientas'],
+    seedTables: ['seed_tools'],
     userTable: 'user_tools',
     icon: Wrench
   },
   'Consumibles': {
-    seedTables: ['seed_packs', 'seed_bags', 'packs_stadistics', 'bags_stadistics', 'seed_consumables', 'seed_consumibles', 'consumables', 'consumibles'],
+    seedTables: ['seed_consumables', 'seed_bags', 'seed_packs'], // <--- Agrupa consumibles, bolsas y packs
     userTable: 'user_consumibles',
     icon: Package
   },
   'Astrobots': {
-    seedTables: ['seed_astrobots', 'astrobots_stadistics', 'astrobots', 'astro_bots'],
+    seedTables: ['seed_astrobots'],
     userTable: 'user_astrobots',
     icon: Bot
   }
@@ -85,8 +86,8 @@ const resolveImageUrl = (rawUrl?: string, fallbackKey?: string, fileExt?: string
 };
 
 export const AdminAssetMatrixModule: React.FC = () => {
-  const [activeCategory, setActiveCategory] = useState<AssetCategory>('Blueprints');
-  const [activeTableUsed, setActiveTableUsed] = useState<string>('');
+  const [activeCategory, setActiveCategory] = useState<AssetCategory>('Consumibles');
+  const [activeTableUsed, setActiveTableUsed] = useState<string>('seed_consumables');
   const [seedAssets, setSeedAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -108,7 +109,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
   const [injectQty, setInjectQty] = useState<number>(1);
   const [injectLevel, setInjectLevel] = useState<number>(1);
 
-  // 1. Cargar Semillas de Supabase con Búsqueda Resiliente Multi-Tabla
+  // 1. Cargar Semillas de Supabase (Consulta combinada si hay múltiples tablas)
   const fetchSeedAssets = async (category: AssetCategory) => {
     setLoading(true);
     setErrorMsg(null);
@@ -117,7 +118,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
     const { seedTables } = SEED_TABLE_MAPPING[category];
     let combinedData: any[] = [];
     let successfulTables: string[] = [];
-    let lastError: string | null = null;
+    let errors: string[] = [];
 
     for (const tableName of seedTables) {
       try {
@@ -125,20 +126,17 @@ export const AdminAssetMatrixModule: React.FC = () => {
         if (!error && data) {
           if (data.length > 0) {
             data.forEach((item: any) => {
-              const itemId = String(item.ship_id || item.id || item.name || Math.random());
-              if (!combinedData.some(existing => String(existing.ship_id || existing.id || existing.name) === itemId)) {
-                combinedData.push({ ...item, _sourceTable: tableName });
-              }
+              const rawId = item.ship_id || item.id || item.name || Math.random();
+              const uniqueKey = `${tableName}_${rawId}`;
+              combinedData.push({ ...item, _uniqueKey: uniqueKey, _sourceTable: tableName });
             });
-            successfulTables.push(tableName);
-          } else if (successfulTables.length === 0) {
-            successfulTables.push(tableName);
           }
+          successfulTables.push(tableName);
         } else if (error) {
-          lastError = error.message;
+          errors.push(`${tableName}: ${error.message}`);
         }
       } catch (e: any) {
-        lastError = e.message;
+        errors.push(`${tableName}: ${e.message}`);
       }
     }
 
@@ -146,10 +144,10 @@ export const AdminAssetMatrixModule: React.FC = () => {
       setActiveTableUsed(successfulTables.join(' + '));
       setSeedAssets(combinedData);
     } else {
-      setActiveTableUsed(seedTables[0]);
+      setActiveTableUsed(seedTables.join(' + '));
       setSeedAssets([]);
-      if (lastError) {
-        setErrorMsg(`La tabla no responde en Supabase (${lastError}). Verifica que las tablas estén creadas.`);
+      if (errors.length > 0) {
+        setErrorMsg(`Consultadas las tablas [${errors.join(', ')}], pero no devolvieron registros.`);
       }
     }
     setLoading(false);
@@ -191,11 +189,28 @@ export const AdminAssetMatrixModule: React.FC = () => {
     }
   };
 
-  // Cargar Inventario del Piloto
+  // Cargar Inventario del Piloto usando el legacy_id (ID numérico de la cuenta)
   const fetchPilotInventory = async (userId: string, category: AssetCategory) => {
     const { userTable } = SEED_TABLE_MAPPING[category];
     try {
-      const { data } = await supabase.from(userTable).select('*').eq('user_id', userId);
+      // 1. Obtener legacy_id desde user_profiles
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('legacy_id')
+        .eq('id', userId)
+        .single();
+
+      if (!profile?.legacy_id) {
+        setPilotUserAssets([]);
+        return;
+      }
+
+      // 2. Consultar la tabla usando id_user = legacy_id
+      const { data } = await supabase
+        .from(userTable)
+        .select('*')
+        .eq('id_user', profile.legacy_id);
+        
       setPilotUserAssets(data || []);
     } catch (e) {
       setPilotUserAssets([]);
@@ -219,8 +234,20 @@ export const AdminAssetMatrixModule: React.FC = () => {
     const assetId = asset.ship_id || asset.id;
 
     try {
+      // 1. Obtener el id_user (legacy_id)
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('legacy_id')
+        .eq('id', syncedPilot.id)
+        .single();
+
+      if (!profile?.legacy_id) {
+        alert("El piloto no posee un ID numérico válido (legacy_id).");
+        return;
+      }
+
       const payload: any = {
-        user_id: syncedPilot.id,
+        id_user: profile.legacy_id,
         quantity: injectQty,
         current_level: injectLevel,
         created_at: new Date().toISOString()
@@ -294,8 +321,8 @@ export const AdminAssetMatrixModule: React.FC = () => {
           <div className="flex items-center gap-3">
             <Database className="text-cyan-400 animate-pulse" size={20} />
             <div>
-              <span className="text-[9px] text-zinc-500 font-bold block uppercase">TABLA OPERATIVA POSTGRES ACTIVA</span>
-              <span className="text-cyan-300 font-black text-sm">"public"."{activeTableUsed || 'sin_tabla'}"</span>
+              <span className="text-[9px] text-zinc-500 font-bold block uppercase">TABLAS OPERATIVAS POSTGRES ACTIVAS</span>
+              <span className="text-cyan-300 font-black text-sm">"public"."{activeTableUsed}"</span>
             </div>
           </div>
         </div>
@@ -319,25 +346,8 @@ export const AdminAssetMatrixModule: React.FC = () => {
         </div>
       </div>
 
-      {/* AVISO DE TABLA VACÍA + BOTÓN AUTO-INYECCIÓN */}
-      {seedAssets.length === 0 && !loading && (
-        <div className="p-4 bg-purple-950/40 border border-purple-800/60 rounded-xl text-purple-300 flex items-center justify-between gap-3 animate-fadeIn shadow-lg shadow-purple-950/50">
-          <div className="flex items-center gap-3">
-            <Database size={24} className="shrink-0 animate-bounce" />
-            <div>
-              <span className="font-black text-[13px] block uppercase tracking-widest">Base de Datos Sin Semillas</span>
-              <span className="text-[10px] text-purple-400/80 font-sans block">La tabla <code>{activeTableUsed || `seed_${activeCategory.toLowerCase()}`}</code> en Supabase se encuentra vacía. No hay datos fundacionales para inyectar en la economía.</span>
-            </div>
-          </div>
-
-          <label className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white font-black uppercase text-[10px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xl flex items-center gap-2">
-            <UploadCloud size={14} /> Importar Datos desde CSV (Próximamente)
-          </label>
-        </div>
-      )}
-
-      {/* BANNER DE ERROR SI LA TABLA TIENE PROBLEMAS */}
-      {errorMsg && seedAssets.length === 0 && (
+      {/* BANNER DE ERROR */}
+      {errorMsg && (
         <div className="p-4 bg-red-950/40 border border-red-800/60 rounded-xl text-red-400 flex items-center gap-3 animate-fadeIn">
           <AlertTriangle size={18} className="shrink-0 text-red-400" />
           <span>{errorMsg}</span>
@@ -406,7 +416,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
           <Search size={13} className="absolute left-3 top-2.5 text-zinc-500" />
           <input
             type="text"
-            placeholder={`BUSCAR EN ${activeTableUsed.toUpperCase() || activeCategory.toUpperCase()}...`}
+            placeholder={`BUSCAR EN ${activeTableUsed.toUpperCase()}...`}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full bg-black/60 border border-zinc-800 pl-9 pr-3 py-1.5 rounded-lg text-white font-mono text-xs outline-none uppercase"
@@ -433,31 +443,32 @@ export const AdminAssetMatrixModule: React.FC = () => {
         {/* REJILLA DE TARJETAS SEMILLA */}
         <div className="lg:col-span-2 space-y-3">
           <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">
-            REGISTROS SEMILLA EN "PUBLIC"."{(activeTableUsed || 'sin_tabla').toUpperCase()}" ({filteredSeedAssets.length})
+            REGISTROS SEMILLA EN "PUBLIC"."{activeTableUsed.toUpperCase()}" ({filteredSeedAssets.length})
           </span>
 
           {filteredSeedAssets.length === 0 ? (
             <div className="p-12 text-center text-zinc-600 italic border border-dashed border-zinc-900 rounded-xl flex flex-col items-center gap-3">
               <Database size={32} className="text-zinc-800" />
-              <span>{loading ? 'Sincronizando registros semilla de Supabase...' : 'No hay datos en la tabla. Importa las semillas CSV desde el dashboard principal.'}</span>
+              <span>{loading ? 'Sincronizando registros semilla de Supabase...' : 'No hay datos registrados en esta tabla.'}</span>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[650px] overflow-y-auto pr-1 pb-4">
               {filteredSeedAssets.map((asset, idx) => {
                 const id = asset.ship_id || asset.id || `asset-${idx}`;
+                const cardKey = asset._uniqueKey || `asset-${id}-${idx}`;
                 const name = asset.ship_name || asset.name || id;
                 const rarity = String(asset.rarity || 'Common').toUpperCase();
                 const rawImg = asset.image_url || asset.avatar_url || asset.avatar;
-                const imgUrl = resolveImageUrl(rawImg, id, asset.fileExtension);
+                const imgUrl = resolveImageUrl(rawImg, id, asset.file_extension || asset.fileExtension);
 
                 return (
                   <div
-                    key={id}
+                    key={cardKey}
                     className="p-3 bg-black/60 border border-cyan-950 hover:border-cyan-500/60 rounded-xl space-y-2.5 transition-all flex flex-col justify-between shadow-lg"
                   >
                     <div className="space-y-2">
                       <div className="w-full h-32 bg-black rounded-lg border border-cyan-950 overflow-hidden relative group flex items-center justify-center p-2">
-                        {rawImg || asset.fileExtension ? (
+                        {rawImg || asset.file_extension || asset.fileExtension ? (
                           <img src={imgUrl} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform drop-shadow-[0_0_10px_rgba(34,211,238,0.2)]" alt={name} />
                         ) : (
                           <span className="text-zinc-800 text-[10px] font-black uppercase">Sin Imagen</span>
@@ -469,7 +480,9 @@ export const AdminAssetMatrixModule: React.FC = () => {
 
                       <div>
                         <span className="font-bold text-white text-[11px] block uppercase truncate" title={name}>{name}</span>
-                        <span className="text-[9px] text-zinc-500 font-mono block truncate" title={id}>ID: {id}</span>
+                        <span className="text-[9px] text-zinc-500 font-mono block truncate" title={String(id)}>
+                          ID: {id} {asset._sourceTable ? <span className="text-cyan-400">[{asset._sourceTable}]</span> : ''}
+                        </span>
                       </div>
                     </div>
 
@@ -538,7 +551,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
                       pilotUserAssets.map((uAsset, idx) => (
                         <div key={uAsset.id || idx} className="p-2 bg-black border border-zinc-850 hover:border-red-900/50 rounded flex justify-between items-center text-[10px] transition-colors group">
                           <div className="truncate pr-2">
-                            <span className="text-white font-bold block truncate max-w-[180px]">{uAsset.ship_id || uAsset.item_id || uAsset.structure_id || uAsset.technology_id || uAsset.defense_id || uAsset.badge_id || uAsset.blueprint_id || uAsset.license_id || uAsset.astrobot_id || uAsset.tool_id || 'Activo Oculto'}</span>
+                            <span className="text-white font-bold block truncate max-w-[180px]">{uAsset.ship_id || uAsset.building_id || uAsset.defense_id || uAsset.technology_id || uAsset.badge_id || uAsset.blueprint_id || uAsset.license_id || uAsset.tool_id || uAsset.consumable_id || uAsset.astrobot_id || 'Activo Oculto'}</span>
                             <span className="text-[8.5px] text-cyan-400">LVL {uAsset.current_level || uAsset.level || 1} | Qty: {uAsset.quantity || uAsset.amount || 1}</span>
                           </div>
                           <button
@@ -573,7 +586,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
             
             <div className="flex items-center gap-4 bg-black/50 p-4 rounded-xl border border-zinc-900">
               <div className="w-20 h-20 shrink-0 bg-zinc-950 border border-zinc-800 rounded-lg flex items-center justify-center p-2">
-                 <img src={resolveImageUrl(inspectAsset.image_url || inspectAsset.avatar_url || inspectAsset.avatar, inspectAsset.ship_id || inspectAsset.id, inspectAsset.fileExtension)} className="max-w-full max-h-full object-contain" alt="" />
+                 <img src={resolveImageUrl(inspectAsset.image_url || inspectAsset.avatar_url || inspectAsset.avatar, inspectAsset.ship_id || inspectAsset.id, inspectAsset.file_extension || inspectAsset.fileExtension)} className="max-w-full max-h-full object-contain" alt="" />
               </div>
               <div>
                 <h3 className="text-lg font-black text-white uppercase">{inspectAsset.ship_name || inspectAsset.name || inspectAsset.id}</h3>
@@ -582,7 +595,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-[10px]">
-              {Object.entries(inspectAsset).filter(([k]) => !['image_url', 'avatar_url', 'avatar', '_sourceTable'].includes(k)).map(([key, val]) => (
+              {Object.entries(inspectAsset).filter(([k]) => !['image_url', 'avatar_url', 'avatar', '_sourceTable', '_uniqueKey'].includes(k)).map(([key, val]) => (
                 <div key={key} className="p-2.5 bg-black/60 border border-zinc-900 rounded-lg">
                   <span className="text-zinc-500 block text-[8px] uppercase font-bold mb-0.5">{key}</span>
                   <span className="text-zinc-200 font-bold font-mono break-words">

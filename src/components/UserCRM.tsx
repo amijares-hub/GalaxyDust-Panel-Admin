@@ -151,18 +151,43 @@ export const UserCRM: React.FC = () => {
   };
 
   // ── 📡 EXTRACTOR DE ASSETS FÍSICOS REALES EN SUPABASE ──
+  // ── 📡 EXTRACTOR DE ASSETS FÍSICOS REALES EN SUPABASE ──
   const fetchPlayerAssets = async (userId: string) => {
     if (!supabase) return;
     try {
       setLoadingAssets(true);
+
+      // 1. Obtener legacy_id desde user_profiles
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('legacy_id')
+        .eq('id', userId)
+        .single();
+
+      if (!profile?.legacy_id) {
+        setPlayerAssets({
+          ships: [],
+          structures: [],
+          technologies: [],
+          astrobots: [],
+          tools: [],
+          licenses: [],
+          consumibles: []
+        });
+        return;
+      }
+
+      const legacyId = profile.legacy_id;
+
+      // 2. Consultar las naves y demás usando el id_user numérico (legacy_id)
       const [shipsRes, structsRes, techsRes, astroRes, toolsRes, licsRes, consRes] = await Promise.all([
-        supabase.from('user_ships').select('*').eq('user_id', userId),
-        supabase.from('user_structures').select('*').eq('user_id', userId),
-        supabase.from('user_technologies').select('*').eq('user_id', userId),
-        supabase.from('user_astrobots').select('*').eq('user_id', userId),
-        supabase.from('user_tools').select('*').eq('user_id', userId),
-        supabase.from('user_licenses').select('*').eq('user_id', userId),
-        supabase.from('user_consumibles').select('*').eq('user_id', userId),
+        supabase.from('user_ships').select('*', { count: 'exact' }).eq('id_user', legacyId).range(0, 2000),
+        supabase.from('user_structures').select('*').eq('id_user', legacyId),
+        supabase.from('user_technologies').select('*').eq('id_user', legacyId),
+        supabase.from('user_astrobots').select('*').eq('id_user', legacyId),
+        supabase.from('user_tools').select('*').eq('id_user', legacyId),
+        supabase.from('user_licenses').select('*').eq('id_user', legacyId),
+        supabase.from('user_consumibles').select('*').eq('id_user', legacyId),
       ]);
 
       setPlayerAssets({
@@ -247,8 +272,20 @@ export const UserCRM: React.FC = () => {
     const config = categoryMap[entityGroup];
     if (!config) return;
     try {
+      // 1. Obtener legacy_id del piloto usando su UUID
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('legacy_id')
+        .eq('id', selectedPlayer.id)
+        .single();
+
+      if (!profile?.legacy_id) {
+        alert("No se encontró el ID numérico (legacy_id) para este perfil.");
+        return;
+      }
+
       const insertPayload: any = {
-        user_id: selectedPlayer.id,
+        id_user: profile.legacy_id,
         [config.idColumn]: blueprintId.trim(),
         level: Number(entityLevel)
       };
@@ -630,7 +667,9 @@ export const UserCRM: React.FC = () => {
                               .map((ship: any) => (
                                 <div key={ship.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center hover:border-zinc-800 transition-all">
                                   <div>
-                                    <span className="font-bold text-zinc-200 block truncate max-w-[180px]" title={ship.ship_id}>{ship.ship_id}</span>
+                                    <span className="font-bold text-white block truncate max-w-[180px]">
+                                      {ship.custom_name || ship.name_ship || ship.ship_id || "Nave sin nombre"}
+                                    </span>
                                     <span className="text-[8.5px] text-zinc-500">Estado: <strong className="text-emerald-500 font-normal">{ship.flight_state || 'IDLE'}</strong></span>
                                   </div>
                                   <div className="flex items-center gap-2">

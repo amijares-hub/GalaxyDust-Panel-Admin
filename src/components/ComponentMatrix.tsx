@@ -93,7 +93,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     { id: 'BLUEPRINTS', label: '🗺️ Blueprints', table: 'seed_blueprints', userTable: 'user_blueprints', pk: 'id', userPk: 'blueprint_id', nameCol: 'name' },
     { id: 'LICENSES', label: '📜 Licencias', table: 'seed_licenses', userTable: 'user_licenses', pk: 'id', userPk: 'license_id', nameCol: 'name' },
     { id: 'TOOLS', label: '🔧 Tools', table: 'seed_tools', userTable: 'user_tools', pk: 'id', userPk: 'tool_id', nameCol: 'name' },
-    { id: 'CONSUMABLES', label: '🧪 Consumibles', table: 'seed_consumibles', userTable: 'user_consumibles', pk: 'id', userPk: 'consumable_id', nameCol: 'name' },
+    { id: 'CONSUMABLES', label: '🧪 Consumibles', table: 'seed_consumables', userTable: 'user_consumibles', pk: 'id', userPk: 'consumable_id', nameCol: 'name' },
     { id: 'ASTROBOTS', label: '🤖 Astrobots', table: 'seed_astrobots', userTable: 'user_astrobots', pk: 'id', userPk: 'astrobot_id', nameCol: 'name' }
   ];
 
@@ -160,20 +160,33 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
 
       if (auditedUser) {
         const userId = auditedUser.id || auditedUser.user_id;
-        const { data: invData } = await supabase
-          .from(currentTabConfig.userTable)
-          .select('*')
-          .eq('user_id', userId);
+        
+        // 1. Obtener legacy_id desde user_profiles
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('legacy_id')
+          .eq('id', userId)
+          .single();
 
-        if (invData) {
-          const mappedInventory: UserAssetRow[] = invData.map((inv: any) => ({
-            id: inv.id,
-            user_id: inv.user_id,
-            asset_id: inv[currentTabConfig.userPk] || inv.asset_id || inv.building_id || inv.ship_id,
-            current_level: Number(inv.level) || 1,
-            asset_type: currentTabConfig.id.toLowerCase()
-          }));
-          setPlayerInventory(mappedInventory);
+        if (profile?.legacy_id) {
+          // 2. Consultar la tabla usando id_user = legacy_id
+          const { data: invData } = await supabase
+            .from(currentTabConfig.userTable)
+            .select('*')
+            .eq('id_user', profile.legacy_id);
+
+          if (invData) {
+            const mappedInventory: UserAssetRow[] = invData.map((inv: any) => ({
+              id: inv.id,
+              user_id: String(inv.id_user),
+              asset_id: inv[currentTabConfig.userPk] || inv.asset_id || inv.building_id || inv.ship_id,
+              current_level: Number(inv.level) || 1,
+              asset_type: currentTabConfig.id.toLowerCase()
+            }));
+            setPlayerInventory(mappedInventory);
+          } else {
+            setPlayerInventory([]);
+          }
         } else {
           setPlayerInventory([]);
         }
@@ -219,6 +232,18 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     const userId = auditedUser.id || auditedUser.user_id;
 
     try {
+      // 1. Obtener legacy_id
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('legacy_id')
+        .eq('id', userId)
+        .single();
+
+      if (!profile?.legacy_id) {
+        notify('error', 'El piloto no posee un ID numérico válido (legacy_id).');
+        return;
+      }
+
       const existing = playerInventory.find(item => item.asset_id === assetId);
 
       if (existing) {
@@ -232,7 +257,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         }
       } else if (delta > 0) {
         const insertPayload: any = {
-          user_id: userId,
+          id_user: profile.legacy_id,
           [currentTabConfig.userPk]: assetId,
           level: 1
         };
