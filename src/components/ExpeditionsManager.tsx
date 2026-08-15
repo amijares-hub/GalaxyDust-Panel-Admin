@@ -130,6 +130,11 @@ export const ExpeditionsManager: React.FC = () => {
   const [editEventsList, setEditEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
   const [editGcLootList, setEditGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
 
+  // ─── 🚀 NUEVOS ESTADOS DE SELECCIÓN MÚLTIPLE (BULK DELETE) EN MODO EDICIÓN ───
+  const [isBulkModeEdit, setIsBulkModeEdit] = useState<boolean>(false);
+  const [selectedBulkIdsEdit, setSelectedBulkIdsEdit] = useState<string[]>([]);
+  const [searchTermEditGrid, setSearchTermEditGrid] = useState<string>('');
+
   // Gestor de Eventos
   const [newEventName, setNewEventName] = useState<string>('');
   const [newEventDesc, setNewEventDesc] = useState<string>('');
@@ -163,6 +168,54 @@ export const ExpeditionsManager: React.FC = () => {
       s.type.toLowerCase().includes(term)
     );
   }, [seedCatalog, lootSearchTermEdit]);
+
+  // ─── LISTA DINÁMICA DE ENTIDADES DE EDICIÓN PARA SELECCIÓN MÚLTIPLE ───
+  const currentEditionEntitiesList = useMemo(() => {
+    if (selectedEntityType === 'GC') {
+      return dbClusters.map(c => ({ id: String(c.id), name: c.name || c.id }));
+    } else if (selectedEntityType === 'GALAXY') {
+      return dbGalaxies.map(g => ({ id: String(g.id), name: `Galaxy ${g.galaxy_number}` }));
+    } else if (selectedEntityType === 'SC') {
+      return dbStarClusters.map(sc => ({ id: String(sc.id), name: `Star Cluster ${sc.sc_number}` }));
+    } else if (selectedEntityType === 'SS') {
+      return dbStarSystems.map(sys => ({ id: String(sys.id), name: sys.name_code || `SYS-${sys.id}` }));
+    } else if (selectedEntityType === 'PLANET') {
+      return dbLocations.map(loc => ({ id: String(loc.id), name: `Elemento Nº ${loc.planet_star_number}` }));
+    }
+    return [];
+  }, [selectedEntityType, dbClusters, dbGalaxies, dbStarClusters, dbStarSystems, dbLocations]);
+
+  const filteredEditionEntities = useMemo(() => {
+    if (!searchTermEditGrid.trim()) return currentEditionEntitiesList;
+    const term = searchTermEditGrid.toLowerCase();
+    return currentEditionEntitiesList.filter(e => 
+      e.name.toLowerCase().includes(term) || 
+      e.id.toLowerCase().includes(term)
+    );
+  }, [currentEditionEntitiesList, searchTermEditGrid]);
+
+  const isAllEditionSelected = useMemo(() => {
+    return filteredEditionEntities.length > 0 && filteredEditionEntities.every(e => selectedBulkIdsEdit.includes(e.id));
+  }, [filteredEditionEntities, selectedBulkIdsEdit]);
+
+  const handleToggleSelectAllEdition = () => {
+    if (isAllEditionSelected) {
+      setSelectedBulkIdsEdit([]);
+    } else {
+      setSelectedBulkIdsEdit(filteredEditionEntities.map(e => e.id));
+    }
+  };
+
+  const handleToggleIndividualEdition = (id: string) => {
+    setSelectedBulkIdsEdit(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Resetear selección múltiple cuando cambia la entidad o el padre
+  useEffect(() => {
+    setSelectedBulkIdsEdit([]);
+  }, [selectedEntityType, parentGcId, parentGalaxyId, parentScId, parentSystemId]);
 
   // ─── DERIVACIONES SEGURAS ───
   const activeClusterData = useMemo(() => {
@@ -674,7 +727,6 @@ export const ExpeditionsManager: React.FC = () => {
       if (selectedEntityType === 'GALAXY') {
         if (!parentGcId) return alert("Selecciona un Galaxy Cluster padre de la base de datos.");
         
-        // Consultar la BD directamente para evitar colisión de claves por caché desactualizada
         let currentNumbers = new Set<number>();
         try {
           const { data: dbGals } = await supabase.from('seed_galaxies').select('galaxy_number').eq('cluster_id', parentGcId);
@@ -909,7 +961,6 @@ export const ExpeditionsManager: React.FC = () => {
     try {
       const batchesHistory: { table: string; ids: string[] }[] = [];
 
-      // 1. Crear Galaxias con auto-correlativo real
       let currentGalsSet = new Set<number>();
       try {
         const { data: dbGals } = await supabase.from('seed_galaxies').select('galaxy_number').eq('cluster_id', parentGcId);
@@ -929,7 +980,6 @@ export const ExpeditionsManager: React.FC = () => {
       if (galErr) throw galErr;
       batchesHistory.push({ table: 'seed_galaxies', ids: insertedGals.map(g => g.id) });
 
-      // 2. Crear SCs
       const scPayload: any[] = [];
       insertedGals.forEach(gal => {
         for (let i = 0; i < autoQtySc; i++) {
@@ -940,7 +990,6 @@ export const ExpeditionsManager: React.FC = () => {
       if (scErr) throw scErr;
       batchesHistory.unshift({ table: 'seed_star_clusters', ids: insertedScs.map(sc => sc.id) });
 
-      // 3. Crear SSs
       const sysPayload: any[] = [];
       insertedScs.forEach(sc => {
         for (let i = 0; i < autoQtySys; i++) {
@@ -963,7 +1012,6 @@ export const ExpeditionsManager: React.FC = () => {
       const insertedSys = await insertInBatches('seed_star_systems', sysPayload);
       batchesHistory.unshift({ table: 'seed_star_systems', ids: insertedSys.map(sy => sy.id) });
 
-      // 4. Crear Planetas
       const planetPayload: any[] = [];
       const gcData = dbClusters.find(c => c.id === parentGcId);
       const inheritedTime = gcData ? Number(gcData.base_duration_minutes) : 60;
@@ -1044,7 +1092,7 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  // ELIMINACIÓN INDIVIDUAL Y BULK EN EDICIÓN
+  // ELIMINACIÓN INDIVIDUAL
   const handleDeleteSingleEntity = async () => {
     if (!editSelectedEntityId) {
       alert("Selecciona primero un elemento específico para eliminar.");
@@ -1074,10 +1122,41 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
+  // ─── 💥 ELIMINACIÓN MASIVA (BULK DELETE) MEJORADA CON CHECKBOXES ───
   const handleDeleteBulkEntities = async () => {
     if (!supabase) return;
 
     let targetTable = '';
+    if (selectedEntityType === 'GC') targetTable = 'seed_galaxy_clusters';
+    else if (selectedEntityType === 'GALAXY') targetTable = 'seed_galaxies';
+    else if (selectedEntityType === 'SC') targetTable = 'seed_star_clusters';
+    else if (selectedEntityType === 'SS') targetTable = 'seed_star_systems';
+    else if (selectedEntityType === 'PLANET') targetTable = 'seed_locations';
+
+    // CASO A: Modo Selección Múltiple Activo
+    if (isBulkModeEdit || selectedBulkIdsEdit.length > 0) {
+      if (selectedBulkIdsEdit.length === 0) {
+        alert("Por favor selecciona al menos un elemento en la grilla para eliminar en masa.");
+        return;
+      }
+
+      if (!window.confirm(`🔥 PURGA EN MASA (BULK DELETE): ¿Confirmas la eliminación masiva de los ${selectedBulkIdsEdit.length} elemento(s) seleccionado(s) de [${selectedEntityType}]?\n\nEsta acción eliminará en cascada todos sus descendientes.`)) return;
+
+      try {
+        const { error } = await supabase.from(targetTable).delete().in('id', selectedBulkIdsEdit);
+        if (error) throw error;
+
+        alert(`💥 PURGA COMPLETADA: Se han eliminado en masa ${selectedBulkIdsEdit.length} elementos de ${selectedEntityType}.`);
+        setSelectedBulkIdsEdit([]);
+        setEditSelectedEntityId('');
+        fetchTelemetryAndCatalogs();
+      } catch (e: any) {
+        alert(`Error en borrado masivo: ${e.message}`);
+      }
+      return;
+    }
+
+    // CASO B: Modo Borrado Completo por Padre (Fallback)
     let targetParentCol = '';
     let parentValue = '';
     let entityNamePlural = '';
@@ -1096,25 +1175,21 @@ export const ExpeditionsManager: React.FC = () => {
       return;
     } else if (selectedEntityType === 'GALAXY') {
       if (!parentGcId) return alert("Selecciona un Galaxy Cluster padre primero.");
-      targetTable = 'seed_galaxies';
       targetParentCol = 'cluster_id';
       parentValue = parentGcId;
       entityNamePlural = `Galaxias en el Clúster [${parentGcId}]`;
     } else if (selectedEntityType === 'SC') {
       if (!parentGalaxyId) return alert("Selecciona una Galaxia padre primero.");
-      targetTable = 'seed_star_clusters';
       targetParentCol = 'galaxy_id';
       parentValue = parentGalaxyId;
       entityNamePlural = `Star Clusters en la Galaxia [${parentGalaxyId}]`;
     } else if (selectedEntityType === 'SS') {
       if (!parentScId) return alert("Selecciona un Star Cluster padre primero.");
-      targetTable = 'seed_star_systems';
       targetParentCol = 'sc_id';
       parentValue = parentScId;
       entityNamePlural = `Star Systems en el SC [${parentScId}]`;
     } else if (selectedEntityType === 'PLANET') {
       if (!parentSystemId) return alert("Selecciona un Star System padre primero.");
-      targetTable = 'seed_locations';
       targetParentCol = 'system_id';
       parentValue = parentSystemId;
       entityNamePlural = `Planetas/Cuerpos en el Sistema [${parentSystemId}]`;
@@ -2027,203 +2102,285 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           )}
 
-          {/* 3. MODO EDICIÓN CON BOTONES DE BORRADO INDIVIDUAL Y BULK DELETE */}
+          {/* 3. MODO EDICIÓN CON BOTONES DE BORRADO INDIVIDUAL Y BULK DELETE INTEGRADO */}
           {genConsoleMode === 'edition' && (
             <div className="bg-slate-950 p-6 border border-slate-850 rounded-xl space-y-6 shadow-xl animate-fadeIn">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-850 pb-2 gap-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-850 pb-3 gap-3">
                 <span className="text-amber-400 font-bold text-xs uppercase tracking-wider block">
                   ✏️ CONSOLA DE EDICIÓN Y AJUSTE DE PARÁMETROS EXISTENTES
                 </span>
 
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleDeleteSingleEntity}
-                    disabled={!editSelectedEntityId}
-                    className="px-3 py-1.5 bg-red-950/60 hover:bg-red-800 border border-red-700 text-red-300 font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-                    title="Eliminar únicamente el elemento seleccionado"
-                  >
-                    <Trash2 size={13} />
-                    ELIMINAR {selectedEntityType}
-                  </button>
+                  {!isBulkModeEdit && (
+                    <button
+                      onClick={handleDeleteSingleEntity}
+                      disabled={!editSelectedEntityId}
+                      className="px-3 py-1.5 bg-red-950/60 hover:bg-red-800 border border-red-700 text-red-300 font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+                      title="Eliminar únicamente la entidad seleccionada en el menú individual"
+                    >
+                      <Trash2 size={13} />
+                      ELIMINAR {selectedEntityType}
+                    </button>
+                  )}
 
                   <button
                     onClick={handleDeleteBulkEntities}
-                    className="px-3 py-1.5 bg-rose-900/80 hover:bg-rose-700 border border-rose-500 text-white font-black text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-950/50"
-                    title="Eliminar en masa todas las entidades hijas del padre seleccionado"
+                    className="px-4 py-1.5 bg-rose-900/80 hover:bg-rose-700 border border-rose-500 text-white font-black text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-rose-950/50"
+                    title="Eliminar en masa los elementos seleccionados mediante checkboxes"
                   >
                     <Flame size={13} />
-                    💥 ELIMINAR EN MASA (BULK DELETE)
+                    💥 ELIMINAR EN MASA ({isBulkModeEdit ? selectedBulkIdsEdit.length : 'BULK DELETE'})
                   </button>
                 </div>
               </div>
 
-              <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
-                <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
-                  1. SELECCIONAR OBJETIVO A EDITAR [{selectedEntityType}]
-                </span>
+              {/* TOGGLE MODO SELECCIÓN MÚLTIPLE EN EDICIÓN */}
+              <div className="flex items-center justify-between bg-[#121927] border border-[#232f48] p-3 rounded-lg">
+                <label className="flex items-center gap-3 text-xs font-bold text-gray-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isBulkModeEdit}
+                    onChange={(e) => {
+                      setIsBulkModeEdit(e.target.checked);
+                      setSelectedBulkIdsEdit([]);
+                    }}
+                    className="w-4 h-4 accent-cyan-500 cursor-pointer"
+                  />
+                  <span>ACTIVAR MODO DE SELECCIÓN MÚLTIPLE (BULK DELETE MODE)</span>
+                </label>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
-                  <div>
-                    <label className="text-[9px] text-zinc-500 block mb-1">Galaxy Cluster (GC):</label>
-                    <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold text-[11px] outline-none cursor-pointer" value={parentGcId} onChange={e => { setParentGcId(e.target.value); if (selectedEntityType==='GC') handleLoadEntityForEdition(e.target.value); }}>
-                      <option value="">-- Seleccionar Galaxy Cluster ({dbClusters.length}) --</option>
-                      {dbClusters.map((c, idx) => <option key={c.id || `editgc-${idx}`} value={c.id}>{c.name || c.id} ({c.id})</option>)}
-                    </select>
-                  </div>
-
-                  {selectedEntityType === 'GALAXY' && (
-                    <div>
-                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Galaxia:</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
-                        <option value="">-- Seleccionar Galaxia ({dbGalaxies.length}) --</option>
-                        {dbGalaxies.map((g, idx) => <option key={g.id || `editgal-${idx}`} value={g.id}>Galaxy {g.galaxy_number}</option>)}
-                      </select>
-                    </div>
-                  )}
-
-                  {selectedEntityType === 'SC' && (
-                    <div>
-                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star Cluster:</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
-                        <option value="">-- Seleccionar SC ({dbStarClusters.length}) --</option>
-                        {dbStarClusters.map((sc, idx) => <option key={sc.id || `editsc-${idx}`} value={sc.id}>Star Cluster {sc.sc_number}</option>)}
-                      </select>
-                    </div>
-                  )}
-
-                  {selectedEntityType === 'SS' && (
-                    <div>
-                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star System:</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
-                        <option value="">-- Seleccionar Sistema ({dbStarSystems.length}) --</option>
-                        {dbStarSystems.map((sys, idx) => <option key={sys.id || `editsys-${idx}`} value={sys.id}>{sys.name_code}</option>)}
-                      </select>
-                    </div>
-                  )}
-
-                  {selectedEntityType === 'PLANET' && (
-                    <div>
-                      <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Planeta/Estrella:</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
-                        <option value="">-- Seleccionar Elemento ({dbLocations.length}) --</option>
-                        {dbLocations.map((loc, idx) => <option key={loc.id || `editloc-${idx}`} value={loc.id}>Elemento Nº {loc.planet_star_number}</option>)}
-                      </select>
-                    </div>
-                  )}
-                </div>
+                {isBulkModeEdit && (
+                  <button
+                    onClick={handleToggleSelectAllEdition}
+                    className="text-xs font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                  >
+                    {isAllEditionSelected ? '☑ DESMARCAR TODO' : '☐ SELECCIONAR TODO'}
+                  </button>
+                )}
               </div>
 
-              {/* FORMULARIO DE EDICIÓN DEL ELEMENTO SELECCIONADO */}
-              <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
-                <span className="text-amber-400 font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
-                  2. PARÁMETROS EDITABLES
-                </span>
+              {/* SELECCIÓN DE OBJETIVO (MODO SINGLE VS MODO BULK CHECKBOXES) */}
+              <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-zinc-800 pb-2">
+                  <span className="text-white font-bold text-[10px] uppercase block">
+                    1. SELECCIONAR OBJETIVO A EDITAR [{selectedEntityType}]
+                  </span>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
-                  <div>
-                    <label className="text-[9px] text-zinc-500 block mb-1">Nombre / Identificador:</label>
-                    <input type="text" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold" value={editName} onChange={e => setEditName(e.target.value)} />
-                  </div>
+                  {isBulkModeEdit && (
+                    <input
+                      type="text"
+                      placeholder={`🔍 Buscar en ${selectedEntityType}...`}
+                      value={searchTermEditGrid}
+                      onChange={(e) => setSearchTermEditGrid(e.target.value)}
+                      className="w-full sm:w-64 bg-zinc-950 border border-zinc-800 text-xs text-white px-3 py-1.5 rounded-lg focus:border-cyan-500 outline-none"
+                    />
+                  )}
+                </div>
 
-                  <div>
-                    <label className="text-[9px] text-zinc-500 block mb-1">Tiempo de Viaje (Minutos):</label>
-                    <input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold" value={editDuration} onChange={e => setEditDuration(Number(e.target.value))} />
-                  </div>
+                {!isBulkModeEdit ? (
+                  /* MODO SINGLE: DESPLEGABLES TRADICIONALES PARA EDICIÓN DE PARÁMETROS */
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Galaxy Cluster (GC):</label>
+                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold text-[11px] outline-none cursor-pointer" value={parentGcId} onChange={e => { setParentGcId(e.target.value); if (selectedEntityType==='GC') handleLoadEntityForEdition(e.target.value); }}>
+                        <option value="">-- Seleccionar Galaxy Cluster ({dbClusters.length}) --</option>
+                        {dbClusters.map((c, idx) => <option key={c.id || `editgc-${idx}`} value={c.id}>{c.name || c.id} ({c.id})</option>)}
+                      </select>
+                    </div>
 
-                  <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-black/40 p-3 rounded-xl border border-zinc-850">
-                    <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMinMetal} onChange={e => setEditMinMetal(Number(e.target.value))} /></div>
-                    <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMaxMetal} onChange={e => setEditMaxMetal(Number(e.target.value))} /></div>
-                    <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMinCrystal} onChange={e => setEditMinCrystal(Number(e.target.value))} /></div>
-                    <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(Number(e.target.value))} /></div>
-                  </div>
-
-                  {/* EDICIÓN DE LOOT POOL CON BUSCADOR PREDICTOR */}
-                  {selectedEntityType === 'GC' && (
-                    <div className="md:col-span-2 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2 mt-2">
-                      <span className="text-emerald-400 font-bold text-[9.5px] uppercase block flex items-center gap-1">
-                        <PackageOpen size={12} /> 🎁 EDICIÓN DE ASSETS OCULTOS / LOOT POOL
-                      </span>
-
-                      <div className="grid grid-cols-3 gap-2 items-start">
-                        <div className="col-span-2 relative">
-                          <input
-                            type="text"
-                            placeholder="🔍 Buscar Asset (Ej. Heavy Hunter, Mina, Escudo...)"
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[10px] outline-none focus:border-cyan-500 uppercase"
-                            value={lootSearchTermEdit}
-                            onFocus={() => setShowLootSuggestionsEdit(true)}
-                            onBlur={() => setTimeout(() => setShowLootSuggestionsEdit(false), 200)}
-                            onChange={e => {
-                              setLootSearchTermEdit(e.target.value);
-                              setShowLootSuggestionsEdit(true);
-                            }}
-                          />
-
-                          {showLootSuggestionsEdit && filteredSeedsEdit.length > 0 && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl z-[150] max-h-48 overflow-y-auto divide-y divide-zinc-900 text-[10px]">
-                              {filteredSeedsEdit.map((asset) => (
-                                <div
-                                  key={`seed-edit-${asset.id}`}
-                                  className="p-2 hover:bg-cyan-950/60 hover:text-cyan-300 cursor-pointer flex justify-between items-center"
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    setBindLootId(asset.id);
-                                    setLootSearchTermEdit(`[${asset.type}] ${asset.name}`);
-                                    setShowLootSuggestionsEdit(false);
-                                  }}
-                                >
-                                  <span className="font-bold text-zinc-200">[{asset.type}] {asset.name}</span>
-                                  <span className="text-[8.5px] text-zinc-500 font-mono">{asset.id}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <input 
-                          type="number" 
-                          min={1} 
-                          placeholder="Cant" 
-                          className="bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-emerald-400 font-bold text-[11px]" 
-                          value={bindLootQty} 
-                          onChange={e => setBindLootQty(Number(e.target.value))} 
-                        />
+                    {selectedEntityType === 'GALAXY' && (
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Galaxia:</label>
+                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                          <option value="">-- Seleccionar Galaxia ({dbGalaxies.length}) --</option>
+                          {dbGalaxies.map((g, idx) => <option key={g.id || `editgal-${idx}`} value={g.id}>Galaxy {g.galaxy_number}</option>)}
+                        </select>
                       </div>
+                    )}
 
-                      <button onClick={() => handleAddLootToGc('edit')} className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer mt-1">
-                        + Añadir Asset al Loot Pool
-                      </button>
+                    {selectedEntityType === 'SC' && (
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star Cluster:</label>
+                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                          <option value="">-- Seleccionar SC ({dbStarClusters.length}) --</option>
+                          {dbStarClusters.map((sc, idx) => <option key={sc.id || `editsc-${idx}`} value={sc.id}>Star Cluster {sc.sc_number}</option>)}
+                        </select>
+                      </div>
+                    )}
 
-                      <div className="space-y-1 pt-1">
-                        {editGcLootList.map((loot, idx) => (
-                          <div key={`editloot-${idx}`} className="flex justify-between items-center bg-black/60 p-1.5 rounded text-[10px] border border-zinc-850">
-                            <span className="text-zinc-200 font-bold truncate max-w-[150px]">[{loot.type}] {loot.asset_name}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-emerald-400 font-bold">x{loot.qty}</span>
-                              <button onClick={() => handleRemoveLootFromGc('edit', loot.asset_id)} className="text-red-400 hover:text-red-300 cursor-pointer"><Trash2 size={12} /></button>
+                    {selectedEntityType === 'SS' && (
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star System:</label>
+                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                          <option value="">-- Seleccionar Sistema ({dbStarSystems.length}) --</option>
+                          {dbStarSystems.map((sys, idx) => <option key={sys.id || `editsys-${idx}`} value={sys.id}>{sys.name_code}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {selectedEntityType === 'PLANET' && (
+                      <div>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Planeta/Estrella:</label>
+                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                          <option value="">-- Seleccionar Elemento ({dbLocations.length}) --</option>
+                          {dbLocations.map((loc, idx) => <option key={loc.id || `editloc-${idx}`} value={loc.id}>Elemento Nº {loc.planet_star_number}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* MODO BULK: GRILLA DE CHECKBOXES PARA SELECCIÓN MÚLTIPLE DE BORRADO */
+                  <div className="max-h-64 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pr-1">
+                    {filteredEditionEntities.length === 0 ? (
+                      <div className="col-span-full text-center py-8 text-gray-500 text-xs">
+                        No se encontraron registros disponibles para {selectedEntityType}.
+                      </div>
+                    ) : (
+                      filteredEditionEntities.map((item) => {
+                        const isChecked = selectedBulkIdsEdit.includes(item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => handleToggleIndividualEdition(item.id)}
+                            className={`p-3 rounded-lg border cursor-pointer select-none text-xs transition-all flex items-center justify-between ${
+                              isChecked
+                                ? 'bg-red-950/40 border-red-500 text-red-200 font-bold shadow-md shadow-red-950/50'
+                                : 'bg-[#141b2d] border-[#202c44] text-gray-300 hover:border-gray-500'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 truncate">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                readOnly
+                                className="accent-red-500 w-4 h-4 cursor-pointer"
+                              />
+                              <div className="truncate">
+                                <p className="font-bold truncate text-cyan-300">{item.name}</p>
+                                <p className="text-[10px] text-gray-500 truncate">{item.id}</p>
+                              </div>
                             </div>
                           </div>
-                        ))}
-                      </div>
-
-                      <div className="pt-3 border-t border-zinc-800 mt-2">
-                        <button onClick={() => {
-                          if (editGcLootList.length === 0) return alert("No hay loot para repartir en este Clúster.");
-                          const total = editGcLootList.reduce((a, b) => a + b.qty, 0);
-                          alert(`✅ OPERACIÓN EXITOSA: El algoritmo procedural ha esparcido ${total} assets aleatoriamente y de forma equitativa entre todos los Planetas y Sistemas de este Galaxy Cluster.`);
-                        }} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black py-2 rounded uppercase text-[10px] cursor-pointer shadow-lg flex items-center justify-center gap-2">
-                          <Zap size={13} /> Repartir Loot Equitativamente en Planetas
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                </div>
-
-                <button onClick={handleSaveEditionSubmit} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-black py-2.5 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
-                  Persistir Edición en Supabase
-                </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
+
+              {/* FORMULARIO DE EDICIÓN DEL ELEMENTO SELECCIONADO (DISPONIBLE EN MODO EDICIÓN INDIVIDUAL) */}
+              {!isBulkModeEdit && (
+                <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
+                  <span className="text-amber-400 font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
+                    2. PARÁMETROS EDITABLES
+                  </span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px]">
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Nombre / Identificador:</label>
+                      <input type="text" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold" value={editName} onChange={e => setEditName(e.target.value)} />
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] text-zinc-500 block mb-1">Tiempo de Viaje (Minutos):</label>
+                      <input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold" value={editDuration} onChange={e => setEditDuration(Number(e.target.value))} />
+                    </div>
+
+                    <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-black/40 p-3 rounded-xl border border-zinc-850">
+                      <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMinMetal} onChange={e => setEditMinMetal(Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMaxMetal} onChange={e => setEditMaxMetal(Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMinCrystal} onChange={e => setEditMinCrystal(Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(Number(e.target.value))} /></div>
+                    </div>
+
+                    {/* EDICIÓN DE LOOT POOL CON BUSCADOR PREDICTOR */}
+                    {selectedEntityType === 'GC' && (
+                      <div className="md:col-span-2 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2 mt-2">
+                        <span className="text-emerald-400 font-bold text-[9.5px] uppercase block flex items-center gap-1">
+                          <PackageOpen size={12} /> 🎁 EDICIÓN DE ASSETS OCULTOS / LOOT POOL
+                        </span>
+
+                        <div className="grid grid-cols-3 gap-2 items-start">
+                          <div className="col-span-2 relative">
+                            <input
+                              type="text"
+                              placeholder="🔍 Buscar Asset (Ej. Heavy Hunter, Mina, Escudo...)"
+                              className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[10px] outline-none focus:border-cyan-500 uppercase"
+                              value={lootSearchTermEdit}
+                              onFocus={() => setShowLootSuggestionsEdit(true)}
+                              onBlur={() => setTimeout(() => setShowLootSuggestionsEdit(false), 200)}
+                              onChange={e => {
+                                setLootSearchTermEdit(e.target.value);
+                                setShowLootSuggestionsEdit(true);
+                              }}
+                            />
+
+                            {showLootSuggestionsEdit && filteredSeedsEdit.length > 0 && (
+                              <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl z-[150] max-h-48 overflow-y-auto divide-y divide-zinc-900 text-[10px]">
+                                {filteredSeedsEdit.map((asset) => (
+                                  <div
+                                    key={`seed-edit-${asset.id}`}
+                                    className="p-2 hover:bg-cyan-950/60 hover:text-cyan-300 cursor-pointer flex justify-between items-center"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      setBindLootId(asset.id);
+                                      setLootSearchTermEdit(`[${asset.type}] ${asset.name}`);
+                                      setShowLootSuggestionsEdit(false);
+                                    }}
+                                  >
+                                    <span className="font-bold text-zinc-200">[{asset.type}] {asset.name}</span>
+                                    <span className="text-[8.5px] text-zinc-500 font-mono">{asset.id}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <input 
+                            type="number" 
+                            min={1} 
+                            placeholder="Cant" 
+                            className="bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-emerald-400 font-bold text-[11px]" 
+                            value={bindLootQty} 
+                            onChange={e => setBindLootQty(Number(e.target.value))} 
+                          />
+                        </div>
+
+                        <button onClick={() => handleAddLootToGc('edit')} className="w-full bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer mt-1">
+                          + Añadir Asset al Loot Pool
+                        </button>
+
+                        <div className="space-y-1 pt-1">
+                          {editGcLootList.map((loot, idx) => (
+                            <div key={`editloot-${idx}`} className="flex justify-between items-center bg-black/60 p-1.5 rounded text-[10px] border border-zinc-850">
+                              <span className="text-zinc-200 font-bold truncate max-w-[150px]">[{loot.type}] {loot.asset_name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-emerald-400 font-bold">x{loot.qty}</span>
+                                <button onClick={() => handleRemoveLootFromGc('edit', loot.asset_id)} className="text-red-400 hover:text-red-300 cursor-pointer"><Trash2 size={12} /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="pt-3 border-t border-zinc-800 mt-2">
+                          <button onClick={() => {
+                            if (editGcLootList.length === 0) return alert("No hay loot para repartir en este Clúster.");
+                            const total = editGcLootList.reduce((a, b) => a + b.qty, 0);
+                            alert(`✅ OPERACIÓN EXITOSA: El algoritmo procedural ha esparcido ${total} assets aleatoriamente y de forma equitativa entre todos los Planetas y Sistemas de este Galaxy Cluster.`);
+                          }} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black py-2 rounded uppercase text-[10px] cursor-pointer shadow-lg flex items-center justify-center gap-2">
+                            <Zap size={13} /> Repartir Loot Equitativamente en Planetas
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+
+                  <button onClick={handleSaveEditionSubmit} className="w-full bg-amber-600 hover:bg-amber-500 text-white font-black py-2.5 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
+                    Persistir Edición en Supabase
+                  </button>
+                </div>
+              )}
 
             </div>
           )}

@@ -363,7 +363,7 @@ export const SkillManager: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1 font-mono">
-              {Object.entries(groupedSkills).map(([baseName, tiers]) => {
+              {(Object.entries(groupedSkills) as [string, SkillRecord[]][]).map(([baseName, tiers]) => {
                 const isExpanded = !!expandedGroups[baseName];
                 const tierCodes  = tiers.map(t => t.skill_code);
                 const allGroupSelected = tierCodes.every(c => selectedSkillCodes.includes(c));

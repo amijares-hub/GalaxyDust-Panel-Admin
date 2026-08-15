@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, uploadAssetImage } from '../lib/supabase';
 import {
   Rocket, Building, Shield, Cpu, Award, FileText, Wrench, Package, Bot,
   Search, RefreshCw, UserCheck, Plus, Trash2, Layers, Zap, Info, X, Check,
@@ -90,6 +90,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
   const [activeTableUsed, setActiveTableUsed] = useState<string>('seed_consumables');
   const [seedAssets, setSeedAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [uploadingImage, setUploadingImage] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Filtros
@@ -156,6 +157,37 @@ export const AdminAssetMatrixModule: React.FC = () => {
   useEffect(() => {
     fetchSeedAssets(activeCategory);
   }, [activeCategory]);
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, asset: any) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const tableName = asset._sourceTable;
+    const assetId = asset.ship_id || asset.id;
+
+    if (!tableName || !assetId) {
+      setErrorMsg("Error: No se pudo determinar la tabla origen o el ID del asset.");
+      return;
+    }
+
+    setUploadingImage(true);
+    setErrorMsg(null);
+
+    const result = await uploadAssetImage({
+      tableName,
+      assetId,
+      file
+    });
+
+    setUploadingImage(false);
+
+    if (result.success && result.imageUrl) {
+      setInspectAsset((prev: any) => prev ? { ...prev, image_url: result.imageUrl } : null);
+      await fetchSeedAssets(activeCategory);
+    } else {
+      setErrorMsg(`Error al subir la imagen: ${result.error}`);
+    }
+  };
 
   // 2. Sincronizar Piloto por Email, Username o UID
   const handleSyncPilot = async () => {
@@ -590,7 +622,22 @@ export const AdminAssetMatrixModule: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-lg font-black text-white uppercase">{inspectAsset.ship_name || inspectAsset.name || inspectAsset.id}</h3>
-                <code className="text-cyan-400 text-[10px]">{inspectAsset.ship_id || inspectAsset.id}</code>
+                <code className="text-cyan-400 text-[10px] block mb-2">{inspectAsset.ship_id || inspectAsset.id}</code>
+                
+                <label className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-800/60 text-cyan-300 font-bold text-[9px] uppercase rounded cursor-pointer transition-all select-none">
+                  {uploadingImage ? (
+                    <span className="flex items-center gap-1"><RefreshCw size={10} className="animate-spin" /> Subiendo...</span>
+                  ) : (
+                    <span className="flex items-center gap-1"><UploadCloud size={10} /> Cambiar Imagen</span>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/webp"
+                    onChange={(e) => handleImageUpload(e, inspectAsset)}
+                    disabled={uploadingImage}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
 

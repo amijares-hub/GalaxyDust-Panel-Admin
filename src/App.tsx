@@ -86,7 +86,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Dynamic success/error alert visual system
-  const [alert, setAlert] = useState<{ show: boolean; status: 'success' | 'error'; message: string }>({
+  const [alert, setAlert] = useState<{ show: boolean; status: 'success' | 'error' | 'warning'; message: string }>({
     show: false,
     status: 'success',
     message: ''
@@ -94,7 +94,7 @@ export default function App() {
 
   // Trigger alert helper with standard timing
   const alertTrigger = (
-    statusOrData: 'success' | 'error' | { show: boolean; status: 'success' | 'error'; message: string },
+    statusOrData: 'success' | 'error' | 'warning' | { show: boolean; status: 'success' | 'error' | 'warning'; message: string },
     message?: string
   ) => {
     if (typeof statusOrData === 'object') {
@@ -724,7 +724,7 @@ export default function App() {
                   gameHud={gameHud}
                   users={users}
                   onSaveGameHud={handleSaveGameHud}
-                  setIsAlertToShow={alertTrigger}
+                  setIsAlertToShow={(alertObj) => alertTrigger(alertObj)}
                 />
               )}
 
@@ -748,7 +748,7 @@ export default function App() {
                 <AdminSanitizerModule
                   gameHud={gameHud}
                   saveGameHud={handleSaveGameHud}
-                  alertTrigger={alertTrigger}
+                  alertTrigger={(status, message) => alertTrigger(status, message)}
                 />
               )}
             </>
@@ -776,17 +776,21 @@ export default function App() {
             exit={{ opacity: 0, y: 50 }}
             className={`fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 p-4 border rounded-xl flex items-start gap-3 shadow-2xl backdrop-blur-md max-w-[90vw] sm:max-w-sm ${alert.status === 'success'
                 ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-400'
-                : 'bg-red-950/80 border-red-500/30 text-red-500'
+                : alert.status === 'warning'
+                  ? 'bg-amber-950/80 border-amber-500/30 text-amber-500'
+                  : 'bg-red-950/80 border-red-500/30 text-red-500'
               }`}
           >
             {alert.status === 'success' ? (
               <CheckCircle className="flex-shrink-0 mt-0.5" size={16} />
+            ) : alert.status === 'warning' ? (
+              <AlertTriangle className="flex-shrink-0 mt-0.5 text-amber-400" size={16} />
             ) : (
               <AlertTriangle className="flex-shrink-0 mt-0.5" size={16} />
             )}
             <div className="text-xs leading-normal">
               <span className="font-bold uppercase tracking-wider block mb-0.5">
-                {alert.status === 'success' ? 'Notificación Éxito' : 'Error en el Servidor'}
+                {alert.status === 'success' ? 'Notificación Éxito' : alert.status === 'warning' ? 'Advertencia' : 'Error en el Servidor'}
               </span>
               <span>{alert.message}</span>
             </div>

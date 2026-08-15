@@ -247,7 +247,7 @@ export default function AdminShipsModule({
       }
     } catch (err: any) {
       console.error("Fallo de enlace con seed_ships:", err.message);
-    } font-mono finally {
+    } finally {
       setLoadingKernel(false);
     }
   };

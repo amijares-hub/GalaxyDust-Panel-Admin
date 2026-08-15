@@ -29,10 +29,10 @@ interface GalaxyDustHUDProps {
 }
 
 export const GalaxyDustHUD: React.FC<GalaxyDustHUDProps> = ({
-  gameHud = {},
+  gameHud = {} as any,
   users = [],
   onSaveGameHud = () => {},
-  setIsAlertToShow = () => {}
+  setIsAlertToShow = (_alert) => {}
 }) => {
   // Estado de la pestaña activa en la navegación
   const [activeTab, setActiveTab] = useState<string>('assets_matrix');
@@ -288,7 +288,7 @@ export const GalaxyDustHUD: React.FC<GalaxyDustHUDProps> = ({
           {/* PHANTOM STATION */}
           {activeTab === 'phantom_station' && (
             <motion.div key="phantom" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminPhantomStationModule gameHud={gameHud} users={users} onSaveGameHud={onSaveGameHud} setIsAlertToShow={alertTrigger} />
+              <AdminPhantomStationModule gameHud={gameHud} users={users} onSaveGameHud={onSaveGameHud} setIsAlertToShow={(alertObj) => alertTrigger(alertObj.status, alertObj.message)} />
             </motion.div>
           )}
 
@@ -316,7 +316,7 @@ export const GalaxyDustHUD: React.FC<GalaxyDustHUDProps> = ({
           {/* DATA SANITIZER */}
           {activeTab === 'sanitizer' && (
             <motion.div key="sanitizer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminSanitizerModule gameHud={gameHud} saveGameHud={onSaveGameHud} alertTrigger={alertTrigger} />
+              <AdminSanitizerModule gameHud={gameHud} saveGameHud={onSaveGameHud} alertTrigger={(status, message) => alertTrigger(status, message)} />
             </motion.div>
           )}
 

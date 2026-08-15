@@ -126,7 +126,7 @@ export interface SupabaseConfig {
   isConnected: boolean;
 }
 
-export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'can' | 'ships' | 'matrix' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer';
+export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'can' | 'ships' | 'matrix' | 'skills' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer';
 
 export type SubFunctionType = 
   | 'branding_global' | 'branding_landing' | 'branding_auth' | 'branding_lobby' | 'branding_hud'
@@ -136,6 +136,7 @@ export type SubFunctionType =
   | 'can_commander' | 'can_global' | 'can_alliances'
   | 'ships_atelier' | 'ships_hangar'
   | 'matrix_overview'
+  | 'skills_overview'
   | 'expediciones_dashboard' | 'expediciones_creator' | 'expediciones_rewards' | 'expediciones_events'
   | 'vuelo_telemetria' | 'vuelo_estados' | 'vuelo_rng' | 'vuelo_skills' | 'vuelo_seguridad' | 'vuelo_alertas'
   | 'market_items' | 'market_auctions' | 'market_rules' | 'market_audit' | 'market_inbox' | 'market_analytics'

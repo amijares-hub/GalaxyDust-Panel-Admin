@@ -379,3 +379,57 @@ export const supabaseService = {
     }
   }
 };
+
+export interface UploadAssetOptions {
+  tableName: string;  // Ejemplo: 'seed_technologies', 'seed_defenses', etc.
+  assetId: string;    // Ejemplo: 'tech-laser-1', 'def-shield-alpha'
+  file: File;         // El archivo subido desde el input de la UI (.webp, .png, .jpg)
+}
+
+/**
+ * Sube una imagen al Storage de Supabase y actualiza la tabla semilla correspondiente.
+ */
+export async function uploadAssetImage({ tableName, assetId, file }: UploadAssetOptions) {
+  try {
+    // 1. Extraer la extensión del archivo subido (.webp, .png, .jpg, etc.)
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    
+    // 2. Definir la ruta en el bucket 'galaxy-assets'
+    const filePath = `${tableName}/${assetId}.${fileExtension}`;
+
+    // 3. Subir/Sobrescribir el archivo en Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('galaxy-assets')
+      .upload(filePath, file, {
+        upsert: true, // Sobrescribe si la imagen ya existía
+        cacheControl: '3600',
+      });
+
+    if (uploadError) throw new Error(`Error en Storage: ${uploadError.message}`);
+
+    // 4. Obtener la URL pública del archivo
+    const { data: publicUrlData } = supabase.storage
+      .from('galaxy-assets')
+      .getPublicUrl(filePath);
+
+    // 5. Añadir marca de tiempo para evitar problemas de caché en navegador y juego
+    const imageUrlWithCacheBuster = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+
+    // 6. Actualizar la columna image_url en la tabla correspondiente
+    // Nota: Las tablas de naves usan 'ship_id' en vez de 'id', determinamos la columna correcta
+    const idColumn = tableName === 'seed_ships' ? 'ship_id' : 'id';
+    const { error: dbError } = await supabase
+      .from(tableName)
+      .update({ image_url: imageUrlWithCacheBuster })
+      .eq(idColumn, assetId);
+
+    if (dbError) throw new Error(`Error actualizando base de datos: ${dbError.message}`);
+
+    console.log(`✅ Asset ${assetId} actualizado con éxito en ${tableName}`);
+    return { success: true, imageUrl: imageUrlWithCacheBuster };
+
+  } catch (error: any) {
+    console.error('❌ Error en uploadAssetImage:', error.message);
+    return { success: false, error: error.message };
+  }
+}
