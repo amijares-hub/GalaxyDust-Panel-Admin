@@ -4,7 +4,7 @@ import {
   Compass, ShieldAlert, Map as MapIcon, Plus, Trash2, Zap, Play, Search,
   TrendingUp, Award, Clock, RefreshCw, Eye, Trophy, Skull, Users, Layers,
   Gift, Flame, Info, Crosshair, Edit3, Save, Layers3, LayoutGrid, Activity, X, AlertTriangle, Check,
-  Radio, MapPin, Box, Wrench, Bot, FileText, Package, Rocket, Cpu, Building, ChevronLeft, ChevronRight, Sliders, Database, Sparkles, PackageOpen, RotateCcw, AlertOctagon, Network
+  Radio, MapPin, Box, Wrench, Bot, FileText, Package, Rocket, Cpu, Building, ChevronLeft, ChevronRight, Sliders, Database, Sparkles, PackageOpen, RotateCcw, AlertOctagon, Network, Loader
 } from 'lucide-react';
 
 type TabId = 'exploration' | 'events' | 'generator';
@@ -32,6 +32,12 @@ interface CreationHistoryAction {
   description: string;
   batches: { table: string; altTable?: string; ids: string[] }[];
   timestamp: string;
+}
+
+// ─── TIER DE DISTRIBUCIÓN PORCENTUAL DE PLANETAS ───
+interface DistributionTier {
+  percentage: number; // Ej: 60 (%)
+  planetsPerSS: number; // Ej: 3 planetas por Star System
 }
 
 export const ExpeditionsManager: React.FC = () => {
@@ -73,22 +79,22 @@ export const ExpeditionsManager: React.FC = () => {
   // Historial de Undo (Ctrl + Z)
   const [creationHistoryStack, setCreationHistoryStack] = useState<CreationHistoryAction[]>([]);
 
-  // Formulario Creación de GC
+  // Formulario Creación de GC (Soporta borrar sin forzar '0')
   const [newGcId, setNewGcId] = useState<string>('');
   const [newGcName, setNewGcName] = useState<string>('');
-  const [newGcDuration, setNewGcDuration] = useState<number>(60);
-  const [newGcMinMetal, setNewGcMinMetal] = useState<number>(5000);
-  const [newGcMaxMetal, setNewGcMaxMetal] = useState<number>(25000);
-  const [newGcMinCrystal, setNewGcMinCrystal] = useState<number>(2000);
-  const [newGcMaxCrystal, setNewGcMaxCrystal] = useState<number>(12000);
+  const [newGcDuration, setNewGcDuration] = useState<number | ''>(60);
+  const [newGcMinMetal, setNewGcMinMetal] = useState<number | ''>(5000);
+  const [newGcMaxMetal, setNewGcMaxMetal] = useState<number | ''>(25000);
+  const [newGcMinCrystal, setNewGcMinCrystal] = useState<number | ''>(2000);
+  const [newGcMaxCrystal, setNewGcMaxCrystal] = useState<number | ''>(12000);
   const [gcEventsList, setGcEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
   const [newGcLootList, setNewGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
   const [bindEventName, setBindEventName] = useState<string>('');
-  const [bindEventRate, setBindEventRate] = useState<number>(5);
+  const [bindEventRate, setBindEventRate] = useState<number | ''>(5);
   
   // Búsqueda y Selección de Assets
   const [bindLootId, setBindLootId] = useState<string>('');
-  const [bindLootQty, setBindLootQty] = useState<number>(100);
+  const [bindLootQty, setBindLootQty] = useState<number | ''>(100);
   const [lootSearchTermNew, setLootSearchTermNew] = useState<string>('');
   const [showLootSuggestionsNew, setShowLootSuggestionsNew] = useState<boolean>(false);
 
@@ -97,19 +103,26 @@ export const ExpeditionsManager: React.FC = () => {
 
   // Formulario Creación de Hijos Paso a Paso
   const [childCodeOrNumber, setChildCodeOrNumber] = useState<string>('1');
-  const [bulkQty, setBulkQty] = useState<number>(1);
+  const [bulkQty, setBulkQty] = useState<number | ''>(1);
   const [enableManualOverride, setEnableOverride] = useState<boolean>(false);
-  const [overrideDuration, setOverrideDuration] = useState<number>(60);
-  const [overrideMinMetal, setOverrideMinMetal] = useState<number>(5000);
-  const [overrideMaxMetal, setOverrideMaxMetal] = useState<number>(25000);
-  const [overrideMinCrystal, setOverrideMinCrystal] = useState<number>(2000);
-  const [overrideMaxCrystal, setOverrideMaxCrystal] = useState<number>(12000);
+  const [overrideDuration, setOverrideDuration] = useState<number | ''>(60);
+  const [overrideMinMetal, setOverrideMinMetal] = useState<number | ''>(5000);
+  const [overrideMaxMetal, setOverrideMaxMetal] = useState<number | ''>(25000);
+  const [overrideMinCrystal, setOverrideMinCrystal] = useState<number | ''>(2000);
+  const [overrideMaxCrystal, setOverrideMaxCrystal] = useState<number | ''>(12000);
+
+  // ─── 📊 ESTADOS DE DISTRIBUCIÓN PORCENTUAL DE PLANETAS EN STAR CLUSTER ───
+  const [planetGenMode, setPlanetGenMode] = useState<'single_ss' | 'distribution_sc'>('distribution_sc');
+  const [distributionTiers, setDistributionTiers] = useState<DistributionTier[]>([
+    { percentage: 60, planetsPerSS: 3 },
+    { percentage: 40, planetsPerSS: 6 },
+  ]);
 
   // ESTADOS DEL AUTO-GENERADOR (CASCADA)
-  const [autoQtyGal, setAutoQtyGal] = useState<number>(2);
-  const [autoQtySc, setAutoQtySc] = useState<number>(5);
-  const [autoQtySys, setAutoQtySys] = useState<number>(10);
-  const [autoQtyPlanet, setAutoQtyPlanet] = useState<number>(5);
+  const [autoQtyGal, setAutoQtyGal] = useState<number | ''>(2);
+  const [autoQtySc, setAutoQtySc] = useState<number | ''>(5);
+  const [autoQtySys, setAutoQtySys] = useState<number | ''>(10);
+  const [autoQtyPlanet, setAutoQtyPlanet] = useState<number | ''>(5);
 
   // Tipos de Planeta
   const [bodyType, setBodyType] = useState<'planeta' | 'estrella'>('planeta');
@@ -122,15 +135,15 @@ export const ExpeditionsManager: React.FC = () => {
   // Estados de Edición
   const [editSelectedEntityId, setEditSelectedEntityId] = useState<string>('');
   const [editName, setEditName] = useState<string>('');
-  const [editDuration, setEditDuration] = useState<number>(60);
-  const [editMinMetal, setEditMinMetal] = useState<number>(5000);
-  const [editMaxMetal, setEditMaxMetal] = useState<number>(25000);
-  const [editMinCrystal, setEditMinCrystal] = useState<number>(2000);
-  const [editMaxCrystal, setEditMaxCrystal] = useState<number>(12000);
+  const [editDuration, setEditDuration] = useState<number | ''>(60);
+  const [editMinMetal, setEditMinMetal] = useState<number | ''>(5000);
+  const [editMaxMetal, setEditMaxMetal] = useState<number | ''>(25000);
+  const [editMinCrystal, setEditMinCrystal] = useState<number | ''>(2000);
+  const [editMaxCrystal, setEditMaxCrystal] = useState<number | ''>(12000);
   const [editEventsList, setEditEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
   const [editGcLootList, setEditGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
 
-  // ─── 🚀 NUEVOS ESTADOS DE SELECCIÓN MÚLTIPLE (BULK DELETE) EN MODO EDICIÓN ───
+  // ─── 🚀 ESTADOS DE SELECCIÓN MÚLTIPLE (BULK DELETE) EN MODO EDICIÓN ───
   const [isBulkModeEdit, setIsBulkModeEdit] = useState<boolean>(false);
   const [selectedBulkIdsEdit, setSelectedBulkIdsEdit] = useState<string[]>([]);
   const [searchTermEditGrid, setSearchTermEditGrid] = useState<string>('');
@@ -140,13 +153,13 @@ export const ExpeditionsManager: React.FC = () => {
   const [newEventDesc, setNewEventDesc] = useState<string>('');
   const [newEventEffect, setNewEventEffect] = useState<string>('negative');
   const [newEventTarget, setNewEventTarget] = useState<string>('fleet');
-  const [newSpawnRate, setNewSpawnRate] = useState<number>(5);
+  const [newSpawnRate, setNewSpawnRate] = useState<number | ''>(5);
   const [selectedTriggerSkill, setSelectedTriggerSkill] = useState<string>('');
   const [skillImpactFormula, setSkillImpactFormula] = useState<string>('');
   const [spawnRegion, setSpawnRegion] = useState<string>('');
   const [specialCondition, setSpecialCondition] = useState<string>('');
   const [rewardAssetType, setRewardAssetType] = useState<string>('gd_balance');
-  const [rewardAssetQty, setRewardAssetQty] = useState<number>(500);
+  const [rewardAssetQty, setRewardAssetQty] = useState<number | ''>(500);
 
   // ─── FILTROS PREDICTORES ───
   const filteredSeedsNew = useMemo(() => {
@@ -217,14 +230,21 @@ export const ExpeditionsManager: React.FC = () => {
     setSelectedBulkIdsEdit([]);
   }, [selectedEntityType, parentGcId, parentGalaxyId, parentScId, parentSystemId]);
 
-  // ─── DERIVACIONES SEGURAS ───
+  // ─── DERIVACIONES SEGURAS DEL GALAXY CLUSTER PADRE ───
   const activeClusterData = useMemo(() => {
     return dbClusters.find(c => String(c.id) === String(parentGcId)) || dbClusters[0] || null;
   }, [dbClusters, parentGcId]);
 
-  const activeGalaxyData = useMemo(() => {
-    return dbGalaxies.find(g => String(g.id) === String(parentGalaxyId)) || dbGalaxies[0] || null;
-  }, [dbGalaxies, parentGalaxyId]);
+  // Sincronizar automáticamente los inputs de override con los datos heredados del GC activo
+  useEffect(() => {
+    if (activeClusterData) {
+      setOverrideDuration(activeClusterData.base_duration_minutes ?? 60);
+      setOverrideMinMetal(activeClusterData.base_metal_min ?? 5000);
+      setOverrideMaxMetal(activeClusterData.base_metal_max ?? 25000);
+      setOverrideMinCrystal(activeClusterData.base_crystal_min ?? 2000);
+      setOverrideMaxCrystal(activeClusterData.base_crystal_max ?? 12000);
+    }
+  }, [activeClusterData]);
 
   // Reloj en vivo
   useEffect(() => {
@@ -435,7 +455,7 @@ export const ExpeditionsManager: React.FC = () => {
     };
   }, []);
 
-  // Cascadas Jerárquicas
+  // Cascadas Jerárquicas Creadas para Navegación en Tiempo Real
   useEffect(() => {
     if (!parentGcId || !supabase) { setDbGalaxies([]); return; }
     const loadGalaxies = async () => {
@@ -507,7 +527,7 @@ export const ExpeditionsManager: React.FC = () => {
     const loadLocations = async () => {
       try {
         let list: any[] = [];
-        const { data: loc1, error: err1 } = await supabase.from('seed_locations').select('*').eq('system_id', parentSystemId);
+        const { data: loc1, error: err1 } = await supabase.from('seed_locations').select('*').eq('system_id', parentSystemId).order('planet_star_number', { ascending: true });
         if (!err1 && loc1 && loc1.length > 0) {
           list = loc1;
         } else {
@@ -618,7 +638,7 @@ export const ExpeditionsManager: React.FC = () => {
   const handleAddEventToGc = () => {
     if (!bindEventName) return;
     if (gcEventsList.some(e => e.name === bindEventName)) return;
-    setGcEventsList(prev => [...prev, { name: bindEventName, spawn_rate: bindEventRate }]);
+    setGcEventsList(prev => [...prev, { name: bindEventName, spawn_rate: Number(bindEventRate || 5) }]);
     setBindEventName('');
   };
 
@@ -649,12 +669,14 @@ export const ExpeditionsManager: React.FC = () => {
       return;
     }
 
+    const qtyVal = Number(bindLootQty || 1);
+
     if (mode === 'new') {
       if (newGcLootList.some(l => l.asset_id === targetId)) {
         alert("Este asset ya fue añadido a la lista de creación.");
         return;
       }
-      setNewGcLootList(prev => [...prev, { asset_id: asset.id, asset_name: asset.name, type: asset.type, qty: bindLootQty }]);
+      setNewGcLootList(prev => [...prev, { asset_id: asset.id, asset_name: asset.name, type: asset.type, qty: qtyVal }]);
       setLootSearchTermNew('');
       setShowLootSuggestionsNew(false);
     } else {
@@ -662,7 +684,7 @@ export const ExpeditionsManager: React.FC = () => {
         alert("Este asset ya fue añadido a la lista de edición.");
         return;
       }
-      setEditGcLootList(prev => [...prev, { asset_id: asset.id, asset_name: asset.name, type: asset.type, qty: bindLootQty }]);
+      setEditGcLootList(prev => [...prev, { asset_id: asset.id, asset_name: asset.name, type: asset.type, qty: qtyVal }]);
       setLootSearchTermEdit('');
       setShowLootSuggestionsEdit(false);
     }
@@ -690,13 +712,13 @@ export const ExpeditionsManager: React.FC = () => {
     const newCluster = {
       id: cleanId,
       name: newGcName.trim(),
-      base_duration_minutes: Number(newGcDuration),
+      base_duration_minutes: Number(newGcDuration || 60),
       assigned_events: gcEventsList,
       loot_pool: newGcLootList,
-      base_metal_min: Number(newGcMinMetal),
-      base_metal_max: Number(newGcMaxMetal),
-      base_crystal_min: Number(newGcMinCrystal),
-      base_crystal_max: Number(newGcMaxCrystal)
+      base_metal_min: Number(newGcMinMetal || 5000),
+      base_metal_max: Number(newGcMaxMetal || 25000),
+      base_crystal_min: Number(newGcMinCrystal || 2000),
+      base_crystal_max: Number(newGcMaxCrystal || 12000)
     };
 
     if (supabase) {
@@ -720,10 +742,146 @@ export const ExpeditionsManager: React.FC = () => {
     fetchTelemetryAndCatalogs();
   };
 
-  // ─── CREACIÓN DE HIJOS PASO A PASO CON PREVENCIÓN REALTIME DE CLAVES DUPLICADAS ───
+  // ─── MANEJADORES DE TIERS DE DISTRIBUCIÓN PORCENTUAL ───
+  const handleTierChange = (index: number, field: keyof DistributionTier, value: number) => {
+    setDistributionTiers(prev => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const addTier = () => {
+    setDistributionTiers(prev => [...prev, { percentage: 0, planetsPerSS: 1 }]);
+  };
+
+  const removeTier = (index: number) => {
+    if (distributionTiers.length <= 1) return;
+    setDistributionTiers(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // ─── 🚀 FUNCIÓN DE GENERACIÓN PORCENTUAL DE PLANETAS HEREDANDO PARÁMETROS DEL GC ───
+  const handleCreatePlanetsWithDistribution = async () => {
+    if (!supabase) return;
+    if (!parentScId) {
+      alert("Selecciona un Star Cluster (SC) padre primero.");
+      return;
+    }
+
+    const totalPct = distributionTiers.reduce((acc, t) => acc + Number(t.percentage), 0);
+    if (totalPct !== 100) {
+      alert(`Error: La suma de los porcentajes de los Tiers debe ser exactamente 100% (Suma actual: ${totalPct}%).`);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1. Obtener todos los Star Systems del Star Cluster seleccionado
+      const { data: dbSss, error: ssErr } = await supabase
+        .from('seed_star_systems')
+        .select('id, name_code')
+        .eq('sc_id', parentScId);
+
+      if (ssErr || !dbSss || dbSss.length === 0) {
+        alert("No se encontraron Star Systems en este Star Cluster para distribuir planetas.");
+        setLoading(false);
+        return;
+      }
+
+      const systemIds = dbSss.map((sys: any) => sys.id);
+
+      // 2. Limpieza previa de planetas antiguos
+      await supabase
+        .from('seed_locations')
+        .delete()
+        .in('system_id', systemIds);
+
+      // 3. Mezclar aleatoriamente los sistemas
+      const shuffledSystems = [...dbSss].sort(() => Math.random() - 0.5);
+      const totalSystems = shuffledSystems.length;
+
+      const activeSubtype = bodyType === 'planeta' ? planetSubtype : starSubtype;
+      
+      // ⚡ SI NO HAY OVERRIDE, HEREDA DIRECTAMENTE DEL GC PADRE
+      const inheritedTime = enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60);
+      const metalMin = enableManualOverride ? Number(overrideMinMetal || 5000) : Number(activeClusterData?.base_metal_min || 5000);
+      const metalMax = enableManualOverride ? Number(overrideMaxMetal || 25000) : Number(activeClusterData?.base_metal_max || 25000);
+      const crystalMin = enableManualOverride ? Number(overrideMinCrystal || 2000) : Number(activeClusterData?.base_crystal_min || 2000);
+      const crystalMax = enableManualOverride ? Number(overrideMaxCrystal || 12000) : Number(activeClusterData?.base_crystal_max || 12000);
+
+      const planetPayload: any[] = [];
+      let systemIndexOffset = 0;
+
+      // 4. Repartir planetas proporcionalmente según cada Tier
+      distributionTiers.forEach((tier, tierIdx) => {
+        const isLastTier = tierIdx === distributionTiers.length - 1;
+        const countForThisTier = isLastTier 
+          ? totalSystems - systemIndexOffset 
+          : Math.round((Number(tier.percentage) / 100) * totalSystems);
+
+        const assignedSystems = shuffledSystems.slice(
+          systemIndexOffset,
+          systemIndexOffset + countForThisTier
+        );
+        systemIndexOffset += countForThisTier;
+
+        assignedSystems.forEach((sys) => {
+          for (let p = 1; p <= Number(tier.planetsPerSS); p++) {
+            planetPayload.push({
+              system_id: sys.id,
+              planet_star_number: p,
+              time_minutes: inheritedTime,
+              rewards: {
+                metal_min: metalMin,
+                metal_max: metalMax,
+                crystal_min: crystalMin,
+                crystal_max: crystalMax,
+              },
+              conditions: { body_type: bodyType, body_subtype: activeSubtype },
+            });
+          }
+        });
+      });
+
+      // 5. Inserción masiva en lotes por bloques de 250
+      const insertedIds: string[] = [];
+      const BATCH_SIZE = 250;
+      for (let i = 0; i < planetPayload.length; i += BATCH_SIZE) {
+        const chunk = planetPayload.slice(i, i + BATCH_SIZE);
+        const { data: inserted, error: insertErr } = await supabase
+          .from('seed_locations')
+          .insert(chunk)
+          .select('id');
+
+        if (insertErr) throw insertErr;
+        if (inserted) insertedIds.push(...inserted.map((x: any) => x.id));
+      }
+
+      // 6. Historial de deshacer (Ctrl + Z)
+      setCreationHistoryStack((prev) => [
+        {
+          description: `Distribución Porcentual (${planetPayload.length} planetas en ${totalSystems} SS)`,
+          batches: [{ table: 'seed_locations', ids: insertedIds }],
+          timestamp: new Date().toLocaleTimeString(),
+        },
+        ...prev,
+      ]);
+
+      alert(`✅ DISTRIBUCIÓN ÉXITOSA: Se generaron e inyectaron ${planetPayload.length} planetas distribuidos proporcionalmente en el SC.`);
+      fetchTelemetryAndCatalogs();
+    } catch (err: any) {
+      alert(`Error en la distribución de planetas: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── CREACIÓN DE HIJOS PASO A PASO HEREDANDO PARÁMETROS DEL GC ───
   const handleCreateChildEntitySubmit = async () => {
     if (!supabase) return;
     try {
+      const actualBulkQty = Number(bulkQty || 1);
+
       if (selectedEntityType === 'GALAXY') {
         if (!parentGcId) return alert("Selecciona un Galaxy Cluster padre de la base de datos.");
         
@@ -739,7 +897,7 @@ export const ExpeditionsManager: React.FC = () => {
         }
 
         const payload = [];
-        for (let i = 0; i < bulkQty; i++) {
+        for (let i = 0; i < actualBulkQty; i++) {
           let currentNum = startNum + i;
           while (currentNumbers.has(currentNum)) {
             currentNum++;
@@ -749,18 +907,17 @@ export const ExpeditionsManager: React.FC = () => {
 
           const item: any = {
             cluster_id: parentGcId,
-            galaxy_number: currentNum
+            galaxy_number: currentNum,
+            // ⚡ HERENCIA DIRECTA DEL GC
+            assigned_events: enableManualOverride ? gcEventsList : (activeClusterData?.assigned_events || []),
+            overrides: {
+              duration_minutes: enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60),
+              metal_min: enableManualOverride ? Number(overrideMinMetal || 5000) : Number(activeClusterData?.base_metal_min || 5000),
+              metal_max: enableManualOverride ? Number(overrideMaxMetal || 25000) : Number(activeClusterData?.base_metal_max || 25000),
+              crystal_min: enableManualOverride ? Number(overrideMinCrystal || 2000) : Number(activeClusterData?.base_crystal_min || 2000),
+              crystal_max: enableManualOverride ? Number(overrideMaxCrystal || 12000) : Number(activeClusterData?.base_crystal_max || 12000)
+            }
           };
-          if (enableManualOverride) {
-            item.assigned_events = gcEventsList;
-            item.overrides = {
-              duration_minutes: Number(overrideDuration),
-              metal_min: Number(overrideMinMetal),
-              metal_max: Number(overrideMaxMetal),
-              crystal_min: Number(overrideMinCrystal),
-              crystal_max: Number(overrideMaxCrystal)
-            };
-          }
           payload.push(item);
         }
 
@@ -770,14 +927,14 @@ export const ExpeditionsManager: React.FC = () => {
         const insertedIds = (inserted || []).map((x: any) => x.id);
         setCreationHistoryStack(prev => [
           {
-            description: `Creación de ${bulkQty} Galaxia(s) en [${parentGcId}]`,
+            description: `Creación de ${actualBulkQty} Galaxia(s) en [${parentGcId}]`,
             batches: [{ table: 'seed_galaxies', ids: insertedIds }],
             timestamp: new Date().toLocaleTimeString()
           },
           ...prev
         ]);
 
-        alert(`🌀 Fundadas ${bulkQty} Galaxias en [${parentGcId}] sin colisiones de clave.`);
+        alert(`🌀 Fundadas ${actualBulkQty} Galaxias en [${parentGcId}] con parámetros heredados.`);
 
       } else if (selectedEntityType === 'SC') {
         if (!parentGalaxyId) return alert("Selecciona una Galaxia padre.");
@@ -794,7 +951,7 @@ export const ExpeditionsManager: React.FC = () => {
         }
 
         const payload = [];
-        for (let i = 0; i < bulkQty; i++) {
+        for (let i = 0; i < actualBulkQty; i++) {
           let currentNum = startNum + i;
           while (currentNumbers.has(currentNum)) {
             currentNum++;
@@ -804,18 +961,17 @@ export const ExpeditionsManager: React.FC = () => {
 
           const item: any = {
             galaxy_id: parentGalaxyId,
-            sc_number: currentNum
+            sc_number: currentNum,
+            // ⚡ HERENCIA DIRECTA DEL GC
+            assigned_events: enableManualOverride ? gcEventsList : (activeClusterData?.assigned_events || []),
+            overrides: {
+              duration_minutes: enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60),
+              metal_min: enableManualOverride ? Number(overrideMinMetal || 5000) : Number(activeClusterData?.base_metal_min || 5000),
+              metal_max: enableManualOverride ? Number(overrideMaxMetal || 25000) : Number(activeClusterData?.base_metal_max || 25000),
+              crystal_min: enableManualOverride ? Number(overrideMinCrystal || 2000) : Number(activeClusterData?.base_crystal_min || 2000),
+              crystal_max: enableManualOverride ? Number(overrideMaxCrystal || 12000) : Number(activeClusterData?.base_crystal_max || 12000)
+            }
           };
-          if (enableManualOverride) {
-            item.assigned_events = gcEventsList;
-            item.overrides = {
-              duration_minutes: Number(overrideDuration),
-              metal_min: Number(overrideMinMetal),
-              metal_max: Number(overrideMaxMetal),
-              crystal_min: Number(overrideMinCrystal),
-              crystal_max: Number(overrideMaxCrystal)
-            };
-          }
           payload.push(item);
         }
         const { data: inserted, error } = await supabase.from('seed_star_clusters').insert(payload).select('id');
@@ -824,14 +980,14 @@ export const ExpeditionsManager: React.FC = () => {
         const insertedIds = (inserted || []).map((x: any) => x.id);
         setCreationHistoryStack(prev => [
           {
-            description: `Creación de ${bulkQty} Star Cluster(s)`,
+            description: `Creación de ${actualBulkQty} Star Cluster(s)`,
             batches: [{ table: 'seed_star_clusters', ids: insertedIds }],
             timestamp: new Date().toLocaleTimeString()
           },
           ...prev
         ]);
 
-        alert(`🌟 Sembrados ${bulkQty} Star Clusters sin duplicados.`);
+        alert(`🌟 Sembrados ${actualBulkQty} Star Clusters con parámetros heredados.`);
 
       } else if (selectedEntityType === 'SS') {
         if (!parentScId) return alert("Selecciona un Star Cluster padre.");
@@ -845,8 +1001,8 @@ export const ExpeditionsManager: React.FC = () => {
         const baseCode = (childCodeOrNumber.trim() || 'SYS').toUpperCase();
 
         const payload = [];
-        for (let i = 0; i < bulkQty; i++) {
-          let derivedCode = bulkQty > 1 ? `${baseCode}-${i + 1}` : baseCode;
+        for (let i = 0; i < actualBulkQty; i++) {
+          let derivedCode = actualBulkQty > 1 ? `${baseCode}-${i + 1}` : baseCode;
           let counter = i + 1;
           while (currentCodes.has(derivedCode)) {
             counter++;
@@ -856,18 +1012,17 @@ export const ExpeditionsManager: React.FC = () => {
 
           const item: any = {
             sc_id: parentScId,
-            name_code: derivedCode
+            name_code: derivedCode,
+            // ⚡ HERENCIA DIRECTA DEL GC
+            assigned_events: enableManualOverride ? gcEventsList : (activeClusterData?.assigned_events || []),
+            overrides: {
+              duration_minutes: enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60),
+              metal_min: enableManualOverride ? Number(overrideMinMetal || 5000) : Number(activeClusterData?.base_metal_min || 5000),
+              metal_max: enableManualOverride ? Number(overrideMaxMetal || 25000) : Number(activeClusterData?.base_metal_max || 25000),
+              crystal_min: enableManualOverride ? Number(overrideMinCrystal || 2000) : Number(activeClusterData?.base_crystal_min || 2000),
+              crystal_max: enableManualOverride ? Number(overrideMaxCrystal || 12000) : Number(activeClusterData?.base_crystal_max || 12000)
+            }
           };
-          if (enableManualOverride) {
-            item.assigned_events = gcEventsList;
-            item.overrides = {
-              duration_minutes: Number(overrideDuration),
-              metal_min: Number(overrideMinMetal),
-              metal_max: Number(overrideMaxMetal),
-              crystal_min: Number(overrideMinCrystal),
-              crystal_max: Number(overrideMaxCrystal)
-            };
-          }
           payload.push(item);
         }
         const { data: inserted, error } = await supabase.from('seed_star_systems').insert(payload).select('id');
@@ -876,14 +1031,14 @@ export const ExpeditionsManager: React.FC = () => {
         const insertedIds = (inserted || []).map((x: any) => x.id);
         setCreationHistoryStack(prev => [
           {
-            description: `Creación de ${bulkQty} Star System(s)`,
+            description: `Creación de ${actualBulkQty} Star System(s)`,
             batches: [{ table: 'seed_star_systems', ids: insertedIds }],
             timestamp: new Date().toLocaleTimeString()
           },
           ...prev
         ]);
 
-        alert(`🪐 Creados ${bulkQty} Star Systems sin duplicación de código.`);
+        alert(`🪐 Creados ${actualBulkQty} Star Systems con parámetros heredados.`);
 
       } else if (selectedEntityType === 'PLANET') {
         if (!parentSystemId) return alert("Selecciona un Star System padre.");
@@ -900,10 +1055,10 @@ export const ExpeditionsManager: React.FC = () => {
         }
 
         const activeSubtype = bodyType === 'planeta' ? planetSubtype : starSubtype;
-        const inheritedTime = activeClusterData ? Number(activeClusterData.base_duration_minutes) : 60;
+        const inheritedTime = enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60);
         const payload = [];
 
-        for (let i = 0; i < bulkQty; i++) {
+        for (let i = 0; i < actualBulkQty; i++) {
           let currentNum = startNum + i;
           while (currentNumbers.has(currentNum)) {
             currentNum++;
@@ -914,12 +1069,12 @@ export const ExpeditionsManager: React.FC = () => {
           payload.push({
             system_id: parentSystemId,
             planet_star_number: currentNum,
-            time_minutes: enableManualOverride ? Number(overrideDuration) : inheritedTime,
+            time_minutes: inheritedTime,
             rewards: {
-              metal_min: enableManualOverride ? Number(overrideMinMetal) : (activeClusterData?.base_metal_min || 5000),
-              metal_max: enableManualOverride ? Number(overrideMaxMetal) : (activeClusterData?.base_metal_max || 25000),
-              crystal_min: enableManualOverride ? Number(overrideMinCrystal) : (activeClusterData?.base_crystal_min || 2000),
-              crystal_max: enableManualOverride ? Number(overrideMaxCrystal) : (activeClusterData?.base_crystal_max || 12000)
+              metal_min: enableManualOverride ? Number(overrideMinMetal || 5000) : Number(activeClusterData?.base_metal_min || 5000),
+              metal_max: enableManualOverride ? Number(overrideMaxMetal || 25000) : Number(activeClusterData?.base_metal_max || 25000),
+              crystal_min: enableManualOverride ? Number(overrideMinCrystal || 2000) : Number(activeClusterData?.base_crystal_min || 2000),
+              crystal_max: enableManualOverride ? Number(overrideMaxCrystal || 12000) : Number(activeClusterData?.base_crystal_max || 12000)
             },
             conditions: { body_type: bodyType, body_subtype: activeSubtype }
           });
@@ -930,14 +1085,14 @@ export const ExpeditionsManager: React.FC = () => {
         const insertedIds = (inserted || []).map((x: any) => x.id);
         setCreationHistoryStack(prev => [
           {
-            description: `Creación de ${bulkQty} Cuerpo(s) Celeste(s)`,
+            description: `Creación de ${actualBulkQty} Cuerpo(s) Celeste(s)`,
             batches: [{ table: 'seed_locations', ids: insertedIds }],
             timestamp: new Date().toLocaleTimeString()
           },
           ...prev
         ]);
 
-        alert(`🌍 Mapeados ${bulkQty} Cuerpos Celestes (${bodyType.toUpperCase()}) secuenciales.`);
+        alert(`🌍 Mapeados ${actualBulkQty} Cuerpos Celestes (${bodyType.toUpperCase()}) con parámetros del GC.`);
       }
 
       fetchTelemetryAndCatalogs();
@@ -950,10 +1105,15 @@ export const ExpeditionsManager: React.FC = () => {
   const handleAutoGenerateCascade = async () => {
     if (!supabase || !parentGcId) return alert("Selecciona un Galaxy Cluster padre para iniciar la cascada.");
     
-    const totalPlanets = autoQtyGal * autoQtySc * autoQtySys * autoQtyPlanet;
-    const totalSS = autoQtyGal * autoQtySc * autoQtySys;
-    const totalSC = autoQtyGal * autoQtySc;
-    const totalGal = autoQtyGal;
+    const qtyGal = Number(autoQtyGal || 2);
+    const qtySc = Number(autoQtySc || 5);
+    const qtySys = Number(autoQtySys || 10);
+    const qtyPlanet = Number(autoQtyPlanet || 5);
+
+    const totalPlanets = qtyGal * qtySc * qtySys * qtyPlanet;
+    const totalSS = qtyGal * qtySc * qtySys;
+    const totalSC = qtyGal * qtySc;
+    const totalGal = qtyGal;
 
     if (!window.confirm(`⚠️ ADVERTENCIA DE RENDIMIENTO: Esto generará y conectará automáticamente:\n- ${totalGal} Galaxias\n- ${totalSC} Star Clusters\n- ${totalSS} Star Systems\n- ${totalPlanets} Planetas\n\nTotal de Inserciones: ${totalGal + totalSC + totalSS + totalPlanets} filas.\n\n¿Estás seguro de continuar con la Generación en Cascada?`)) return;
 
@@ -969,7 +1129,7 @@ export const ExpeditionsManager: React.FC = () => {
 
       let nextGalNum = 1;
       const galPayload = [];
-      for (let i = 0; i < autoQtyGal; i++) {
+      for (let i = 0; i < qtyGal; i++) {
         while(currentGalsSet.has(nextGalNum)) nextGalNum++;
         currentGalsSet.add(nextGalNum);
         galPayload.push({ cluster_id: parentGcId, galaxy_number: nextGalNum });
@@ -982,7 +1142,7 @@ export const ExpeditionsManager: React.FC = () => {
 
       const scPayload: any[] = [];
       insertedGals.forEach(gal => {
-        for (let i = 0; i < autoQtySc; i++) {
+        for (let i = 0; i < qtySc; i++) {
           scPayload.push({ galaxy_id: gal.id, sc_number: i + 1 });
         }
       });
@@ -992,7 +1152,7 @@ export const ExpeditionsManager: React.FC = () => {
 
       const sysPayload: any[] = [];
       insertedScs.forEach(sc => {
-        for (let i = 0; i < autoQtySys; i++) {
+        for (let i = 0; i < qtySys; i++) {
           sysPayload.push({ sc_id: sc.id, name_code: `SYS-${i + 1}` });
         }
       });
@@ -1017,7 +1177,7 @@ export const ExpeditionsManager: React.FC = () => {
       const inheritedTime = gcData ? Number(gcData.base_duration_minutes) : 60;
 
       insertedSys.forEach(sys => {
-        for (let i = 0; i < autoQtyPlanet; i++) {
+        for (let i = 0; i < qtyPlanet; i++) {
           planetPayload.push({
             system_id: sys.id,
             planet_star_number: i + 1,
@@ -1133,7 +1293,6 @@ export const ExpeditionsManager: React.FC = () => {
     else if (selectedEntityType === 'SS') targetTable = 'seed_star_systems';
     else if (selectedEntityType === 'PLANET') targetTable = 'seed_locations';
 
-    // CASO A: Modo Selección Múltiple Activo
     if (isBulkModeEdit || selectedBulkIdsEdit.length > 0) {
       if (selectedBulkIdsEdit.length === 0) {
         alert("Por favor selecciona al menos un elemento en la grilla para eliminar en masa.");
@@ -1156,7 +1315,6 @@ export const ExpeditionsManager: React.FC = () => {
       return;
     }
 
-    // CASO B: Modo Borrado Completo por Padre (Fallback)
     let targetParentCol = '';
     let parentValue = '';
     let entityNamePlural = '';
@@ -1219,11 +1377,11 @@ export const ExpeditionsManager: React.FC = () => {
         table = 'seed_galaxy_clusters';
         payload = {
           name: editName,
-          base_duration_minutes: Number(editDuration),
-          base_metal_min: Number(editMinMetal),
-          base_metal_max: Number(editMaxMetal),
-          base_crystal_min: Number(editMinCrystal),
-          base_crystal_max: Number(editMaxCrystal),
+          base_duration_minutes: Number(editDuration || 60),
+          base_metal_min: Number(editMinMetal || 5000),
+          base_metal_max: Number(editMaxMetal || 25000),
+          base_crystal_min: Number(editMinCrystal || 2000),
+          base_crystal_max: Number(editMaxCrystal || 12000),
           assigned_events: editEventsList,
           loot_pool: editGcLootList
         };
@@ -1233,11 +1391,11 @@ export const ExpeditionsManager: React.FC = () => {
           galaxy_number: Number(editName),
           assigned_events: editEventsList,
           overrides: {
-            duration_minutes: Number(editDuration),
-            metal_min: Number(editMinMetal),
-            metal_max: Number(editMaxMetal),
-            crystal_min: Number(editMinCrystal),
-            crystal_max: Number(editMaxCrystal)
+            duration_minutes: Number(editDuration || 60),
+            metal_min: Number(editMinMetal || 5000),
+            metal_max: Number(editMaxMetal || 25000),
+            crystal_min: Number(editMinCrystal || 2000),
+            crystal_max: Number(editMaxCrystal || 12000)
           }
         };
       } else if (selectedEntityType === 'SC') {
@@ -1246,11 +1404,11 @@ export const ExpeditionsManager: React.FC = () => {
           sc_number: Number(editName),
           assigned_events: editEventsList,
           overrides: {
-            duration_minutes: Number(editDuration),
-            metal_min: Number(editMinMetal),
-            metal_max: Number(editMaxMetal),
-            crystal_min: Number(editMinCrystal),
-            crystal_max: Number(editMaxCrystal)
+            duration_minutes: Number(editDuration || 60),
+            metal_min: Number(editMinMetal || 5000),
+            metal_max: Number(editMaxMetal || 25000),
+            crystal_min: Number(editMinCrystal || 2000),
+            crystal_max: Number(editMaxCrystal || 12000)
           }
         };
       } else if (selectedEntityType === 'SS') {
@@ -1259,23 +1417,23 @@ export const ExpeditionsManager: React.FC = () => {
           name_code: editName,
           assigned_events: editEventsList,
           overrides: {
-            duration_minutes: Number(editDuration),
-            metal_min: Number(editMinMetal),
-            metal_max: Number(editMaxMetal),
-            crystal_min: Number(editMinCrystal),
-            crystal_max: Number(editMaxCrystal)
+            duration_minutes: Number(editDuration || 60),
+            metal_min: Number(editMinMetal || 5000),
+            metal_max: Number(editMaxMetal || 25000),
+            crystal_min: Number(editMinCrystal || 2000),
+            crystal_max: Number(editMaxCrystal || 12000)
           }
         };
       } else if (selectedEntityType === 'PLANET') {
         table = 'seed_locations';
         payload = {
           planet_star_number: Number(editName),
-          time_minutes: Number(editDuration),
+          time_minutes: Number(editDuration || 60),
           rewards: {
-            metal_min: Number(editMinMetal),
-            metal_max: Number(editMaxMetal),
-            crystal_min: Number(editMinCrystal),
-            crystal_max: Number(editMaxCrystal)
+            metal_min: Number(editMinMetal || 5000),
+            metal_max: Number(editMaxMetal || 25000),
+            crystal_min: Number(editMinCrystal || 2000),
+            crystal_max: Number(editMaxCrystal || 12000)
           }
         };
       }
@@ -1301,13 +1459,13 @@ export const ExpeditionsManager: React.FC = () => {
           description: newEventDesc.trim(),
           effect_type: newEventEffect,
           target_type: newEventTarget,
-          spawn_rate: Number(newSpawnRate),
+          spawn_rate: Number(newSpawnRate || 5),
           trigger_skill: selectedTriggerSkill,
           skill_impact_formula: skillImpactFormula,
           spawn_region: spawnRegion,
           special_condition: specialCondition,
           reward_asset_type: rewardAssetType,
-          reward_asset_qty: Number(rewardAssetQty)
+          reward_asset_qty: Number(rewardAssetQty || 500)
         }
       ]);
       if (error) throw error;
@@ -1316,14 +1474,8 @@ export const ExpeditionsManager: React.FC = () => {
     } catch (e: any) { alert(e.message); }
   };
 
-  const formatDuration = (ms: number): string => {
-    if (ms <= 0) return '00h 00m 00s';
-    const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
-  };
+  const totalTierPct = distributionTiers.reduce((acc, t) => acc + Number(t.percentage), 0);
+  const isTierPctValid = totalTierPct === 100;
 
   return (
     <div className="p-6 bg-slate-900 min-h-screen text-slate-100 font-mono text-xs space-y-6 rounded-xl border border-slate-800 text-left select-none">
@@ -1353,7 +1505,6 @@ export const ExpeditionsManager: React.FC = () => {
       {/* TAB 1: EXPLORACIÓN Y MINERÍA */}
       {activeTab === 'exploration' && (
         <div className="space-y-6 animate-fadeIn">
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-4">
               <div className="bg-slate-950 p-4 border border-slate-850 rounded-xl">
@@ -1398,7 +1549,6 @@ export const ExpeditionsManager: React.FC = () => {
             ))}
           </div>
 
-          {/* SUB-PESTAÑA 1: MONITOR OPERATIVO */}
           {activeExploreTab === 'monitor' && (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fadeIn">
               <div className="xl:col-span-2 bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4">
@@ -1469,7 +1619,6 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           )}
 
-          {/* SUB-PESTAÑA 2: PÉRDIDAS & LOGS */}
           {activeExploreTab === 'losses' && (
             <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4 animate-fadeIn">
               <span className="text-rose-500 font-bold text-[10px] uppercase tracking-widest flex items-center gap-1">
@@ -1729,25 +1878,25 @@ export const ExpeditionsManager: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
                   <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
                     <span className="text-cyan-400 font-bold text-[10px] uppercase block">Galaxias</span>
-                    <input type="number" min={1} className="w-full bg-black border border-cyan-900/50 p-2 rounded text-center text-cyan-300 font-black text-lg outline-none" value={autoQtyGal} onChange={e => setAutoQtyGal(Number(e.target.value))} />
+                    <input type="number" min={1} className="w-full bg-black border border-cyan-900/50 p-2 rounded text-center text-cyan-300 font-black text-lg outline-none" value={autoQtyGal} onChange={e => setAutoQtyGal(e.target.value === '' ? '' : Number(e.target.value))} />
                     <span className="text-[8px] text-zinc-500 uppercase">Por cada Cluster</span>
                   </div>
 
                   <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
                     <span className="text-amber-400 font-bold text-[10px] uppercase block">Star Clusters</span>
-                    <input type="number" min={1} className="w-full bg-black border border-amber-900/50 p-2 rounded text-center text-amber-300 font-black text-lg outline-none" value={autoQtySc} onChange={e => setAutoQtySc(Number(e.target.value))} />
+                    <input type="number" min={1} className="w-full bg-black border border-amber-900/50 p-2 rounded text-center text-amber-300 font-black text-lg outline-none" value={autoQtySc} onChange={e => setAutoQtySc(e.target.value === '' ? '' : Number(e.target.value))} />
                     <span className="text-[8px] text-zinc-500 uppercase">Por cada Galaxia</span>
                   </div>
 
                   <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
                     <span className="text-purple-400 font-bold text-[10px] uppercase block">Sistemas</span>
-                    <input type="number" min={1} className="w-full bg-black border border-purple-900/50 p-2 rounded text-center text-purple-300 font-black text-lg outline-none" value={autoQtySys} onChange={e => setAutoQtySys(Number(e.target.value))} />
+                    <input type="number" min={1} className="w-full bg-black border border-purple-900/50 p-2 rounded text-center text-purple-300 font-black text-lg outline-none" value={autoQtySys} onChange={e => setAutoQtySys(e.target.value === '' ? '' : Number(e.target.value))} />
                     <span className="text-[8px] text-zinc-500 uppercase">Por cada SC</span>
                   </div>
 
                   <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 text-center">
                     <span className="text-emerald-400 font-bold text-[10px] uppercase block">Planetas</span>
-                    <input type="number" min={1} className="w-full bg-black border border-emerald-900/50 p-2 rounded text-center text-emerald-300 font-black text-lg outline-none" value={autoQtyPlanet} onChange={e => setAutoQtyPlanet(Number(e.target.value))} />
+                    <input type="number" min={1} className="w-full bg-black border border-emerald-900/50 p-2 rounded text-center text-emerald-300 font-black text-lg outline-none" value={autoQtyPlanet} onChange={e => setAutoQtyPlanet(e.target.value === '' ? '' : Number(e.target.value))} />
                     <span className="text-[8px] text-zinc-500 uppercase">Por cada Sistema</span>
                   </div>
                 </div>
@@ -1756,12 +1905,12 @@ export const ExpeditionsManager: React.FC = () => {
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Resumen de Inyección Estelar:</span>
                     <p className="text-[11px] text-zinc-300 font-sans">
-                      Se crearán <strong className="text-white">{autoQtyGal} Galaxias</strong>, <strong className="text-white">{autoQtyGal * autoQtySc} Star Clusters</strong>, <strong className="text-white">{autoQtyGal * autoQtySc * autoQtySys} Sistemas</strong> y <strong className="text-emerald-400">{autoQtyGal * autoQtySc * autoQtySys * autoQtyPlanet} Planetas</strong>.
+                      Se crearán <strong className="text-white">{Number(autoQtyGal || 0)} Galaxias</strong>, <strong className="text-white">{Number(autoQtyGal || 0) * Number(autoQtySc || 0)} Star Clusters</strong>, <strong className="text-white">{Number(autoQtyGal || 0) * Number(autoQtySc || 0) * Number(autoQtySys || 0)} Sistemas</strong> y <strong className="text-emerald-400">{Number(autoQtyGal || 0) * Number(autoQtySc || 0) * Number(autoQtySys || 0) * Number(autoQtyPlanet || 0)} Planetas</strong>.
                     </p>
                   </div>
                   <div className="text-right">
                     <span className="text-[9px] text-zinc-500 uppercase block font-bold">Total Inserciones:</span>
-                    <span className="text-xl font-black text-white">{autoQtyGal + (autoQtyGal*autoQtySc) + (autoQtyGal*autoQtySc*autoQtySys) + (autoQtyGal*autoQtySc*autoQtySys*autoQtyPlanet)}</span>
+                    <span className="text-xl font-black text-white">{Number(autoQtyGal || 0) + (Number(autoQtyGal || 0) * Number(autoQtySc || 0)) + (Number(autoQtyGal || 0) * Number(autoQtySc || 0) * Number(autoQtySys || 0)) + (Number(autoQtyGal || 0) * Number(autoQtySc || 0) * Number(autoQtySys || 0) * Number(autoQtyPlanet || 0))}</span>
                   </div>
                 </div>
 
@@ -1806,7 +1955,7 @@ export const ExpeditionsManager: React.FC = () => {
                       <div className="grid grid-cols-2 gap-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850">
                         <div className="col-span-2 text-emerald-400 font-bold text-[9.5px] uppercase">⏱️ Tiempo Base de Expedición</div>
                         <div className="col-span-2">
-                          <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold text-xs" value={newGcDuration} onChange={e => setNewGcDuration(Number(e.target.value))} />
+                          <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold text-xs" value={newGcDuration} onChange={e => setNewGcDuration(e.target.value === '' ? '' : Number(e.target.value))} />
                           <span className="text-[8.5px] text-zinc-500 mt-1 block">Minutos requeridos para llegar a este Clúster</span>
                         </div>
                       </div>
@@ -1814,10 +1963,10 @@ export const ExpeditionsManager: React.FC = () => {
                       <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2">
                         <span className="text-amber-400 font-bold text-[9.5px] uppercase block">💎 RANGO BASE DE EXTRACCIÓN Y MINADO</span>
                         <div className="grid grid-cols-2 gap-2 text-[10px]">
-                          <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMinMetal} onChange={e => setNewGcMinMetal(Number(e.target.value))} /></div>
-                          <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMaxMetal} onChange={e => setNewGcMaxMetal(Number(e.target.value))} /></div>
-                          <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMinCrystal} onChange={e => setNewGcMinCrystal(Number(e.target.value))} /></div>
-                          <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMaxCrystal} onChange={e => setNewGcMaxCrystal(Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMinMetal} onChange={e => setNewGcMinMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMaxMetal} onChange={e => setNewGcMaxMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMinCrystal} onChange={e => setNewGcMinCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                          <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMaxCrystal} onChange={e => setNewGcMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                         </div>
                       </div>
 
@@ -1828,7 +1977,7 @@ export const ExpeditionsManager: React.FC = () => {
                             <option value="">-- Seleccionar Evento --</option>
                             {eventsCatalog.map((ev, idx) => <option key={ev.id || `ev-opt-${idx}`} value={ev.name}>{ev.name}</option>)}
                           </select>
-                          <input type="number" min={1} max={100} placeholder="% Rate" className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-amber-400 font-bold" value={bindEventRate} onChange={e => setBindEventRate(Number(e.target.value))} />
+                          <input type="number" min={1} max={100} placeholder="% Rate" className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-center text-amber-400 font-bold" value={bindEventRate} onChange={e => setBindEventRate(e.target.value === '' ? '' : Number(e.target.value))} />
                         </div>
                         <button onClick={handleAddEventToGc} className="w-full bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-800 py-1.5 rounded uppercase font-bold text-[9px] cursor-pointer">
                           + Asignar Evento al Clúster
@@ -1898,7 +2047,7 @@ export const ExpeditionsManager: React.FC = () => {
                             placeholder="Cant" 
                             className="bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-emerald-400 font-bold text-[11px]" 
                             value={bindLootQty} 
-                            onChange={e => setBindLootQty(Number(e.target.value))} 
+                            onChange={e => setBindLootQty(e.target.value === '' ? '' : Number(e.target.value))} 
                           />
                         </div>
 
@@ -1982,6 +2131,36 @@ export const ExpeditionsManager: React.FC = () => {
                     🛠️ CREACIÓN PASO A PASO: [{selectedEntityType}]
                   </span>
 
+                  {/* SELECTOR MODO GENERACIÓN SI ES ENTIDAD PLANET */}
+                  {selectedEntityType === 'PLANET' && (
+                    <div className="flex gap-2 bg-[#121927] p-2 rounded-lg border border-[#232f48]">
+                      <button
+                        type="button"
+                        onClick={() => setPlanetGenMode('distribution_sc')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          planetGenMode === 'distribution_sc'
+                            ? 'bg-cyan-600 text-white shadow-md'
+                            : 'bg-[#182236] text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <Layers size={14} />
+                        📊 Distribución Porcentual por Tiers (en todo el Star Cluster)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPlanetGenMode('single_ss')}
+                        className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          planetGenMode === 'single_ss'
+                            ? 'bg-cyan-600 text-white shadow-md'
+                            : 'bg-[#182236] text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <MapPin size={14} />
+                        🎯 Sistema Solar Individual (Manual)
+                      </button>
+                    </div>
+                  )}
+
                   <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
                     <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
                       1. SELECCIONAR JERARQUÍA PADRE
@@ -2016,7 +2195,7 @@ export const ExpeditionsManager: React.FC = () => {
                         </div>
                       )}
 
-                      {selectedEntityType === 'PLANET' && (
+                      {selectedEntityType === 'PLANET' && planetGenMode === 'single_ss' && (
                         <div>
                           <label className="text-[9px] text-zinc-500 block mb-1">Paso 4: Star System Padre:</label>
                           <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={parentSystemId} onChange={e => setParentSystemId(e.target.value)}>
@@ -2028,81 +2207,199 @@ export const ExpeditionsManager: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
-                      <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
-                        2. IDENTIFICADOR Y CREACIÓN EN LOTE (MASIVA)
-                      </span>
-
-                      <div className="grid grid-cols-2 gap-3 text-[11px]">
-                        <div>
-                          <label className="text-[9px] text-zinc-500 block mb-1">
-                            {selectedEntityType === 'SS' ? 'Código Base (ej: ASW)' : 'Número / Correlativo Inicial:'}
-                          </label>
-                          <input 
-                            type="text" 
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-white font-bold text-xs uppercase" 
-                            value={childCodeOrNumber} 
-                            onChange={e => setChildCodeOrNumber(e.target.value)} 
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[9px] text-cyan-400 font-bold block mb-1">CANTIDAD A CREAR EN MASA:</label>
-                          <input 
-                            type="number" 
-                            min={1} 
-                            className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-cyan-400 font-black text-xs" 
-                            value={bulkQty} 
-                            onChange={e => setBulkQty(Number(e.target.value))} 
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
-                      <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
-                        <span className="text-amber-400 font-bold text-[10px] uppercase">
-                          3. ALTERAR CARACTERÍSTICAS MANUALLMENTE (OVERRIDE)
+                  {/* VISTA A: DISTRIBUCIÓN PORCENTUAL POR TIERS (PLANETAS) */}
+                  {selectedEntityType === 'PLANET' && planetGenMode === 'distribution_sc' ? (
+                    <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-4">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                        <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
+                          <Layers size={14} />
+                          2. REGLAS DE DISTRIBUCIÓN PORCENTUAL EN STAR CLUSTER ({dbStarSystems.length} Sistemas Solares)
                         </span>
-                        <input 
-                          type="checkbox" 
-                          checked={enableManualOverride} 
-                          onChange={e => setEnableOverride(e.target.checked)} 
-                          className="w-4 h-4 accent-amber-500 cursor-pointer" 
-                        />
+
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${
+                          isTierPctValid
+                            ? 'bg-emerald-950 text-emerald-400 border-emerald-800'
+                            : 'bg-red-950 text-red-400 border-red-800 animate-pulse'
+                        }`}>
+                          SUMA: {totalTierPct}% {isTierPctValid ? '✓ (VÁLIDO)' : '≠ 100% (REQUERIDO)'}
+                        </span>
                       </div>
 
-                      {enableManualOverride ? (
-                        <div className="space-y-2 text-[10px] animate-fadeIn">
-                          <p className="text-[8.5px] text-zinc-400 italic">
-                            Modificará el tiempo y rangos de esta entidad sin alterar a sus hermanas ni al Clúster padre.
+                      <div className="space-y-2">
+                        {distributionTiers.map((tier, idx) => (
+                          <div key={idx} className="flex items-center gap-3 bg-[#0a0f18] border border-cyan-950 p-3 rounded-lg">
+                            <span className="text-xs font-bold text-cyan-400 shrink-0 w-16">
+                              TIER {idx + 1}:
+                            </span>
+
+                            <div className="flex-1">
+                              <label className="text-[9px] text-gray-400 uppercase block mb-1">% de Sistemas Solares:</label>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={tier.percentage}
+                                  onChange={(e) => handleTierChange(idx, 'percentage', e.target.value === '' ? '' as any : Number(e.target.value))}
+                                  className="w-full bg-[#121824] border border-[#232f48] text-amber-300 font-bold text-xs p-2 rounded outline-none"
+                                />
+                                <span className="text-xs font-bold">%</span>
+                              </div>
+                            </div>
+
+                            <div className="flex-1">
+                              <label className="text-[9px] text-gray-400 uppercase block mb-1">Planetas por Sistema:</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={50}
+                                value={tier.planetsPerSS}
+                                onChange={(e) => handleTierChange(idx, 'planetsPerSS', e.target.value === '' ? '' as any : Number(e.target.value))}
+                                className="w-full bg-[#121824] border border-[#232f48] text-emerald-400 font-bold text-xs p-2 rounded outline-none"
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeTier(idx)}
+                              disabled={distributionTiers.length <= 1}
+                              className="p-2 text-gray-500 hover:text-red-400 disabled:opacity-30 cursor-pointer transition-colors"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={addTier}
+                        className="w-full py-2 bg-[#121824] hover:bg-[#1a2336] border border-[#232f48] text-cyan-400 text-xs font-bold uppercase rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Plus size={14} /> Añadir Tier de Distribución
+                      </button>
+
+                      {/* CONFIGURACIÓN DE RECURSOS OVERRIDE PARA LA DISTRIBUCIÓN */}
+                      <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2">
+                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
+                          <span className="text-amber-400 font-bold text-[10px] uppercase">
+                            3. ALTERAR CARACTERÍSTICAS MANUALLMENTE (OVERRIDE)
+                          </span>
+                          <input 
+                            type="checkbox" 
+                            checked={enableManualOverride} 
+                            onChange={e => setEnableOverride(e.target.checked)} 
+                            className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                          />
+                        </div>
+
+                        {enableManualOverride ? (
+                          <div className="grid grid-cols-2 gap-2 text-[10px] pt-1">
+                            <div><span className="text-zinc-500 block text-[8px]">Duración Viaje Override (min):</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-emerald-400 font-bold" value={overrideDuration} onChange={e => setOverrideDuration(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                            <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMinMetal} onChange={e => setOverrideMinMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                            <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMaxMetal} onChange={e => setOverrideMaxMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                            <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={overrideMaxCrystal} onChange={e => setOverrideMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                          </div>
+                        ) : (
+                          <p className="text-[9.5px] text-zinc-500 italic py-2 text-center">
+                            Los planetas heredarán automáticamente la duración base ({activeClusterData?.base_duration_minutes || 60} min) y rangos del GC.
                           </p>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div><span className="text-zinc-500 block text-[8px]">Duración Viaje Override (min):</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-emerald-400 font-bold" value={overrideDuration} onChange={e => setOverrideDuration(Number(e.target.value))} /></div>
-                            <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMinMetal} onChange={e => setOverrideMinMetal(Number(e.target.value))} /></div>
-                            <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMaxMetal} onChange={e => setOverrideMaxMetal(Number(e.target.value))} /></div>
-                            <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={overrideMaxCrystal} onChange={e => setOverrideMaxCrystal(Number(e.target.value))} /></div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!isTierPctValid || !parentScId || loading}
+                        onClick={handleCreatePlanetsWithDistribution}
+                        className={`w-full py-3 text-xs font-black uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${
+                          isTierPctValid && parentScId && !loading
+                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white cursor-pointer shadow-lg shadow-emerald-950/50'
+                            : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                        }`}
+                      >
+                        {loading ? <Loader className="animate-spin" size={16} /> : <Rocket size={16} />}
+                        🚀 EJECUTAR DISTRIBUCIÓN PORCENTUAL DE PLANETAS EN SC
+                      </button>
+                    </div>
+                  ) : (
+                    /* VISTA B: CREACIÓN MANUAL TRADICIONAL */
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                        <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
+                          2. IDENTIFICADOR Y CREACIÓN EN LOTE (MASIVA)
+                        </span>
+
+                        <div className="grid grid-cols-2 gap-3 text-[11px]">
+                          <div>
+                            <label className="text-[9px] text-zinc-500 block mb-1">
+                              {selectedEntityType === 'SS' ? 'Código Base (ej: ASW)' : 'Número / Correlativo Inicial:'}
+                            </label>
+                            <input 
+                              type="text" 
+                              className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-white font-bold text-xs uppercase" 
+                              value={childCodeOrNumber} 
+                              onChange={e => setChildCodeOrNumber(e.target.value)} 
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] text-cyan-400 font-bold block mb-1">CANTIDAD A CREAR EN MASA:</label>
+                            <input 
+                              type="number" 
+                              min={1} 
+                              className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-cyan-400 font-black text-xs" 
+                              value={bulkQty} 
+                              onChange={e => setBulkQty(e.target.value === '' ? '' : Number(e.target.value))} 
+                            />
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-[9.5px] text-zinc-500 italic py-4 text-center">
-                          Heredará automáticamente el tiempo de viaje ({activeClusterData?.base_duration_minutes || 60} min) y rangos de minado del Clúster padre.
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                      </div>
 
-                  <button onClick={handleCreateChildEntitySubmit} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-3 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
-                    Ejecutar Creación de {bulkQty} {selectedEntityType}(s)
-                  </button>
+                      <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
+                        <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
+                          <span className="text-amber-400 font-bold text-[10px] uppercase">
+                            3. ALTERAR CARACTERÍSTICAS MANUALLMENTE (OVERRIDE)
+                          </span>
+                          <input 
+                            type="checkbox" 
+                            checked={enableManualOverride} 
+                            onChange={e => setEnableOverride(e.target.checked)} 
+                            className="w-4 h-4 accent-amber-500 cursor-pointer" 
+                          />
+                        </div>
+
+                        {enableManualOverride ? (
+                          <div className="space-y-2 text-[10px] animate-fadeIn">
+                            <p className="text-[8.5px] text-zinc-400 italic">
+                              Modificará el tiempo y rangos de esta entidad sin alterar a sus hermanas ni al Clúster padre.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div><span className="text-zinc-500 block text-[8px]">Duración Viaje Override (min):</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-emerald-400 font-bold" value={overrideDuration} onChange={e => setOverrideDuration(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                              <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMinMetal} onChange={e => setOverrideMinMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                              <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={overrideMaxMetal} onChange={e => setOverrideMaxMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                              <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={overrideMaxCrystal} onChange={e => setOverrideMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[9.5px] text-zinc-500 italic py-4 text-center">
+                            Heredará automáticamente el tiempo de viaje ({activeClusterData?.base_duration_minutes || 60} min) y rangos de minado del Clúster padre.
+                          </p>
+                        )}
+                      </div>
+
+                      <button onClick={handleCreateChildEntitySubmit} className="col-span-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-3 rounded-xl uppercase text-[11px] cursor-pointer shadow-lg">
+                        Ejecutar Creación de {Number(bulkQty || 1)} {selectedEntityType}(s)
+                      </button>
+                    </div>
+                  )}
+
                 </div>
               )}
 
             </div>
           )}
 
-          {/* 3. MODO EDICIÓN CON BOTONES DE BORRADO INDIVIDUAL Y BULK DELETE INTEGRADO */}
+          {/* 3. MODO EDICIÓN CON CASCADA COMPLETA DE SELECCIÓN */}
           {genConsoleMode === 'edition' && (
             <div className="bg-slate-950 p-6 border border-slate-850 rounded-xl space-y-6 shadow-xl animate-fadeIn">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-850 pb-3 gap-3">
@@ -2159,7 +2456,7 @@ export const ExpeditionsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* SELECCIÓN DE OBJETIVO (MODO SINGLE VS MODO BULK CHECKBOXES) */}
+              {/* SELECCIÓN DE OBJETIVO CON CASCADA COMPLETA (GC -> GAL -> SC -> SS -> PLANET) */}
               <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-zinc-800 pb-2">
                   <span className="text-white font-bold text-[10px] uppercase block">
@@ -2178,50 +2475,96 @@ export const ExpeditionsManager: React.FC = () => {
                 </div>
 
                 {!isBulkModeEdit ? (
-                  /* MODO SINGLE: DESPLEGABLES TRADICIONALES PARA EDICIÓN DE PARÁMETROS */
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+                  /* MODO SINGLE: CASCADA DE DESPLEGABLES SEGÚN EL TIPO SELECCIONADO */
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-[11px]">
+                    {/* Nivel 1: Galaxy Cluster (Siempre visible) */}
                     <div>
                       <label className="text-[9px] text-zinc-500 block mb-1">Galaxy Cluster (GC):</label>
-                      <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold text-[11px] outline-none cursor-pointer" value={parentGcId} onChange={e => { setParentGcId(e.target.value); if (selectedEntityType==='GC') handleLoadEntityForEdition(e.target.value); }}>
-                        <option value="">-- Seleccionar Galaxy Cluster ({dbClusters.length}) --</option>
+                      <select 
+                        className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold text-[11px] outline-none cursor-pointer" 
+                        value={parentGcId} 
+                        onChange={e => { 
+                          setParentGcId(e.target.value); 
+                          if (selectedEntityType === 'GC') handleLoadEntityForEdition(e.target.value); 
+                        }}
+                      >
+                        <option value="">-- Seleccionar GC ({dbClusters.length}) --</option>
                         {dbClusters.map((c, idx) => <option key={c.id || `editgc-${idx}`} value={c.id}>{c.name || c.id} ({c.id})</option>)}
                       </select>
                     </div>
 
-                    {selectedEntityType === 'GALAXY' && (
+                    {/* Nivel 2: Galaxia (Visible para GALAXY, SC, SS, PLANET) */}
+                    {(selectedEntityType === 'GALAXY' || selectedEntityType === 'SC' || selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
                       <div>
-                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Galaxia:</label>
-                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Galaxia Padre:</label>
+                        <select 
+                          className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" 
+                          value={selectedEntityType === 'GALAXY' ? editSelectedEntityId : parentGalaxyId} 
+                          onChange={e => {
+                            if (selectedEntityType === 'GALAXY') {
+                              handleLoadEntityForEdition(e.target.value);
+                            } else {
+                              setParentGalaxyId(e.target.value);
+                            }
+                          }}
+                        >
                           <option value="">-- Seleccionar Galaxia ({dbGalaxies.length}) --</option>
                           {dbGalaxies.map((g, idx) => <option key={g.id || `editgal-${idx}`} value={g.id}>Galaxy {g.galaxy_number}</option>)}
                         </select>
                       </div>
                     )}
 
-                    {selectedEntityType === 'SC' && (
+                    {/* Nivel 3: Star Cluster (Visible para SC, SS, PLANET) */}
+                    {(selectedEntityType === 'SC' || selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
                       <div>
-                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star Cluster:</label>
-                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Star Cluster (SC) Padre:</label>
+                        <select 
+                          className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" 
+                          value={selectedEntityType === 'SC' ? editSelectedEntityId : parentScId} 
+                          onChange={e => {
+                            if (selectedEntityType === 'SC') {
+                              handleLoadEntityForEdition(e.target.value);
+                            } else {
+                              setParentScId(e.target.value);
+                            }
+                          }}
+                        >
                           <option value="">-- Seleccionar SC ({dbStarClusters.length}) --</option>
                           {dbStarClusters.map((sc, idx) => <option key={sc.id || `editsc-${idx}`} value={sc.id}>Star Cluster {sc.sc_number}</option>)}
                         </select>
                       </div>
                     )}
 
-                    {selectedEntityType === 'SS' && (
+                    {/* Nivel 4: Star System (Visible para SS, PLANET) */}
+                    {(selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
                       <div>
-                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Star System:</label>
-                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Star System (SS) Padre:</label>
+                        <select 
+                          className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" 
+                          value={selectedEntityType === 'SS' ? editSelectedEntityId : parentSystemId} 
+                          onChange={e => {
+                            if (selectedEntityType === 'SS') {
+                              handleLoadEntityForEdition(e.target.value);
+                            } else {
+                              setParentSystemId(e.target.value);
+                            }
+                          }}
+                        >
                           <option value="">-- Seleccionar Sistema ({dbStarSystems.length}) --</option>
                           {dbStarSystems.map((sys, idx) => <option key={sys.id || `editsys-${idx}`} value={sys.id}>{sys.name_code}</option>)}
                         </select>
                       </div>
                     )}
 
+                    {/* Nivel 5: Planeta / Cuerpo (Visible sólo para PLANET) */}
                     {selectedEntityType === 'PLANET' && (
                       <div>
-                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Planeta/Estrella:</label>
-                        <select className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" value={editSelectedEntityId} onChange={e => handleLoadEntityForEdition(e.target.value)}>
+                        <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Planeta / Cuerpo:</label>
+                        <select 
+                          className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white text-[11px] outline-none cursor-pointer" 
+                          value={editSelectedEntityId} 
+                          onChange={e => handleLoadEntityForEdition(e.target.value)}
+                        >
                           <option value="">-- Seleccionar Elemento ({dbLocations.length}) --</option>
                           {dbLocations.map((loc, idx) => <option key={loc.id || `editloc-${idx}`} value={loc.id}>Elemento Nº {loc.planet_star_number}</option>)}
                         </select>
@@ -2268,7 +2611,7 @@ export const ExpeditionsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* FORMULARIO DE EDICIÓN DEL ELEMENTO SELECCIONADO (DISPONIBLE EN MODO EDICIÓN INDIVIDUAL) */}
+              {/* FORMULARIO DE EDICIÓN DEL ELEMENTO SELECCIONADO */}
               {!isBulkModeEdit && (
                 <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
                   <span className="text-amber-400 font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
@@ -2283,14 +2626,14 @@ export const ExpeditionsManager: React.FC = () => {
 
                     <div>
                       <label className="text-[9px] text-zinc-500 block mb-1">Tiempo de Viaje (Minutos):</label>
-                      <input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold" value={editDuration} onChange={e => setEditDuration(Number(e.target.value))} />
+                      <input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold" value={editDuration} onChange={e => setEditDuration(e.target.value === '' ? '' : Number(e.target.value))} />
                     </div>
 
                     <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-black/40 p-3 rounded-xl border border-zinc-850">
-                      <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMinMetal} onChange={e => setEditMinMetal(Number(e.target.value))} /></div>
-                      <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMaxMetal} onChange={e => setEditMaxMetal(Number(e.target.value))} /></div>
-                      <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMinCrystal} onChange={e => setEditMinCrystal(Number(e.target.value))} /></div>
-                      <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMinMetal} onChange={e => setEditMinMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMaxMetal} onChange={e => setEditMaxMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMinCrystal} onChange={e => setEditMinCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                      <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                     </div>
 
                     {/* EDICIÓN DE LOOT POOL CON BUSCADOR PREDICTOR */}
@@ -2342,7 +2685,7 @@ export const ExpeditionsManager: React.FC = () => {
                             placeholder="Cant" 
                             className="bg-zinc-950 border border-zinc-800 p-2 rounded text-center text-emerald-400 font-bold text-[11px]" 
                             value={bindLootQty} 
-                            onChange={e => setBindLootQty(Number(e.target.value))} 
+                            onChange={e => setBindLootQty(e.target.value === '' ? '' : Number(e.target.value))} 
                           />
                         </div>
 
