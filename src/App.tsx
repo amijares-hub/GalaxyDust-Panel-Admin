@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Database, Shield, Cpu, Users, ChevronDown, ChevronRight, CheckCircle,
   X, AlertTriangle, LayoutGrid, Clock, Wifi, WifiOff, Settings,
-  Navigation, Orbit, Gift, Radio, Ghost, Menu, ShieldAlert
+  Navigation, Orbit, Gift, Radio, Ghost, Menu, ShieldAlert, Trophy
 } from 'lucide-react';
 
 import {
@@ -34,6 +34,8 @@ import { AdminPromoModule } from './components/AdminPromoModule';
 import { AdminAllianceCRM } from './components/AdminAllianceCRM';
 import { AdminSecurityModule } from './components/AdminSecurityModule';
 import AdminSanitizerModule from './components/AdminSanitizerModule';
+import AdminSocialCRM from './components/AdminSocialCRM';
+import AdminRankingsModule from './components/AdminRankingsModule';
 
 export default function App() {
   // Navigation State
@@ -504,6 +506,17 @@ export default function App() {
                   Operaciones & LiveOps
                 </span>
 
+                {/* CRM SOCIAL & AUDITORÍA */}
+                <button
+                  onClick={() => navTo('social_crm', 'social_main')}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'social_crm' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <Users size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>CRM Social & Auditoría</span>
+                </button>
+
                 {/* MARKETPLACE */}
                 <button
                   onClick={() => navTo('market', 'market_items')}
@@ -513,6 +526,17 @@ export default function App() {
                 >
                   <LayoutGrid size={13} className="shrink-0 mr-2 text-red-500" />
                   <span>P2P Marketplace</span>
+                </button>
+
+                {/* RANKINGS Y PREMIOS */}
+                <button
+                  onClick={() => navTo('rankings', 'rankings_main')}
+                  className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'rankings' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
+                >
+                  <Trophy size={13} className="shrink-0 mr-2 text-red-500" />
+                  <span>Rankings y Premios</span>
                 </button>
 
                 {/* PHANTOM STATION */}
@@ -749,6 +773,21 @@ export default function App() {
                   gameHud={gameHud}
                   saveGameHud={handleSaveGameHud}
                   alertTrigger={(status, message) => alertTrigger(status, message)}
+                />
+              )}
+
+              {/* SOCIAL CRM & AUDITORÍA */}
+              {nav.activeMain === 'social_crm' && (
+                <AdminSocialCRM
+                  users={users}
+                />
+              )}
+
+              {/* RANKINGS Y PREMIOS */}
+              {nav.activeMain === 'rankings' && (
+                <AdminRankingsModule
+                  users={users}
+                  setIsAlertToShow={(alertObj) => alertTrigger(alertObj.status, alertObj.message)}
                 />
               )}
             </>

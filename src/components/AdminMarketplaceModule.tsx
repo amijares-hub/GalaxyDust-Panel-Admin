@@ -4,13 +4,11 @@ import {
   Building, Search, Shield, Zap, AlertTriangle, Play, RefreshCw, 
   Trash2, Send, Clock, Radio, Power, Eye, Lock, Unlock, Sliders,
   HelpCircle, Sparkles, Coins, DollarSign, Hammer, Mail, FileText,
-  CheckCircle, XCircle, ArrowRight, EyeOff, Clipboard, TrendingUp, AlertCircle, Download
+  CheckCircle, XCircle, ArrowRight, EyeOff, Clipboard, TrendingUp, AlertCircle, Download,
+  ShieldAlert, ShoppingBag, Filter
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
-import { 
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend
-} from 'recharts';
 
 interface AdminMarketplaceModuleProps {
   users: UserProfile[];
@@ -35,6 +33,7 @@ export interface MarketAsset {
   onActiveExpedition: boolean;
   expiresAt: string;
   bidCount: number;
+  status?: string;
 }
 
 export interface BidEntry {
@@ -60,6 +59,20 @@ export interface MarketAuditLog {
   isWashTradingAlert: boolean;
 }
 
+export interface TransactionLog {
+  id: string;
+  listingId: string;
+  sellerId: string;
+  sellerName: string;
+  buyerId: string;
+  buyerName: string;
+  grossPrice: number;
+  feeApplied: number;
+  netToSeller: number;
+  isSuspicious: boolean;
+  purchasedAt: string;
+}
+
 export interface InboxMarketPushMessage {
   id: string;
   recipientId: string;
@@ -78,76 +91,72 @@ export default function AdminMarketplaceModule({
   activeSubTab
 }: AdminMarketplaceModuleProps) {
   
-  // 🎯 INICIALIZACIÓN LIMPIA: Sin datos falsos/hardcodeados
+  // ESTADOS DE MERCADO
+  const [viewTab, setViewTab] = useState<'grid' | 'transactions' | 'siphon_radar' | 'push_notifications'>('grid');
   const [marketAssets, setMarketAssets] = useState<MarketAsset[]>([]);
   const [bids, setBids] = useState<BidEntry[]>([]);
   const [auditLogs, setAuditLogs] = useState<MarketAuditLog[]>([]);
+  const [transactions, setTransactions] = useState<TransactionLog[]>([]);
   const [pushedMessages, setPushedMessages] = useState<InboxMarketPushMessage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // CONTROLES DE EDICIÓN Y VISTA
   const [selectedAuctionId, setSelectedAuctionId] = useState<string>("");
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [editPriceValue, setEditPriceValue] = useState<number>(0);
   const [editCooldownHours, setEditCooldownHours] = useState<number>(4);
-
   const [forceTakedownOnActiveExpedition, setForceTakedownOnActiveExpedition] = useState<boolean>(true);
   const [quickViewAssetId, setQuickViewAssetId] = useState<string | null>(null);
 
+  // FILTROS DE BÚSQUEDA
   const [rarityFilter, setRarityFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [minPriceFilter, setMinPriceFilter] = useState<number>(0);
+  const [marketFilter, setMarketFilter] = useState<'ALL' | 'DIRECT' | 'AUCTION'>('ALL');
+  const [searchParam, setSearchParam] = useState<string>('');
 
-  // REGLAS Y RESTRICCIONES
-  const [canLockActive, setCanLockActive] = useState<boolean>(true);
-  const [durabilityFilterActive, setDurabilityFilterActive] = useState<boolean>(true);
-  const [categoryLocks, setCategoryLocks] = useState<Record<string, boolean>>({
-    Spaceships: false,
-    Structures: false,
-    Technology: false,
-    Badges: false,
-    Blueprints: false,
-    Consumables: false
-  });
-
-  const [marketTaxPercent, setMarketTaxPercent] = useState<number>(2.5);
-
-  // INBOX Y NOTIFICACIONES
+  // NOTIFICACIONES PUSH
   const [pushRecipientId, setPushRecipientId] = useState<string>("");
   const [pushSubject, setPushSubject] = useState<string>("ALERTA DEL SISTEMA: Transacción autorizada");
   const [pushBody, setPushBody] = useState<string>("Mensaje del sistema de mercado Sasorilabs.");
   const [pushCategory, setPushCategory] = useState<'ALERT' | 'PURCHASE' | 'RETURN' | 'OUTBID'>("ALERT");
 
-  const [marketFilter, setMarketFilter] = useState<'ALL' | 'DIRECT' | 'AUCTION'>('ALL');
-  const [searchParam, setSearchParam] = useState<string>('');
-
   // ─── CONSULTA REAL DE DATOS DE MERCADO DESDE SUPABASE ───
   const fetchRealMarketData = async () => {
     setLoading(true);
     try {
-      // 1. Cargar Publicaciones Reales de la tabla market_listings
-      const { data: listingsData, error: listingsError } = await supabase
-        .from('market_listings')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // 1. Cargar Publicaciones Reales (Búsqueda híbrida en marketplace_listings y market_listings)
+      let listingsData: any[] = [];
+      const { data: pListings } = await supabase.from('marketplace_listings').select('*').order('created_at', { ascending: false });
+      if (pListings && pListings.length > 0) {
+        listingsData = pListings;
+      } else {
+        const { data: mListings } = await supabase.from('market_listings').select('*').order('created_at', { ascending: false });
+        if (mListings) listingsData = mListings;
+      }
 
-      if (!listingsError && listingsData) {
-        const mapped: MarketAsset[] = listingsData.map((item: any) => ({
-          id: item.id || item.listing_id,
-          name: item.name || item.title || item.asset_name || 'Activo Estelar',
-          category: item.category || 'Spaceships',
-          rarity: (item.rarity || 'common').toLowerCase() as any,
-          isAuction: !!item.is_auction,
-          sellerId: item.seller_id || item.user_id || 'usr-0',
-          sellerName: item.seller_name || item.username || 'Comandante',
-          basePrice: Number(item.base_price || item.price) || 0,
-          currentBid: Number(item.current_bid || item.highest_bid) || 0,
-          hpCurrent: Number(item.hp_current || item.resistance) || 100,
-          hpMax: Number(item.hp_max || item.max_hp) || 100,
-          isEquipped: !!item.is_equipped,
-          onActiveExpedition: !!item.on_active_expedition,
-          expiresAt: item.expires_at || new Date(Date.now() + 86400000).toISOString(),
-          bidCount: Number(item.bid_count || item.total_bids) || 0
-        }));
+      if (listingsData.length > 0) {
+        const mapped: MarketAsset[] = listingsData.map((item: any) => {
+          const sellerObj = users.find(u => u.id === (item.seller_id || item.user_id));
+          return {
+            id: item.id || item.listing_id,
+            name: item.name || item.title || item.asset_name || item.asset_type || 'Activo Estelar',
+            category: item.category || (item.asset_type === 'SHIP' ? 'Spaceships' : item.asset_type === 'TOOL' ? 'Technology' : 'Consumables'),
+            rarity: (item.rarity || 'common').toLowerCase() as any,
+            isAuction: !!item.is_auction,
+            sellerId: item.seller_id || item.user_id || 'usr-0',
+            sellerName: item.seller_name || item.username || sellerObj?.username || 'Comandante',
+            basePrice: Number(item.price_gd || item.base_price || item.price) || 0,
+            currentBid: Number(item.current_bid || item.highest_bid || item.price_gd) || 0,
+            hpCurrent: Number(item.hp_current || item.resistance) || 100,
+            hpMax: Number(item.hp_max || item.max_hp) || 100,
+            isEquipped: !!item.is_equipped,
+            onActiveExpedition: !!item.on_active_expedition,
+            expiresAt: item.expires_at || new Date(Date.now() + 86400000).toISOString(),
+            bidCount: Number(item.bid_count || item.total_bids) || 0,
+            status: item.status || 'ACTIVE'
+          };
+        });
         setMarketAssets(mapped);
         if (mapped.length > 0 && !selectedAuctionId) {
           const firstAuction = mapped.find(a => a.isAuction);
@@ -157,7 +166,36 @@ export default function AdminMarketplaceModule({
         setMarketAssets([]);
       }
 
-      // 2. Cargar Pujas Reales (market_bids)
+      // 2. Cargar Log de Transacciones y Comisiones (marketplace_transactions_log)
+      const { data: txData } = await supabase
+        .from('marketplace_transactions_log')
+        .select('*')
+        .order('purchased_at', { ascending: false });
+
+      if (txData && txData.length > 0) {
+        const mappedTx: TransactionLog[] = txData.map((tx: any) => {
+          const sellerObj = users.find(u => u.id === tx.seller_id);
+          const buyerObj = users.find(u => u.id === tx.buyer_id);
+          return {
+            id: tx.id,
+            listingId: tx.listing_id,
+            sellerId: tx.seller_id,
+            sellerName: sellerObj?.username || 'Vendedor',
+            buyerId: tx.buyer_id,
+            buyerName: buyerObj?.username || 'Comprador',
+            grossPrice: Number(tx.gross_price) || 0,
+            feeApplied: Number(tx.fee_applied) || 0,
+            netToSeller: Number(tx.net_to_seller) || 0,
+            isSuspicious: !!tx.is_suspicious || Number(tx.gross_price) >= 50000,
+            purchasedAt: tx.purchased_at || new Date().toISOString()
+          };
+        });
+        setTransactions(mappedTx);
+      } else {
+        setTransactions([]);
+      }
+
+      // 3. Cargar Pujas Reales (market_bids)
       const { data: bidsData } = await supabase.from('market_bids').select('*');
       if (bidsData) {
         const mappedBids: BidEntry[] = bidsData.map((b: any) => ({
@@ -173,7 +211,7 @@ export default function AdminMarketplaceModule({
         setBids([]);
       }
 
-      // 3. Cargar Bitácora de Auditoría (market_audit_logs)
+      // 4. Cargar Bitácora de Auditoría (market_audit_logs)
       const { data: logsData } = await supabase
         .from('market_audit_logs')
         .select('*')
@@ -200,10 +238,7 @@ export default function AdminMarketplaceModule({
       }
 
     } catch (e: any) {
-      console.warn("Mercado operando en estado limpio sin registros previos:", e.message);
-      setMarketAssets([]);
-      setBids([]);
-      setAuditLogs([]);
+      console.warn("Error cargando mercado:", e.message);
     } finally {
       setLoading(false);
     }
@@ -212,22 +247,6 @@ export default function AdminMarketplaceModule({
   useEffect(() => {
     fetchRealMarketData();
   }, []);
-
-  const fillMessageTemplate = (type: 'EXPIRED_RETURN' | 'BUYOUT_SUCCESS' | 'OUTBID') => {
-    if (type === 'EXPIRED_RETURN') {
-      setPushSubject("Subasta Finalizada sin Compradores");
-      setPushBody("Tu subasta por el activo tecnológico ha finalizado sin ofertas activas. Su item ha sido devuelto intacto a su inventario orbital.");
-      setPushCategory("RETURN");
-    } else if (type === 'BUYOUT_SUCCESS') {
-      setPushSubject("¡Adquisición Existosa de Activo Cósmico!");
-      setPushBody("Recibido el pago en vivo para tu cuenta de Sasorilabs. Se descontaron las tasas reglamentarias del mercado.");
-      setPushCategory("PURCHASE");
-    } else if (type === 'OUTBID') {
-      setPushSubject("¡Te han superado en la puja [Alerta Flota]!");
-      setPushBody("Atención comandante: un explorador ha realizado una puja mayor sobre tu item de interés. Se retornaron tus balances.");
-      setPushCategory("OUTBID");
-    }
-  };
 
   const handleEditExpiration = async (assetId: string, action: 'ADD' | 'SUBTRACT') => {
     const hours = editCooldownHours || 1;
@@ -239,28 +258,17 @@ export default function AdminMarketplaceModule({
     const newTimeIso = new Date(action === 'ADD' ? currentExp + delta : currentExp - delta).toISOString();
 
     try {
-      await supabase
-        .from('market_listings')
-        .update({ expires_at: newTimeIso })
-        .eq('id', assetId);
+      await supabase.from('marketplace_listings').update({ expires_at: newTimeIso }).eq('id', assetId);
+      await supabase.from('market_listings').update({ expires_at: newTimeIso }).eq('id', assetId);
     } catch (e) {}
 
     setMarketAssets(prev => prev.map(a => a.id === assetId ? { ...a, expiresAt: newTimeIso } : a));
-
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `¡Se compensó el tiempo de expiración para ${assetId}: ${action === 'ADD' ? '+' : '-'}${hours} horas!`
-    });
+    setIsAlertToShow({ show: true, status: 'success', message: `¡Cooldown actualizado para ${assetId}: ${action === 'ADD' ? '+' : '-'}${hours}h!` });
   };
 
   const handleEditPrice = async (assetId: string) => {
     if (editPriceValue <= 0) {
-      setIsAlertToShow({
-        show: true,
-        status: 'error',
-        message: 'Por favor, introduce un precio válido mayor a 0 GD Coins.'
-      });
+      setIsAlertToShow({ show: true, status: 'error', message: 'Por favor, introduce un precio válido mayor a 0 GD Coins.' });
       return;
     }
 
@@ -268,11 +276,8 @@ export default function AdminMarketplaceModule({
     if (!target) return;
 
     try {
-      const updatePayload = target.isAuction ? { current_bid: editPriceValue } : { base_price: editPriceValue };
-      await supabase
-        .from('market_listings')
-        .update(updatePayload)
-        .eq('id', assetId);
+      await supabase.from('marketplace_listings').update({ price_gd: editPriceValue }).eq('id', assetId);
+      await supabase.from('market_listings').update(target.isAuction ? { current_bid: editPriceValue } : { base_price: editPriceValue }).eq('id', assetId);
     } catch (e) {}
 
     setMarketAssets(prev => prev.map(a => {
@@ -282,12 +287,7 @@ export default function AdminMarketplaceModule({
       return a;
     }));
 
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `Precio actualizado en ${assetId} a ${editPriceValue} GD.`
-    });
-
+    setIsAlertToShow({ show: true, status: 'success', message: `Precio actualizado en ${assetId} a ${editPriceValue} GD.` });
     setSelectedAssetId(null);
   };
 
@@ -296,141 +296,38 @@ export default function AdminMarketplaceModule({
     if (!target) return;
 
     try {
+      await supabase.from('marketplace_listings').update({ status: 'CANCELLED' }).eq('id', assetId);
       await supabase.from('market_listings').delete().eq('id', assetId);
     } catch (e) {}
 
     setIsAlertToShow({
       show: true,
       status: 'error',
-      message: `¡ALERTA ANTIFRAUDE! Publicación ${assetId} cancelada forzosamente. Asset devuelto de inmediato al comandante ${target.sellerName}.`
-    });
-
-    setMarketAssets(prev => prev.filter(a => a.id !== assetId));
-  };
-
-  const handleExecuteActiveExpeditionTakedowns = () => {
-    const suspectAssets = marketAssets.filter(a => a.onActiveExpedition);
-    if (suspectAssets.length === 0) {
-      setIsAlertToShow({
-        show: true,
-        status: 'success',
-        message: 'No se detectaron activos en expediciones de vuelo activas.'
-      });
-      return;
-    }
-
-    suspectAssets.forEach(async (target) => {
-      try {
-        await supabase.from('market_listings').delete().eq('id', target.id);
-      } catch (e) {}
-    });
-
-    setMarketAssets(prev => prev.filter(a => !a.onActiveExpedition));
-
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `¡REGLA ACTIVADA! Se retiraron automáticamente ${suspectAssets.length} activos infractores en expedición de vuelo.`
-    });
-  };
-
-  const handleToggleActiveExpeditionTakedown = (val: boolean) => {
-    setForceTakedownOnActiveExpedition(val);
-    setIsAlertToShow({
-      show: true,
-      status: val ? 'success' : 'error',
-      message: val 
-        ? 'Consola de Expedición Activa conectada. El mercado filtrará listings en vuelo continuo.' 
-        : '¡Advertencia! Desconectando regla regulatoria de expedición activa.'
-    });
-  };
-
-  const handleRevokeBid = async (bidId: string) => {
-    const targetBid = bids.find(b => b.id === bidId);
-    if (!targetBid) return;
-
-    try {
-      await supabase.from('market_bids').delete().eq('id', bidId);
-    } catch (e) {}
-
-    setBids(prev => prev.filter(b => b.id !== bidId));
-    
-    setMarketAssets(prev => prev.map(a => {
-      if (a.id === targetBid.auctionId) {
-        const remainBids = bids.filter(b => b.auctionId === a.id && b.id !== bidId);
-        const nextHighest = remainBids.length > 0 
-          ? Math.max(...remainBids.map(b => b.amountGd)) 
-          : a.basePrice;
-
-        return {
-          ...a,
-          currentBid: nextHighest,
-          bidCount: Math.max(0, a.bidCount - 1)
-        };
-      }
-      return a;
-    }));
-
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `Puja de ${targetBid.bidderName} por ${targetBid.amountGd} GD revocada. Balances retenidos liberados.`
-    });
-  };
-
-  const handleForceWin = async (assetId: string) => {
-    const target = marketAssets.find(a => a.id === assetId);
-    if (!target) return;
-
-    if (!target.isAuction) {
-      setIsAlertToShow({
-        show: true,
-        status: 'error',
-        message: 'Solo se pueden forzar victorias sobre publicaciones tipo Subasta activa.'
-      });
-      return;
-    }
-
-    const highestBid = bids.filter(b => b.auctionId === assetId).sort((a,b) => b.amountGd - a.amountGd)[0];
-    const buyerLabel = highestBid ? highestBid.bidderName : "Sin Postor";
-    const wonPrice = highestBid ? highestBid.amountGd : target.basePrice;
-
-    try {
-      await supabase.from('market_listings').delete().eq('id', assetId);
-    } catch (e) {}
-
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `¡Subasta finalizada por control admin en caliente! Se liquida victoria de ${buyerLabel} por ${wonPrice} GD.`
+      message: `¡PUBLICACIÓN CANCELADA! ${assetId} removida del mercado P2P.`
     });
 
     setMarketAssets(prev => prev.filter(a => a.id !== assetId));
   };
 
   const handleTriggerReturnEngine = async () => {
-    fetchRealMarketData();
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: 'Sincronización y escaneo de retornos del mercado de Sasorilabs.io completada.'
-    });
+    await fetchRealMarketData();
+    if (onRefreshData) onRefreshData();
+    setIsAlertToShow({ show: true, status: 'success', message: 'Sincronización completa con Supabase.' });
   };
 
   const handleExportCSV = () => {
-    const headers = ['ID', 'Timestamp', 'Player ID', 'Player Name', 'Buyer ID', 'Buyer Name', 'Action Type', 'Asset Name', 'Amount (GD)', 'Tax Collected (GD)', 'Wash Trading Alert'];
-    const rows = auditLogs.map(log => [
-      log.id,
-      log.timestamp,
-      log.playerId,
-      log.playerName,
-      log.buyerId || '',
-      log.buyerName || '',
-      log.actionType,
-      `"${log.assetName.replace(/"/g, '""')}"`,
-      log.amount,
-      log.taxCollected,
-      log.isWashTradingAlert ? 'TRUE' : 'FALSE'
+    const headers = ['ID', 'Purchased At', 'Seller ID', 'Seller Name', 'Buyer ID', 'Buyer Name', 'Gross Price (GD)', 'Fee Applied 5% (GD)', 'Net Seller (GD)', 'Suspicious Siphon Alert'];
+    const rows = transactions.map(tx => [
+      tx.id,
+      tx.purchasedAt,
+      tx.sellerId,
+      tx.sellerName,
+      tx.buyerId,
+      tx.buyerName,
+      tx.grossPrice,
+      tx.feeApplied,
+      tx.netToSeller,
+      tx.isSuspicious ? 'TRUE' : 'FALSE'
     ]);
     
     const csvRows = [headers.join(','), ...rows.map(e => e.join(','))];
@@ -439,19 +336,7 @@ export default function AdminMarketplaceModule({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `p2p_audit_logs_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleExportInboxJSON = () => {
-    const jsonContent = JSON.stringify(pushedMessages, null, 2);
-    const blob = new Blob([jsonContent], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `pushed_messages_backup_${new Date().toISOString().split('T')[0]}.json`);
+    link.setAttribute("download", `marketplace_audit_p2p_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -473,22 +358,14 @@ export default function AdminMarketplaceModule({
     };
 
     setPushedMessages(prev => [newPush, ...prev]);
-    
-    setIsAlertToShow({
-      show: true,
-      status: 'success',
-      message: `¡Notificación push de mercado inyectada con éxito a ${recName}!`
-    });
-
+    setIsAlertToShow({ show: true, status: 'success', message: `Notificación push inyectada a ${recName}.` });
     setPushSubject("");
     setPushBody("");
   };
 
-  const totalGdVolumeLogs = auditLogs
-    .filter(l => l.actionType === 'PURCHASE' || l.actionType === 'FORCE_WIN')
-    .reduce((sum, log) => sum + log.amount, 0);
-
-  const totalCollectedTaxes = auditLogs.reduce((sum, log) => sum + log.taxCollected, 0);
+  const totalGdVolumeLogs = transactions.reduce((sum, tx) => sum + tx.grossPrice, 0);
+  const totalCollectedTaxes = transactions.reduce((sum, tx) => sum + tx.feeApplied, 0);
+  const flaggedTransactions = transactions.filter(t => t.isSuspicious || t.grossPrice >= 50000);
 
   const filteredAssets = marketAssets.filter(asset => {
     const matchesSearch = asset.name.toLowerCase().includes(searchParam.toLowerCase()) || 
@@ -512,8 +389,20 @@ export default function AdminMarketplaceModule({
   const activityRatio = listingsCount / activeUsersCount;
   const isActivityLow = activityRatio < 0.8;
 
+  const handleExportInboxJSON = () => {
+    const jsonContent = JSON.stringify(pushedMessages, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `pushed_messages_backup_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="space-y-6 font-mono text-xs text-left text-white select-none">
+    <div className="space-y-6 font-mono text-xs text-left text-white select-none p-2 md:p-6">
       
       {/* HEADER PANEL */}
       <div className="bg-gradient-to-r from-zinc-950 via-[#0a0a0c] to-zinc-950 border border-zinc-900 rounded-lg p-5 flex flex-col md:flex-row justify-between items-start md:items-stretch gap-4 shadow-[#ff1e1e]/5 shadow-sm">
@@ -522,10 +411,10 @@ export default function AdminMarketplaceModule({
             <div className="flex flex-wrap items-center gap-2">
               <div className="h-2 w-2 bg-[#ff1e1e] rounded-full animate-pulse" />
               <h1 className="text-lg font-bold text-white tracking-wide uppercase font-sans">
-                Marketplace Control Hub
+                P2P Marketplace & Control Anti-Sifón
               </h1>
               <span className="text-[10px] font-mono bg-red-950 text-red-500 border border-red-900 px-2 py-0.5 rounded font-extrabold uppercase">
-                P2P CORES
+                SERVER AUTHORITATIVE (5% FEE)
               </span>
               
               <div className={`ml-1 md:ml-3 px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider flex items-center gap-1 border ${
@@ -538,24 +427,18 @@ export default function AdminMarketplaceModule({
               </div>
             </div>
             <p className="text-xs text-zinc-400 mt-1 leading-relaxed font-sans">
-              Consola central de supervisión militar y administración económica para el mercado lúdico de <span className="text-[#ff1e1e] font-semibold">Sasorilabs.io</span>. Control de publicaciones directas, auditoría de fraude fiscal y comunicación directa.
+              Consola central de supervisión militar y administración económica para el mercado lúdico de <span className="text-[#ff1e1e] font-semibold">Sasorilabs.io</span>.
             </p>
           </div>
 
           <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[10px] font-mono text-zinc-500 border-t border-zinc-900/60 pt-2.5">
             <div className="flex items-center gap-1.5">
-              <span>Listados Reales en Red:</span>
+              <span>Ofertas en Red:</span>
               <span className="text-white font-bold">{listingsCount}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span>Comandantes Registrados:</span>
-              <span className="text-white font-bold">{activeUsersCount}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span>Ratio Oferta/Usuario:</span>
-              <span className={`font-bold ${isActivityLow ? 'text-amber-500' : 'text-emerald-400'}`}>
-                {activityRatio.toFixed(2)} / user
-              </span>
+              <span>Alertas Anti-Sifón:</span>
+              <span className="text-amber-400 font-bold">{flaggedTransactions.length}</span>
             </div>
           </div>
         </div>
@@ -563,12 +446,12 @@ export default function AdminMarketplaceModule({
         <div className="flex flex-row md:flex-col justify-between items-end gap-2 md:self-center font-mono text-[10.5px] border-t md:border-t-0 md:border-l border-zinc-900/60 pt-3 md:pt-0 md:pl-4 shrink-0">
           <div className="flex gap-2">
             <div className="px-3 py-1.5 bg-zinc-950 border border-zinc-900 rounded text-center">
-              <span className="text-zinc-500 block text-[8px] uppercase font-bold">Volumen Auditado</span>
+              <span className="text-zinc-500 block text-[8px] uppercase font-bold">Volumen Transaccionado</span>
               <span className="text-white font-extrabold text-xs">{totalGdVolumeLogs.toLocaleString()} GD</span>
             </div>
             <div className="px-3 py-1.5 bg-zinc-950 border border-zinc-900 rounded text-center">
-              <span className="text-zinc-500 block text-[8px] uppercase font-bold">Impuestos Capturados</span>
-              <span className="text-red-500 font-extrabold text-xs">+{totalCollectedTaxes.toLocaleString()} GD</span>
+              <span className="text-zinc-500 block text-[8px] uppercase font-bold">Comisiones Retenidas (5%)</span>
+              <span className="text-emerald-400 font-extrabold text-xs">+{totalCollectedTaxes.toLocaleString()} GD</span>
             </div>
           </div>
           <button
@@ -577,22 +460,58 @@ export default function AdminMarketplaceModule({
             className="w-full px-3 py-1.5 bg-red-950/40 hover:bg-[#ff1e1e] text-zinc-300 hover:text-white border border-[#ff1e1e]/35 rounded transition-all cursor-pointer flex items-center justify-center gap-1.5 font-bold font-sans text-xs mt-1"
           >
             <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
-            Sincronizar Mercado
+            Sincronizar Supabase
           </button>
         </div>
       </div>
 
-      {/* CORE MODULES RENDERING */}
+      {/* CINTA DE PESTAÑAS DE VISTA */}
+      <div className="flex bg-zinc-950 border border-zinc-900 rounded-lg p-1 text-xs select-none">
+        <button
+          onClick={() => setViewTab('grid')}
+          className={`py-2 px-4 rounded font-bold cursor-pointer transition-all uppercase flex items-center gap-2 ${
+            viewTab === 'grid' ? 'bg-red-950/80 text-red-400 border border-red-900/50' : 'text-zinc-500 hover:text-white'
+          }`}
+        >
+          <ShoppingBag size={14} /> Mercado en Vivo ({filteredAssets.length})
+        </button>
+        <button
+          onClick={() => setViewTab('transactions')}
+          className={`py-2 px-4 rounded font-bold cursor-pointer transition-all uppercase flex items-center gap-2 ${
+            viewTab === 'transactions' ? 'bg-red-950/80 text-red-400 border border-red-900/50' : 'text-zinc-500 hover:text-white'
+          }`}
+        >
+          <DollarSign size={14} /> Historial & Comisiones ({transactions.length})
+        </button>
+        <button
+          onClick={() => setViewTab('siphon_radar')}
+          className={`py-2 px-4 rounded font-bold cursor-pointer transition-all uppercase flex items-center gap-2 ${
+            viewTab === 'siphon_radar' ? 'bg-amber-950/80 text-amber-400 border border-amber-900/50' : 'text-zinc-500 hover:text-white'
+          }`}
+        >
+          <ShieldAlert size={14} className="text-amber-500" /> Radar Anti-Sifón ({flaggedTransactions.length})
+        </button>
+        <button
+          onClick={() => setViewTab('push_notifications')}
+          className={`py-2 px-4 rounded font-bold cursor-pointer transition-all uppercase flex items-center gap-2 ${
+            viewTab === 'push_notifications' ? 'bg-red-950/80 text-red-400 border border-red-900/50' : 'text-zinc-500 hover:text-white'
+          }`}
+        >
+          <Mail size={14} /> Inyector Push
+        </button>
+      </div>
+
+      {/* RENDERIZADO DINÁMICO DE VISTAS */}
       <div className="space-y-6">
 
-        {/* MODULE 1: GRID EN VIVO DE MERCADO */}
-        {(activeSubTab === 'market_items' || !activeSubTab || activeSubTab === 'market' || activeSubTab === '') && (
+        {/* VISTA 1: GRID EN VIVO DE MERCADO */}
+        {viewTab === 'grid' && (
           <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-5 space-y-4">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-zinc-900 pb-4 gap-2">
               <div className="flex items-center gap-2">
                 <Coins size={16} className="text-[#ff1e1e] shrink-0" />
                 <span className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider block">
-                  [ MODULE.01 ]: GRID EN VIVO DE MERCADO REAL
+                  PUBLICACIONES ACTIVAS EN BASE DE DATOS
                 </span>
               </div>
 
@@ -600,9 +519,7 @@ export default function AdminMarketplaceModule({
                 <button
                   onClick={() => setMarketFilter('ALL')}
                   className={`px-2 py-1 rounded text-[9.5px] font-mono font-bold border transition-all cursor-pointer ${
-                    marketFilter === 'ALL'
-                      ? 'bg-[#ff1e1e] border-[#ff1e1e] text-white'
-                      : 'bg-black border-zinc-900 text-zinc-400 hover:text-zinc-200'
+                    marketFilter === 'ALL' ? 'bg-[#ff1e1e] border-[#ff1e1e] text-white' : 'bg-black border-zinc-900 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   TODOS ({marketAssets.length})
@@ -610,9 +527,7 @@ export default function AdminMarketplaceModule({
                 <button
                   onClick={() => setMarketFilter('DIRECT')}
                   className={`px-2 py-1 rounded text-[9.5px] font-mono font-bold border transition-all cursor-pointer ${
-                    marketFilter === 'DIRECT'
-                      ? 'bg-[#ff1e1e] border-[#ff1e1e] text-white'
-                      : 'bg-black border-zinc-900 text-zinc-400 hover:text-zinc-200'
+                    marketFilter === 'DIRECT' ? 'bg-[#ff1e1e] border-[#ff1e1e] text-white' : 'bg-black border-zinc-900 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   VENTA DIRECTA
@@ -620,9 +535,7 @@ export default function AdminMarketplaceModule({
                 <button
                   onClick={() => setMarketFilter('AUCTION')}
                   className={`px-2 py-1 rounded text-[9.5px] font-mono font-bold border transition-all cursor-pointer ${
-                    marketFilter === 'AUCTION'
-                      ? 'bg-[#ff1e1e] border-[#ff1e1e] text-white'
-                      : 'bg-black border-zinc-900 text-zinc-400 hover:text-zinc-200'
+                    marketFilter === 'AUCTION' ? 'bg-[#ff1e1e] border-[#ff1e1e] text-white' : 'bg-black border-zinc-900 text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   SUBASTAS
@@ -630,70 +543,55 @@ export default function AdminMarketplaceModule({
               </div>
             </div>
 
-            {/* Live Search */}
+            {/* Búsqueda */}
             <div className="relative">
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-500 shrink-0" />
               <input
                 type="text"
                 value={searchParam}
                 onChange={(e) => setSearchParam(e.target.value)}
-                placeholder="Buscar por nombre de activo, identificador de serie o vendedor..."
+                placeholder="Buscar por activo, ID de publicación o vendedor..."
                 className="w-full bg-black border border-zinc-900 pl-9 pr-4 py-2 rounded text-xs text-white focus:outline-none focus:border-red-500/50 font-mono transition-all uppercase"
               />
             </div>
 
-            {/* Extended Filters Ribbon */}
+            {/* Filtros Extendidos */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-black/40 border border-zinc-900/60 p-3 rounded-lg text-xs font-mono">
               <div className="space-y-1">
-                <label className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider block">Filtrar por Rareza:</label>
-                <select
-                  value={rarityFilter}
-                  onChange={(e) => setRarityFilter(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-900 p-1.5 rounded text-white focus:outline-none focus:border-red-500/40 text-[10.5px] cursor-pointer"
-                >
-                  <option value="ALL">TODAS LAS RAREZAS</option>
-                  <option value="common">COMMON (COMÚN)</option>
-                  <option value="uncommon">UNCOMMON (INFRECUENTE)</option>
-                  <option value="rare">RARE (RARO)</option>
-                  <option value="epic">EPIC (ÉPICO)</option>
-                  <option value="legendary">LEGENDARY (LEGENDARIO)</option>
+                <label className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider block">Rareza:</label>
+                <select value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)} className="w-full bg-zinc-950 border border-zinc-900 p-1.5 rounded text-white focus:outline-none focus:border-red-500/40 text-[10.5px] cursor-pointer">
+                  <option value="ALL">TODAS</option>
+                  <option value="common">COMMON</option>
+                  <option value="uncommon">UNCOMMON</option>
+                  <option value="rare">RARE</option>
+                  <option value="epic">EPIC</option>
+                  <option value="legendary">LEGENDARY</option>
                 </select>
               </div>
 
               <div className="space-y-1">
-                <label className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider block">Filtrar por Categoría:</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-900 p-1.5 rounded text-white focus:outline-none focus:border-red-500/40 text-[10.5px] cursor-pointer"
-                >
-                  <option value="ALL">TODAS LAS CATEGORÍAS</option>
-                  <option value="Spaceships">SPACESHIPS (NAVES)</option>
-                  <option value="Structures">STRUCTURES (ESTRUCTURAS)</option>
-                  <option value="Technology">TECHNOLOGY (TECNOLOGÍAS)</option>
-                  <option value="Badges">BADGES (INSIGNIAS)</option>
-                  <option value="Blueprints">BLUEPRINTS (PLANOS)</option>
-                  <option value="Consumables">CONSUMABLES (CONSUMIBLES)</option>
+                <label className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider block">Categoría:</label>
+                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-full bg-zinc-950 border border-zinc-900 p-1.5 rounded text-white focus:outline-none focus:border-red-500/40 text-[10.5px] cursor-pointer">
+                  <option value="ALL">TODAS</option>
+                  <option value="Spaceships">SPACESHIPS</option>
+                  <option value="Structures">STRUCTURES</option>
+                  <option value="Technology">TECHNOLOGY</option>
+                  <option value="Badges">BADGES</option>
+                  <option value="Blueprints">BLUEPRINTS</option>
+                  <option value="Consumables">CONSUMABLES</option>
                 </select>
               </div>
 
               <div className="space-y-1">
-                <label className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider block">Precio Mínimo (Base o Puja):</label>
+                <label className="text-zinc-500 text-[9px] uppercase font-bold tracking-wider block">Precio Mínimo:</label>
                 <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="500"
-                    value={minPriceFilter}
-                    onChange={(e) => setMinPriceFilter(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-zinc-950 border border-zinc-900 p-1.5 pr-8 rounded text-yellow-400 font-bold focus:outline-none focus:border-red-500/40 text-[10.5px] font-mono"
-                  />
+                  <input type="number" min="0" step="500" value={minPriceFilter} onChange={(e) => setMinPriceFilter(Math.max(0, parseInt(e.target.value) || 0))} className="w-full bg-zinc-950 border border-zinc-900 p-1.5 pr-8 rounded text-yellow-400 font-bold focus:outline-none focus:border-red-500/40 text-[10.5px] font-mono"/>
                   <span className="absolute right-2 top-1.5 text-zinc-500 font-bold text-[9px]">GD</span>
                 </div>
               </div>
             </div>
 
-            {/* List Table container */}
+            {/* Tabla de Resultados */}
             <div className="overflow-x-auto rounded border border-zinc-900/60 font-mono">
               <table className="w-full text-left border-collapse font-mono text-xs">
                 <thead>
@@ -711,7 +609,7 @@ export default function AdminMarketplaceModule({
                   {filteredAssets.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="text-center p-8 text-zinc-500 italic bg-black/40">
-                        {loading ? 'Cargando publicaciones reales...' : 'No hay publicaciones ni ofertas activas en el mercado.'}
+                        {loading ? 'Cargando publicaciones reales...' : 'No hay ofertas registradas en la base de datos.'}
                       </td>
                     </tr>
                   ) : (
@@ -720,17 +618,7 @@ export default function AdminMarketplaceModule({
                       const hpPercent = Math.round((asset.hpCurrent / asset.hpMax) * 100);
 
                       return (
-                        <tr 
-                          key={asset.id} 
-                          className={`hover:bg-zinc-900/10 cursor-pointer transition-colors ${
-                            selectedAuctionId === asset.id ? 'bg-zinc-950/80' : ''
-                          }`}
-                          onClick={() => {
-                            if (asset.isAuction) {
-                              setSelectedAuctionId(asset.id);
-                            }
-                          }}
-                        >
+                        <tr key={asset.id} className="hover:bg-zinc-900/10 transition-colors">
                           <td className="p-3">
                             <div className="flex flex-col">
                               <div className="flex items-center gap-1.5">
@@ -744,90 +632,55 @@ export default function AdminMarketplaceModule({
                                   {asset.rarity}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-[10px] text-zinc-500">ID: {asset.id}</span>
-                                <span className={`text-[8.5px] font-bold px-1 rounded ${
-                                  asset.isAuction ? 'bg-indigo-950 text-indigo-400' : 'bg-emerald-950 text-emerald-400'
-                                }`}>
-                                  {asset.isAuction ? 'SUBASTA' : 'VENTA DIRECTA'}
-                                </span>
-                              </div>
+                              <span className="text-[10px] text-zinc-500 mt-0.5 font-mono">ID: {asset.id}</span>
                             </div>
                           </td>
 
                           <td className="p-3 text-zinc-300">
                             <span className="block font-semibold">{asset.sellerName}</span>
-                            <span className="text-[9.5px] text-zinc-500 break-all">{asset.sellerId}</span>
+                            <span className="text-[9.5px] text-zinc-500 font-mono">{asset.sellerId.substring(0, 12)}...</span>
                           </td>
 
                           <td className="p-3">
                             <span className="text-zinc-400 block text-[11.5px]">{asset.category}</span>
-                            <div className="flex items-center gap-1.2 mt-0.5">
-                              <span className={`text-[9.5px] font-bold ${hpPercent <= 10 ? 'text-red-500 animate-pulse font-extrabold' : 'text-zinc-500'}`}>
-                                HP: {hpPercent}%
-                              </span>
-                            </div>
+                            <span className="text-[9.5px] text-zinc-500">HP: {hpPercent}%</span>
                           </td>
 
-                          <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <td className="p-3 text-center">
                             {asset.isAuction ? (
-                              <div className="flex flex-col items-center gap-1.5">
-                                <span className="text-yellow-400 font-bold text-[11px] block">
-                                  {asset.bidCount} {asset.bidCount === 1 ? 'puja' : 'pujas'}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => setQuickViewAssetId(asset.id)}
-                                  className="px-2 py-0.5 bg-zinc-900 hover:bg-[#ff1e1e] text-zinc-300 hover:text-white border border-zinc-800 rounded text-[9px] font-bold flex items-center gap-1 transition-all mx-auto cursor-pointer"
-                                >
-                                  <Search size={9} /> Quick View
-                                </button>
-                              </div>
+                              <span className="text-yellow-400 font-bold text-[11px]">{asset.bidCount} pujas</span>
                             ) : (
-                              <span className="text-zinc-500 italic text-[10px]">Venta Directa</span>
+                              <span className="text-zinc-500 italic text-[10px]">Directa</span>
                             )}
                           </td>
 
                           <td className="p-3 text-right">
-                            {asset.isAuction ? (
-                              <div className="flex flex-col items-end">
-                                <span className="text-yellow-400 font-extrabold text-[12.5px]">{asset.currentBid.toLocaleString()} GD</span>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-end">
-                                <span className="text-[#ff1e1e] font-extrabold text-[12.5px]">{asset.basePrice.toLocaleString()} GD</span>
-                              </div>
-                            )}
+                            <span className="text-amber-400 font-extrabold font-mono text-[12.5px]">
+                              {(asset.isAuction ? asset.currentBid : asset.basePrice).toLocaleString()} GD
+                            </span>
                           </td>
 
                           <td className="p-3">
-                            <div className="flex flex-col text-[11px]">
-                              {isExpired ? (
-                                <span className="text-red-500 font-extrabold animate-pulse uppercase">EXPIRADO</span>
-                              ) : (
-                                <span className="text-zinc-300">{new Date(asset.expiresAt).toLocaleTimeString()}</span>
-                              )}
-                              <span className="text-[9.5px] text-zinc-500">{new Date(asset.expiresAt).toLocaleDateString()}</span>
-                            </div>
+                            {isExpired ? (
+                              <span className="text-red-500 font-extrabold text-[10px] uppercase">EXPIRADO</span>
+                            ) : (
+                              <span className="text-zinc-300 text-[11px]">{new Date(asset.expiresAt).toLocaleTimeString()}</span>
+                            )}
                           </td>
 
-                          <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <td className="p-3 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setSelectedAssetId(asset.id);
-                                  setEditPriceValue(asset.isAuction ? asset.currentBid : asset.basePrice);
-                                }}
-                                className="p-1 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800 transition-all cursor-pointer text-[10px] font-bold"
+                                onClick={() => { setSelectedAssetId(asset.id); setEditPriceValue(asset.isAuction ? asset.currentBid : asset.basePrice); }}
+                                className="p-1 px-2 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-[10px] font-bold cursor-pointer"
                               >
                                 Editar
                               </button>
-
                               <button
                                 type="button"
                                 onClick={() => handleForceTakedown(asset.id)}
-                                className="p-1.5 rounded bg-red-950/20 hover:bg-[#ff1e1e]/20 text-red-400 hover:text-[#ff1e1e] border border-red-500/10 transition-all cursor-pointer"
+                                className="p-1.5 rounded bg-red-950/20 hover:bg-red-900 text-red-400 border border-red-900/40 cursor-pointer"
                               >
                                 <Trash2 size={11} />
                               </button>
@@ -841,66 +694,30 @@ export default function AdminMarketplaceModule({
               </table>
             </div>
 
-            {/* POPUP DE EDICIÓN RÁPIDA */}
+            {/* Modal Edición Rápida */}
             <AnimatePresence>
               {selectedAssetId && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="bg-black border border-zinc-900 rounded p-4 mt-2 space-y-3"
-                >
+                <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="bg-black border border-zinc-900 rounded p-4 mt-2 space-y-3">
                   <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
-                      🔧 CONTROLES EXCLUSIVOS DE ADMINISTRADOR: {selectedAssetId}
+                      🔧 CONTROLES EXCLUSIVOS ADMIN: {selectedAssetId}
                     </span>
                     <button onClick={() => setSelectedAssetId(null)} className="text-zinc-500 hover:text-white cursor-pointer font-bold">✕</button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                     <div className="space-y-1.5">
-                      <label className="text-zinc-500 text-[10px] uppercase font-bold block">Modificar Precio / Puja:</label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          value={editPriceValue ?? 0}
-                          onChange={(e) => setEditPriceValue(parseInt(e.target.value) || 0)}
-                          className="w-full bg-zinc-950 border border-zinc-900 p-2 rounded text-[11px] text-yellow-400 font-bold focus:outline-none"
-                        />
-                        <span className="absolute right-2 top-2 text-[10px] text-zinc-500 font-bold">GD</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleEditPrice(selectedAssetId)}
-                        className="w-full py-1.5 bg-[#ff1e1e] hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer transition-colors"
-                      >
-                        Establecer Precio
-                      </button>
+                      <label className="text-zinc-500 text-[10px] uppercase font-bold block">Modificar Precio:</label>
+                      <input type="number" value={editPriceValue ?? 0} onChange={(e) => setEditPriceValue(parseInt(e.target.value) || 0)} className="w-full bg-zinc-950 border border-zinc-900 p-2 rounded text-[11px] text-yellow-400 font-bold focus:outline-none"/>
+                      <button type="button" onClick={() => handleEditPrice(selectedAssetId)} className="w-full py-1.5 bg-[#ff1e1e] text-white rounded text-[10px] font-bold cursor-pointer">Establecer Precio</button>
                     </div>
 
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-zinc-500 text-[10px] uppercase font-bold block">Editar Tiempo Expiración (Cooldown):</label>
                       <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={editCooldownHours}
-                          onChange={(e) => setEditCooldownHours(Math.max(1, parseInt(e.target.value) || 1))}
-                          className="w-full bg-zinc-950 border border-zinc-900 p-2 rounded text-[11px] text-white font-mono focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleEditExpiration(selectedAssetId, 'ADD')}
-                          className="px-3.5 py-2 bg-emerald-950 hover:bg-emerald-800 text-emerald-400 font-bold rounded text-[10.5px] cursor-pointer"
-                        >
-                          + Compensar Horas
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleEditExpiration(selectedAssetId, 'SUBTRACT')}
-                          className="px-3.5 py-2 bg-red-950 hover:bg-red-800 text-red-400 font-bold rounded text-[10.5px] cursor-pointer"
-                        >
-                          - Restar Horas
-                        </button>
+                        <input type="number" value={editCooldownHours} onChange={(e) => setEditCooldownHours(Math.max(1, parseInt(e.target.value) || 1))} className="w-full bg-zinc-950 border border-zinc-900 p-2 rounded text-[11px] text-white font-mono focus:outline-none"/>
+                        <button type="button" onClick={() => handleEditExpiration(selectedAssetId, 'ADD')} className="px-3.5 py-2 bg-emerald-950 text-emerald-400 border border-emerald-900 font-bold rounded text-[10.5px] cursor-pointer">+ Compensar Horas</button>
+                        <button type="button" onClick={() => handleEditExpiration(selectedAssetId, 'SUBTRACT')} className="px-3.5 py-2 bg-red-950 text-red-400 border border-red-900 font-bold rounded text-[10.5px] cursor-pointer">- Restar Horas</button>
                       </div>
                     </div>
                   </div>
@@ -910,8 +727,165 @@ export default function AdminMarketplaceModule({
           </div>
         )}
 
-      </div>
+        {/* VISTA 2: HISTORIAL Y COMISIONES (5%) */}
+        {viewTab === 'transactions' && (
+          <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-5 space-y-4">
+            <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+                Auditoría de Transacciones Realizadas ({transactions.length})
+              </span>
+              <button onClick={handleExportCSV} className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded font-bold uppercase text-[10px] flex items-center gap-1.5 cursor-pointer">
+                <Download size={12} /> Exportar CSV
+              </button>
+            </div>
 
+            <div className="space-y-2 pt-2">
+              {transactions.length === 0 ? (
+                <div className="text-center py-8 text-zinc-600 border border-dashed border-zinc-850 rounded-lg">
+                  No hay transacciones registradas en la base de datos.
+                </div>
+              ) : (
+                transactions.map(tx => (
+                  <div key={tx.id} className="p-3.5 bg-zinc-900/30 border border-zinc-850 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-xs">{tx.buyerName}</span>
+                        <ArrowRight size={12} className="text-zinc-600" />
+                        <span className="font-bold text-zinc-300 text-xs">{tx.sellerName}</span>
+                      </div>
+                      <span className="text-[9.5px] text-zinc-500 font-mono block">
+                        TX ID: {tx.id} • {new Date(tx.purchasedAt).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-6 text-right font-mono">
+                      <div>
+                        <span className="text-[9px] text-zinc-500 block uppercase">Monto Bruto</span>
+                        <strong className="text-amber-400">{tx.grossPrice.toLocaleString()} GD</strong>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-zinc-500 block uppercase">Comisión (5%)</span>
+                        <strong className="text-emerald-400">+{tx.feeApplied.toLocaleString()} GD</strong>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-zinc-500 block uppercase">Neto Vendedor</span>
+                        <strong className="text-zinc-300">{tx.netToSeller.toLocaleString()} GD</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* VISTA 3: RADAR ANTI-SIFÓN */}
+        {viewTab === 'siphon_radar' && (
+          <div className="bg-zinc-950 border border-amber-900/40 rounded-lg p-5 space-y-4">
+            <div className="flex items-center gap-2 text-amber-500 font-bold uppercase text-xs border-b border-zinc-900 pb-3">
+              <AlertTriangle size={16} />
+              <span>RADAR DE TRANSFERENCIAS ANÓMALAS Y ALTO VOLUMEN (&gt;50,000 GD)</span>
+            </div>
+
+            <p className="text-zinc-400 text-[11px] font-sans">
+              Monitorea transacciones de montos desproporcionados para prevenir lavado de saldo entre cuentas secundarias.
+            </p>
+
+            <div className="space-y-3 pt-2">
+              {flaggedTransactions.length === 0 ? (
+                <div className="text-center py-8 text-zinc-600 border border-dashed border-zinc-850 rounded-lg">
+                  No se han detectado operaciones sospechosas en el radar.
+                </div>
+              ) : (
+                flaggedTransactions.map(tx => (
+                  <div key={tx.id} className="p-4 bg-amber-950/10 border border-amber-900/40 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-400 text-[9px] font-bold border border-amber-800 uppercase">
+                        ALERTA DE SIFÓN ACTIVADA
+                      </span>
+                      <h4 className="font-bold text-white mt-2 text-xs">
+                        {tx.buyerName} transfirió {tx.grossPrice.toLocaleString()} GD Coins a {tx.sellerName}
+                      </h4>
+                      <span className="text-[9.5px] text-zinc-500 mt-1 block font-mono">
+                        Comisión cobrada por el sistema: +{tx.feeApplied} GD • {new Date(tx.purchasedAt).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <button 
+                      onClick={() => setIsAlertToShow({ show: true, status: 'error', message: `Expediente de sanción abierto para ${tx.sellerName}` })}
+                      className="px-3 py-1.5 bg-red-650 hover:bg-red-500 text-white font-bold uppercase rounded text-[10px] cursor-pointer"
+                    >
+                      Sancionar Vendedor
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* VISTA 4: INYECTOR PUSH DE MERCADO */}
+        {viewTab === 'push_notifications' && (
+          <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-5 space-y-5 font-mono">
+            <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-300 flex items-center gap-2">
+                <Mail size={14} className="text-red-500" /> Inyector Push de Mercado para Jugadores
+              </span>
+              <button onClick={handleExportInboxJSON} className="px-2.5 py-1 bg-zinc-900 text-zinc-400 border border-zinc-800 rounded text-[9.5px] font-bold uppercase cursor-pointer">
+                Backup Push (JSON)
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-zinc-500 uppercase font-bold block">Destinatario:</label>
+                  <select value={pushRecipientId} onChange={(e) => setPushRecipientId(e.target.value)} className="w-full bg-black border border-zinc-900 p-2 rounded text-white text-xs cursor-pointer focus:outline-none">
+                    <option value="">-- Seleccionar Comandante --</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.username} ({u.id})</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-zinc-500 uppercase font-bold block">Asunto:</label>
+                  <input type="text" value={pushSubject} onChange={(e) => setPushSubject(e.target.value)} className="w-full bg-black border border-zinc-900 p-2 rounded text-white text-xs focus:outline-none"/>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-zinc-500 uppercase font-bold block">Cuerpo del Mensaje:</label>
+                  <textarea rows={4} value={pushBody} onChange={(e) => setPushBody(e.target.value)} className="w-full bg-black border border-zinc-900 p-2 rounded text-white text-xs focus:outline-none font-sans"/>
+                </div>
+
+                <button onClick={handleSendManualPush} className="w-full py-2.5 bg-[#ff1e1e] hover:bg-red-700 text-white font-bold uppercase rounded text-xs cursor-pointer shadow-lg">
+                  Transmitir Mensaje Push
+                </button>
+              </div>
+
+              <div className="bg-black/50 border border-zinc-900 rounded p-4 space-y-3">
+                <span className="text-[10px] text-zinc-500 uppercase font-bold block border-b border-zinc-900 pb-2">
+                  Historial de Notificaciones Inyectadas ({pushedMessages.length})
+                </span>
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  {pushedMessages.length === 0 ? (
+                    <span className="text-zinc-600 text-[10px] italic">No hay mensajes transmitidos en esta sesión.</span>
+                  ) : (
+                    pushedMessages.map(pm => (
+                      <div key={pm.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded text-[10px]">
+                        <div className="flex justify-between font-bold text-zinc-300">
+                          <span>Para: {pm.recipientName}</span>
+                          <span className="text-red-400">{pm.category}</span>
+                        </div>
+                        <p className="text-zinc-400 font-sans mt-1">{pm.subject}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
