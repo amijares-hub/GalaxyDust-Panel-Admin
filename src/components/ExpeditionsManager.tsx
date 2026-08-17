@@ -4,13 +4,12 @@ import {
   Compass, ShieldAlert, Map as MapIcon, Plus, Trash2, Zap, Play, Search,
   TrendingUp, Award, Clock, RefreshCw, Eye, Trophy, Skull, Users, Layers,
   Gift, Flame, Info, Crosshair, Edit3, Save, Layers3, LayoutGrid, Activity, X, AlertTriangle, Check,
-  Radio, MapPin, Box, Wrench, Bot, FileText, Package, Rocket, Cpu, Building, ChevronLeft, ChevronRight, Sliders, Database, Sparkles, PackageOpen, RotateCcw, AlertOctagon, Network, Loader
+  Radio, MapPin, Box, Wrench, Bot, FileText, Package, Rocket, Cpu, Building, ChevronLeft, ChevronRight, Sliders, Database, Sparkles, PackageOpen, RotateCcw, AlertOctagon, Network, Loader, ShieldCheck
 } from 'lucide-react';
 
 type TabId = 'exploration' | 'events' | 'generator';
 type ExploreSubTab = 'monitor' | 'losses' | 'discoveries';
 type EventSubTab = 'creator' | 'threats_only';
-type GenRightTab = 'creation' | 'edition' | 'ami';
 
 type GenEntityType = 'GC' | 'GALAXY' | 'SC' | 'SS' | 'PLANET';
 
@@ -34,10 +33,9 @@ interface CreationHistoryAction {
   timestamp: string;
 }
 
-// ─── TIER DE DISTRIBUCIÓN PORCENTUAL DE PLANETAS ───
 interface DistributionTier {
-  percentage: number; // Ej: 60 (%)
-  planetsPerSS: number; // Ej: 3 planetas por Star System
+  percentage: number;
+  planetsPerSS: number;
 }
 
 export const ExpeditionsManager: React.FC = () => {
@@ -79,7 +77,7 @@ export const ExpeditionsManager: React.FC = () => {
   // Historial de Undo (Ctrl + Z)
   const [creationHistoryStack, setCreationHistoryStack] = useState<CreationHistoryAction[]>([]);
 
-  // Formulario Creación de GC (Soporta borrar sin forzar '0')
+  // Formulario Creación de GC
   const [newGcId, setNewGcId] = useState<string>('');
   const [newGcName, setNewGcName] = useState<string>('');
   const [newGcDuration, setNewGcDuration] = useState<number | ''>(60);
@@ -87,6 +85,15 @@ export const ExpeditionsManager: React.FC = () => {
   const [newGcMaxMetal, setNewGcMaxMetal] = useState<number | ''>(25000);
   const [newGcMinCrystal, setNewGcMinCrystal] = useState<number | ''>(2000);
   const [newGcMaxCrystal, setNewGcMaxCrystal] = useState<number | ''>(12000);
+
+  // 🛡️ ESTADOS DE REQUERIMIENTOS DE ENTRADA AL GC (CREACIÓN)
+  const [reqShip, setReqShip] = useState<boolean>(true);
+  const [reqTool, setReqTool] = useState<boolean>(false);
+  const [reqLicense, setReqLicense] = useState<boolean>(false);
+  const [reqNonNFT, setReqNonNFT] = useState<boolean>(false);
+  const [reqPrevGc, setReqPrevGc] = useState<string>('');
+  const [reqRequiredPrevCount, setReqRequiredPrevCount] = useState<number | ''>(0);
+
   const [gcEventsList, setGcEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
   const [newGcLootList, setNewGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
   const [bindEventName, setBindEventName] = useState<string>('');
@@ -111,7 +118,7 @@ export const ExpeditionsManager: React.FC = () => {
   const [overrideMinCrystal, setOverrideMinCrystal] = useState<number | ''>(2000);
   const [overrideMaxCrystal, setOverrideMaxCrystal] = useState<number | ''>(12000);
 
-  // ─── 📊 ESTADOS DE DISTRIBUCIÓN PORCENTUAL DE PLANETAS EN STAR CLUSTER ───
+  // 📊 ESTADOS DE DISTRIBUCIÓN PORCENTUAL DE PLANETAS EN STAR CLUSTER
   const [planetGenMode, setPlanetGenMode] = useState<'single_ss' | 'distribution_sc'>('distribution_sc');
   const [distributionTiers, setDistributionTiers] = useState<DistributionTier[]>([
     { percentage: 60, planetsPerSS: 3 },
@@ -143,7 +150,15 @@ export const ExpeditionsManager: React.FC = () => {
   const [editEventsList, setEditEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
   const [editGcLootList, setEditGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
 
-  // ─── 🚀 ESTADOS DE SELECCIÓN MÚLTIPLE (BULK DELETE) EN MODO EDICIÓN ───
+  // 🛡️ ESTADOS DE REQUERIMIENTOS EN MODO EDICIÓN
+  const [editReqShip, setEditReqShip] = useState<boolean>(true);
+  const [editReqTool, setEditReqTool] = useState<boolean>(false);
+  const [editReqLicense, setEditReqLicense] = useState<boolean>(false);
+  const [editReqNonNFT, setEditReqNonNFT] = useState<boolean>(false);
+  const [editReqPrevGc, setEditReqPrevGc] = useState<string>('');
+  const [editReqRequiredPrevCount, setEditReqRequiredPrevCount] = useState<number | ''>(0);
+
+  // 🚀 ESTADOS DE SELECCIÓN MÚLTIPLE (BULK DELETE) EN MODO EDICIÓN
   const [isBulkModeEdit, setIsBulkModeEdit] = useState<boolean>(false);
   const [selectedBulkIdsEdit, setSelectedBulkIdsEdit] = useState<string[]>([]);
   const [searchTermEditGrid, setSearchTermEditGrid] = useState<string>('');
@@ -225,7 +240,6 @@ export const ExpeditionsManager: React.FC = () => {
     );
   };
 
-  // Resetear selección múltiple cuando cambia la entidad o el padre
   useEffect(() => {
     setSelectedBulkIdsEdit([]);
   }, [selectedEntityType, parentGcId, parentGalaxyId, parentScId, parentSystemId]);
@@ -235,7 +249,6 @@ export const ExpeditionsManager: React.FC = () => {
     return dbClusters.find(c => String(c.id) === String(parentGcId)) || dbClusters[0] || null;
   }, [dbClusters, parentGcId]);
 
-  // Sincronizar automáticamente los inputs de override con los datos heredados del GC activo
   useEffect(() => {
     if (activeClusterData) {
       setOverrideDuration(activeClusterData.base_duration_minutes ?? 60);
@@ -568,8 +581,16 @@ export const ExpeditionsManager: React.FC = () => {
       setEditMinCrystal(Number(data.base_crystal_min || data.overrides?.crystal_min || data.rewards?.crystal_min || 2000));
       setEditMaxCrystal(Number(data.base_crystal_max || data.overrides?.crystal_max || data.rewards?.crystal_max || 12000));
       setEditEventsList(Array.isArray(data.assigned_events) ? data.assigned_events : []);
+      
       if (selectedEntityType === 'GC') {
         setEditGcLootList(Array.isArray(data.loot_pool) ? data.loot_pool : []);
+        const reqs = data.entry_requirements || {};
+        setEditReqShip(reqs.require_ship ?? true);
+        setEditReqTool(reqs.require_tool ?? false);
+        setEditReqLicense(reqs.require_license ?? false);
+        setEditReqNonNFT(reqs.require_non_nft ?? false);
+        setEditReqPrevGc(reqs.prev_gc ?? '');
+        setEditReqRequiredPrevCount(reqs.required_prev_count ?? 0);
       }
     }
   };
@@ -696,7 +717,7 @@ export const ExpeditionsManager: React.FC = () => {
     else setEditGcLootList(prev => prev.filter(l => l.asset_id !== id));
   };
 
-  // Fundar Galaxy Cluster Real
+  // 🛡️ Fundar Galaxy Cluster Real con Requerimientos de Entrada
   const handleCreateGCSubmit = async () => {
     if (!newGcId.trim() || !newGcName.trim()) {
       alert("Introduce el ID (2-4 letras) y el Nombre del Clúster.");
@@ -718,7 +739,16 @@ export const ExpeditionsManager: React.FC = () => {
       base_metal_min: Number(newGcMinMetal || 5000),
       base_metal_max: Number(newGcMaxMetal || 25000),
       base_crystal_min: Number(newGcMinCrystal || 2000),
-      base_crystal_max: Number(newGcMaxCrystal || 12000)
+      base_crystal_max: Number(newGcMaxCrystal || 12000),
+      // 🛡️ REQUERIMIENTOS DINÁMICOS DE ENTRADA
+      entry_requirements: {
+        require_ship: reqShip,
+        require_tool: reqTool,
+        require_license: reqLicense,
+        require_non_nft: reqNonNFT,
+        prev_gc: reqPrevGc || null,
+        required_prev_count: Number(reqRequiredPrevCount || 0)
+      }
     };
 
     if (supabase) {
@@ -776,7 +806,6 @@ export const ExpeditionsManager: React.FC = () => {
 
     setLoading(true);
     try {
-      // 1. Obtener todos los Star Systems del Star Cluster seleccionado
       const { data: dbSss, error: ssErr } = await supabase
         .from('seed_star_systems')
         .select('id, name_code')
@@ -790,19 +819,16 @@ export const ExpeditionsManager: React.FC = () => {
 
       const systemIds = dbSss.map((sys: any) => sys.id);
 
-      // 2. Limpieza previa de planetas antiguos
       await supabase
         .from('seed_locations')
         .delete()
         .in('system_id', systemIds);
 
-      // 3. Mezclar aleatoriamente los sistemas
       const shuffledSystems = [...dbSss].sort(() => Math.random() - 0.5);
       const totalSystems = shuffledSystems.length;
 
       const activeSubtype = bodyType === 'planeta' ? planetSubtype : starSubtype;
       
-      // ⚡ SI NO HAY OVERRIDE, HEREDA DIRECTAMENTE DEL GC PADRE
       const inheritedTime = enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60);
       const metalMin = enableManualOverride ? Number(overrideMinMetal || 5000) : Number(activeClusterData?.base_metal_min || 5000);
       const metalMax = enableManualOverride ? Number(overrideMaxMetal || 25000) : Number(activeClusterData?.base_metal_max || 25000);
@@ -812,7 +838,6 @@ export const ExpeditionsManager: React.FC = () => {
       const planetPayload: any[] = [];
       let systemIndexOffset = 0;
 
-      // 4. Repartir planetas proporcionalmente según cada Tier
       distributionTiers.forEach((tier, tierIdx) => {
         const isLastTier = tierIdx === distributionTiers.length - 1;
         const countForThisTier = isLastTier 
@@ -843,7 +868,6 @@ export const ExpeditionsManager: React.FC = () => {
         });
       });
 
-      // 5. Inserción masiva en lotes por bloques de 250
       const insertedIds: string[] = [];
       const BATCH_SIZE = 250;
       for (let i = 0; i < planetPayload.length; i += BATCH_SIZE) {
@@ -857,7 +881,6 @@ export const ExpeditionsManager: React.FC = () => {
         if (inserted) insertedIds.push(...inserted.map((x: any) => x.id));
       }
 
-      // 6. Historial de deshacer (Ctrl + Z)
       setCreationHistoryStack((prev) => [
         {
           description: `Distribución Porcentual (${planetPayload.length} planetas en ${totalSystems} SS)`,
@@ -908,7 +931,6 @@ export const ExpeditionsManager: React.FC = () => {
           const item: any = {
             cluster_id: parentGcId,
             galaxy_number: currentNum,
-            // ⚡ HERENCIA DIRECTA DEL GC
             assigned_events: enableManualOverride ? gcEventsList : (activeClusterData?.assigned_events || []),
             overrides: {
               duration_minutes: enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60),
@@ -962,7 +984,6 @@ export const ExpeditionsManager: React.FC = () => {
           const item: any = {
             galaxy_id: parentGalaxyId,
             sc_number: currentNum,
-            // ⚡ HERENCIA DIRECTA DEL GC
             assigned_events: enableManualOverride ? gcEventsList : (activeClusterData?.assigned_events || []),
             overrides: {
               duration_minutes: enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60),
@@ -1013,7 +1034,6 @@ export const ExpeditionsManager: React.FC = () => {
           const item: any = {
             sc_id: parentScId,
             name_code: derivedCode,
-            // ⚡ HERENCIA DIRECTA DEL GC
             assigned_events: enableManualOverride ? gcEventsList : (activeClusterData?.assigned_events || []),
             overrides: {
               duration_minutes: enableManualOverride ? Number(overrideDuration || 60) : Number(activeClusterData?.base_duration_minutes || 60),
@@ -1383,7 +1403,15 @@ export const ExpeditionsManager: React.FC = () => {
           base_crystal_min: Number(editMinCrystal || 2000),
           base_crystal_max: Number(editMaxCrystal || 12000),
           assigned_events: editEventsList,
-          loot_pool: editGcLootList
+          loot_pool: editGcLootList,
+          entry_requirements: {
+            require_ship: editReqShip,
+            require_tool: editReqTool,
+            require_license: editReqLicense,
+            require_non_nft: editReqNonNFT,
+            prev_gc: editReqPrevGc || null,
+            required_prev_count: Number(editReqRequiredPrevCount || 0)
+          }
         };
       } else if (selectedEntityType === 'GALAXY') {
         table = 'seed_galaxies';
@@ -1967,6 +1995,60 @@ export const ExpeditionsManager: React.FC = () => {
                           <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={newGcMaxMetal} onChange={e => setNewGcMaxMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                           <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMinCrystal} onChange={e => setNewGcMinCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                           <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={newGcMaxCrystal} onChange={e => setNewGcMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
+                        </div>
+                      </div>
+
+                      {/* 🛡️ REQUERIMIENTOS DINÁMICOS DE ENTRADA AL GC */}
+                      <div className="bg-zinc-900/40 p-3.5 rounded-xl border border-cyan-900/60 space-y-3">
+                        <span className="text-cyan-400 font-bold text-[9.5px] uppercase block flex items-center gap-1.5 border-b border-cyan-950 pb-1">
+                          <ShieldCheck size={14} /> 🛡️ REQUERIMIENTOS Y REGLAS DE ENTRADA
+                        </span>
+
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={reqShip} onChange={e => setReqShip(e.target.checked)} className="accent-cyan-500" />
+                            <span>Requiere Nave</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={reqTool} onChange={e => setReqTool(e.target.checked)} className="accent-cyan-500" />
+                            <span>Requiere Tool</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={reqLicense} onChange={e => setReqLicense(e.target.checked)} className="accent-cyan-500" />
+                            <span>Requiere Licencia</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={reqNonNFT} onChange={e => setReqNonNFT(e.target.checked)} className="accent-cyan-500" />
+                            <span>Nave NO-NFT Requerida</span>
+                          </label>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div>
+                            <label className="text-[8.5px] text-zinc-500 block mb-1">Clúster Previo Requerido:</label>
+                            <select 
+                              className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[10px]" 
+                              value={reqPrevGc} 
+                              onChange={e => setReqPrevGc(e.target.value)}
+                            >
+                              <option value="">-- Ninguno (Inicio) --</option>
+                              {dbClusters.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[8.5px] text-zinc-500 block mb-1">Misiones Previas Requeridas:</label>
+                            <input 
+                              type="number" 
+                              min={0} 
+                              className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-amber-300 font-bold text-[10px]" 
+                              value={reqRequiredPrevCount} 
+                              onChange={e => setReqRequiredPrevCount(e.target.value === '' ? '' : Number(e.target.value))} 
+                            />
+                          </div>
                         </div>
                       </div>
 
@@ -2635,6 +2717,64 @@ export const ExpeditionsManager: React.FC = () => {
                       <div><span className="text-zinc-500 block text-[8px]">Min Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMinCrystal} onChange={e => setEditMinCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                       <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                     </div>
+
+                    {/* 🛡️ REQUERIMIENTOS DINÁMICOS DE ENTRADA AL GC (MODO EDICIÓN) */}
+                    {selectedEntityType === 'GC' && (
+                      <div className="md:col-span-2 bg-zinc-900/40 p-3.5 rounded-xl border border-cyan-900/60 space-y-3">
+                        <span className="text-cyan-400 font-bold text-[9.5px] uppercase block flex items-center gap-1.5 border-b border-cyan-950 pb-1">
+                          <ShieldCheck size={14} /> 🛡️ EDICIÓN DE REQUERIMIENTOS Y REGLAS DE ENTRADA
+                        </span>
+
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={editReqShip} onChange={e => setEditReqShip(e.target.checked)} className="accent-cyan-500" />
+                            <span>Requiere Nave</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={editReqTool} onChange={e => setEditReqTool(e.target.checked)} className="accent-cyan-500" />
+                            <span>Requiere Tool</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={editReqLicense} onChange={e => setEditReqLicense(e.target.checked)} className="accent-cyan-500" />
+                            <span>Requiere Licencia</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 bg-black/40 p-2 rounded border border-zinc-800 cursor-pointer">
+                            <input type="checkbox" checked={editReqNonNFT} onChange={e => setEditReqNonNFT(e.target.checked)} className="accent-cyan-500" />
+                            <span>Nave NO-NFT Requerida</span>
+                          </label>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div>
+                            <label className="text-[8.5px] text-zinc-500 block mb-1">Clúster Previo Requerido:</label>
+                            <select 
+                              className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[10px]" 
+                              value={editReqPrevGc} 
+                              onChange={e => setEditReqPrevGc(e.target.value)}
+                            >
+                              <option value="">-- Ninguno (Inicio) --</option>
+                              {dbClusters.filter(c => String(c.id) !== String(editSelectedEntityId)).map(c => (
+                                <option key={c.id} value={c.id}>{c.name || c.id}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[8.5px] text-zinc-500 block mb-1">Misiones Previas Requeridas:</label>
+                            <input 
+                              type="number" 
+                              min={0} 
+                              className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-amber-300 font-bold text-[10px]" 
+                              value={editReqRequiredPrevCount} 
+                              onChange={e => setEditReqRequiredPrevCount(e.target.value === '' ? '' : Number(e.target.value))} 
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* EDICIÓN DE LOOT POOL CON BUSCADOR PREDICTOR */}
                     {selectedEntityType === 'GC' && (
