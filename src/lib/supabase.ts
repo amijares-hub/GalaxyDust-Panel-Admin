@@ -391,11 +391,32 @@ export interface UploadAssetOptions {
  */
 export async function uploadAssetImage({ tableName, assetId, file }: UploadAssetOptions) {
   try {
+    const idColumn = tableName === 'seed_ships' ? 'ship_id' : tableName === 'seed_defenses' ? 'defense_id' : 'id';
+    
+    // 0. Eliminar foto anterior para no acumular basura y aplicar cambio inmediato
+    const { data: currentData } = await supabase
+      .from(tableName)
+      .select('image_url, avatar_url, badge_url')
+      .eq(idColumn, assetId)
+      .single();
+
+    if (currentData) {
+      const oldUrl = currentData.image_url || currentData.avatar_url || currentData.badge_url;
+      if (oldUrl && oldUrl.includes('galaxy-assets/')) {
+        const urlParts = oldUrl.split('galaxy-assets/');
+        if (urlParts.length > 1) {
+           const oldPath = urlParts[1].split('?')[0]; // quitar query params
+           await supabase.storage.from('galaxy-assets').remove([oldPath]);
+        }
+      }
+    }
+
     // 1. Extraer la extensión del archivo subido (.webp, .png, .jpg, etc.)
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     
-    // 2. Definir la ruta en el bucket 'galaxy-assets'
-    const filePath = `${tableName}/${assetId}.${fileExtension}`;
+    // 2. Definir la ruta en el bucket 'galaxy-assets' con timestamp
+    const timestamp = Date.now();
+    const filePath = `${tableName}/${assetId}_${timestamp}.${fileExtension}`;
 
     // 3. Subir/Sobrescribir el archivo en Supabase Storage
     const { error: uploadError } = await supabase.storage
@@ -413,7 +434,7 @@ export async function uploadAssetImage({ tableName, assetId, file }: UploadAsset
       .getPublicUrl(filePath);
 
     // 5. Añadir marca de tiempo para evitar problemas de caché en navegador y juego
-    const imageUrlWithCacheBuster = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+    const imageUrlWithCacheBuster = `${publicUrlData.publicUrl}?t=${timestamp}`;
 
     // 6. Actualizar la columna image_url en la tabla correspondiente
     // Nota: Las tablas de naves usan 'ship_id' en vez de 'id', determinamos la columna correcta

@@ -380,8 +380,23 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
 
     try {
       setUploadingId(targetAssetId);
-      const fileExt = file.name.split('.').pop();
-      const customStoragePath = `${currentTabConfig.table}/${targetAssetId}.${fileExt}`;
+
+      // Eliminar foto anterior para no acumular basura y aplicar cambio de inmediato
+      const currentItem = rawItems.find(item => (item[currentTabConfig.pk] || item.id) === targetAssetId);
+      const oldUrl = currentItem?.image_url || currentItem?.avatar_url || currentItem?.badge_url;
+      
+      if (oldUrl && oldUrl.includes('galaxy-assets/')) {
+        const urlParts = oldUrl.split('galaxy-assets/');
+        if (urlParts.length > 1) {
+          const oldPath = urlParts[1].split('?')[0]; // quitar query params si existieran
+          await supabase.storage.from('galaxy-assets').remove([oldPath]);
+        }
+      }
+
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const timestamp = Date.now();
+      // Agregamos timestamp al nombre para asegurar que la URL cambia y limpia la caché
+      const customStoragePath = `${currentTabConfig.table}/${targetAssetId}_${timestamp}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('galaxy-assets')
@@ -393,7 +408,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         .from('galaxy-assets')
         .getPublicUrl(customStoragePath);
 
-      const pubUrl = publicUrlData?.publicUrl;
+      const pubUrl = `${publicUrlData?.publicUrl}?t=${timestamp}`;
 
       if (pubUrl) {
         // Intenta actualizar todas las columnas posibles
