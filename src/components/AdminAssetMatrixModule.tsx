@@ -109,6 +109,7 @@ export const AdminAssetMatrixModule: React.FC = () => {
   // Inyección de Activos
   const [injectQty, setInjectQty] = useState<number>(1);
   const [injectLevel, setInjectLevel] = useState<number>(1);
+  const [injectBlueprintUses, setInjectBlueprintUses] = useState<number>(1);
 
   // 1. Cargar Semillas de Supabase (Consulta combinada si hay múltiples tablas)
   const fetchSeedAssets = async (category: AssetCategory) => {
@@ -289,7 +290,10 @@ export const AdminAssetMatrixModule: React.FC = () => {
       else if (activeCategory === 'Tecnologías') payload.technology_id = assetId;
       else if (activeCategory === 'Defensas') payload.defense_id = assetId;
       else if (activeCategory === 'Insignias') payload.badge_id = assetId;
-      else if (activeCategory === 'Blueprints') payload.blueprint_id = assetId;
+      else if (activeCategory === 'Blueprints') {
+        payload.blueprint_id = assetId;
+        payload.uses_remaining = injectBlueprintUses || asset.default_max_uses || 1;
+      }
       else if (activeCategory === 'Licencias') payload.license_id = assetId;
       else if (activeCategory === 'Astrobots') payload.astrobot_id = assetId;
       else payload.item_id = assetId;
@@ -564,6 +568,12 @@ export const AdminAssetMatrixModule: React.FC = () => {
                       <span className="text-zinc-500 block text-[8px] uppercase">Nivel (LVL):</span>
                       <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-400 font-bold" value={injectLevel} onChange={e => setInjectLevel(Number(e.target.value))} />
                     </div>
+                    {activeCategory === 'Blueprints' && (
+                      <div className="col-span-2">
+                        <span className="text-zinc-500 block text-[8px] uppercase">Usos Restantes (Blueprints):</span>
+                        <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-yellow-400 font-bold" value={injectBlueprintUses} onChange={e => setInjectBlueprintUses(Number(e.target.value))} />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -582,7 +592,10 @@ export const AdminAssetMatrixModule: React.FC = () => {
                         <div key={uAsset.id || idx} className="p-2 bg-black border border-zinc-850 hover:border-red-900/50 rounded flex justify-between items-center text-[10px] transition-colors group">
                           <div className="truncate pr-2">
                             <span className="text-white font-bold block truncate max-w-[180px]">{uAsset.ship_id || uAsset.building_id || uAsset.defense_id || uAsset.technology_id || uAsset.badge_id || uAsset.blueprint_id || uAsset.license_id || uAsset.tool_id || uAsset.consumable_id || uAsset.astrobot_id || 'Activo Oculto'}</span>
-                            <span className="text-[8.5px] text-cyan-400">LVL {uAsset.current_level || uAsset.level || 1} | Qty: {uAsset.quantity || uAsset.amount || 1}</span>
+                            <span className="text-[8.5px] text-cyan-400">
+                              LVL {uAsset.current_level || uAsset.level || 1} | Qty: {uAsset.quantity || uAsset.amount || 1}
+                              {activeCategory === 'Blueprints' && ` | Usos: ${uAsset.uses_remaining ?? 'N/A'}`}
+                            </span>
                           </div>
                           <button
                             onClick={() => handleRemoveUserAsset(uAsset.id)}

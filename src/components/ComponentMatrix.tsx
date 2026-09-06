@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { 
   RefreshCw, Search, ShieldAlert, Database, Radio, Layers, Edit3, X, Save, Plus, Camera, 
-  UploadCloud, Sliders, Flame, Coins, Hammer, Boxes, Trash2, PlusCircle
+  UploadCloud, Sliders, Flame, Coins, Hammer, Boxes, Trash2, PlusCircle, Award
 } from 'lucide-react';
 
 interface StructureAsset {
@@ -38,6 +38,8 @@ interface BadgeAsset {
   effect: string;
   stack: string;
   duration: string;
+  duration_days?: number;
+  can_slots?: number;
   rarity: string;
 }
 
@@ -54,6 +56,51 @@ interface ComponentMatrixProps {
   setIsAlertToShow?: (alert: { show: boolean; status: 'success' | 'error'; message: string }) => void;
   onRefreshData?: () => void;
 }
+
+const TARGET_ASSET_TYPES = [
+  { id: 'SHIPS', aliases: ['SHIP', 'SHIPS', 'NAVES', 'NAVE'], label: '🚀 SHIPS (Naves)', table: 'seed_ships', pk: 'ship_id', nameCol: 'ship_name' },
+  { id: 'STRUCTURES', aliases: ['STRUCTURE', 'STRUCTURES', 'ESTRUCTURAS', 'ESTRUCTURA'], label: '🏢 STRUCTURES (Estructuras)', table: 'seed_structures', pk: 'id', nameCol: 'name' },
+  { id: 'DEFENSES', aliases: ['DEFENSE', 'DEFENSES', 'DEFENSAS', 'DEFENSA'], label: '🛡️ DEFENSES (Defensas)', table: 'seed_defenses', pk: 'defense_id', nameCol: 'defense_name' },
+  { id: 'TECHNOLOGIES', aliases: ['TECH', 'TECHNOLOGY', 'TECHNOLOGIES', 'TECNOLOGIAS', 'TECNOLOGIA'], label: '🔬 TECHNOLOGIES (Tecnologías)', table: 'seed_technologies', pk: 'id', nameCol: 'name' },
+  { id: 'BADGES', aliases: ['BADGE', 'BADGES', 'INSIGNIAS', 'INSIGNIA'], label: '🏅 BADGES (Insignias)', table: 'seed_badges', pk: 'id', nameCol: 'name' },
+  { id: 'LICENSES', aliases: ['LICENSE', 'LICENSES', 'LICENCIAS', 'LICENCIA'], label: '📜 LICENSES (Licencias)', table: 'seed_licenses', pk: 'id', nameCol: 'name' },
+  { id: 'TOOLS', aliases: ['TOOL', 'TOOLS', 'HERRAMIENTAS', 'HERRAMIENTA'], label: '🔧 TOOLS (Tools)', table: 'seed_tools', pk: 'id', nameCol: 'name' },
+  { id: 'CONSUMABLES', aliases: ['CONSUMABLE', 'CONSUMABLES', 'CONSUMIBLES', 'CONSUMIBLE'], label: '🧪 CONSUMABLES (Consumibles)', table: 'seed_consumables', pk: 'id', nameCol: 'name' },
+  { id: 'ASTROBOTS', aliases: ['ASTROBOT', 'ASTROBOTS'], label: '🤖 ASTROBOTS (Astrobots)', table: 'seed_astrobots', pk: 'id', nameCol: 'name' }
+];
+
+const MATERIAL_OPTIONS = [
+  { id: 'metal', label: '🪨 Metal' },
+  { id: 'crystal', label: '💎 Cristal' },
+  { id: 'deuterium', label: '🧪 Deuterio' },
+  { id: 'dark_matter', label: '🌌 Materia Oscura' },
+  { id: 'omniplate', label: '🛡️ Omniplate' },
+  { id: 'orichaltron', label: '⚡ Orichaltron' }
+];
+
+const CURRENCY_OPTIONS = [
+  { id: 'gd_coins', label: '🪙 GD Coins' },
+  { id: 'phantom_coins', label: '👻 Phantom Coins' },
+  { id: 'void_crystals', label: '🔮 Void Crystals' }
+];
+
+const getTargetConfig = (typeStr: string) => {
+  const clean = (typeStr || '').toUpperCase().trim();
+  return TARGET_ASSET_TYPES.find(t => t.id === clean || t.aliases.includes(clean)) || TARGET_ASSET_TYPES[0];
+};
+
+const extractAssetDetails = (asset: any) => {
+  if (!asset) return { id: '', name: 'Desconocido' };
+
+  const id = asset.ship_id || asset.defense_id || asset.building_id || asset.structure_id || 
+             asset.technology_id || asset.badge_id || asset.license_id || asset.tool_id || 
+             asset.consumable_id || asset.astrobot_id || asset.id || asset.blueprint_id || '';
+
+  const name = asset.ship_name || asset.defense_name || asset.structure_name || asset.building_name || 
+               asset.name || asset.title || asset.label || id || 'Sin Nombre';
+
+  return { id: String(id), name: String(name) };
+};
 
 export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
   users = [],
@@ -83,6 +130,13 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
   const [playerSearchQuery, setPlayerSearchQuery] = useState('');
   const [auditedUser, setAuditedUser] = useState<any>(null);
   const [playerInventory, setPlayerInventory] = useState<UserAssetRow[]>([]);
+
+  // Estados para gestión interactiva de Blueprints
+  const [bpMaterials, setBpMaterials] = useState<Record<string, number>>({});
+  const [bpCurrencies, setBpCurrencies] = useState<Record<string, number>>({});
+  const [targetCategoryAssets, setTargetCategoryAssets] = useState<any[]>([]);
+  const [loadingTargetAssets, setLoadingTargetAssets] = useState<boolean>(false);
+  const [targetAssetSearch, setTargetAssetSearch] = useState<string>('');
 
   const tabs = [
     { id: 'SHIPS', label: '🚀 Naves', table: 'seed_ships', userTable: 'user_ships', pk: 'ship_id', userPk: 'ship_id', nameCol: 'ship_name' },
@@ -124,6 +178,37 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     loadLiveMatrixData();
   }, [activeTab, auditedUser]);
 
+  // Carga de activos correspondientes a la categoría seleccionada en el Blueprint
+  const fetchTargetAssets = async (typeId: string) => {
+    const config = getTargetConfig(typeId);
+    setLoadingTargetAssets(true);
+    try {
+      const { data } = await supabase.from(config.table).select('*');
+      setTargetCategoryAssets(data || []);
+    } catch (err) {
+      console.warn("Error consultando activos semilla para blueprint:", err);
+      setTargetCategoryAssets([]);
+    } finally {
+      setLoadingTargetAssets(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'BLUEPRINTS' && editingItem) {
+      const targetType = editingItem.target_asset_type || 'SHIPS';
+      fetchTargetAssets(targetType);
+    }
+  }, [activeTab, editingItem?.target_asset_type]);
+
+  const filteredTargetAssets = useMemo(() => {
+    if (!targetAssetSearch.trim()) return targetCategoryAssets;
+    const query = targetAssetSearch.toLowerCase().trim();
+    return targetCategoryAssets.filter(asset => {
+      const { id, name } = extractAssetDetails(asset);
+      return id.toLowerCase().includes(query) || name.toLowerCase().includes(query);
+    });
+  }, [targetCategoryAssets, targetAssetSearch]);
+
   const loadLiveMatrixData = async () => {
     try {
       setLoading(true);
@@ -161,7 +246,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       if (auditedUser) {
         const userId = auditedUser.id || auditedUser.user_id;
         
-        // 1. Obtener legacy_id desde user_profiles
         const { data: profile } = await supabase
           .from('user_profiles')
           .select('legacy_id')
@@ -169,7 +253,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
           .single();
 
         if (profile?.legacy_id) {
-          // 2. Consultar la tabla usando id_user = legacy_id
           const { data: invData } = await supabase
             .from(currentTabConfig.userTable)
             .select('*')
@@ -232,7 +315,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     const userId = auditedUser.id || auditedUser.user_id;
 
     try {
-      // 1. Obtener legacy_id
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('legacy_id')
@@ -291,6 +373,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     }
   };
 
+  // Subida de imagen infallible multi-columna (image_url, avatar_url, badge_url)
   const handleImageUploadToStorage = async (e: React.ChangeEvent<HTMLInputElement>, targetAssetId: string) => {
     const file = e.target.files?.[0];
     if (!file || !targetAssetId) return;
@@ -310,11 +393,35 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         .from('galaxy-assets')
         .getPublicUrl(customStoragePath);
 
-      if (publicUrlData?.publicUrl) {
-        await supabase
+      const pubUrl = publicUrlData?.publicUrl;
+
+      if (pubUrl) {
+        // Intenta actualizar todas las columnas posibles
+        const multiColumnPayload: any = {
+          image_url: pubUrl,
+          avatar_url: pubUrl,
+          badge_url: pubUrl
+        };
+
+        const { error: err1 } = await supabase
           .from(currentTabConfig.table)
-          .update({ avatar_url: publicUrlData.publicUrl, image_url: publicUrlData.publicUrl })
+          .update(multiColumnPayload)
           .eq(currentTabConfig.pk, targetAssetId);
+
+        if (err1) {
+          // Fallback a columnas individuales por si la tabla no tiene 'badge_url' o 'avatar_url'
+          await supabase.from(currentTabConfig.table).update({ image_url: pubUrl }).eq(currentTabConfig.pk, targetAssetId);
+          await supabase.from(currentTabConfig.table).update({ avatar_url: pubUrl }).eq(currentTabConfig.pk, targetAssetId);
+          await supabase.from(currentTabConfig.table).update({ badge_url: pubUrl }).eq(currentTabConfig.pk, targetAssetId);
+        }
+
+        setRawItems(prev => prev.map(item => {
+          const itemId = item[currentTabConfig.pk] || item.id;
+          if (itemId === targetAssetId) {
+            return { ...item, image_url: pubUrl, avatar_url: pubUrl, badge_url: pubUrl };
+          }
+          return item;
+        }));
       }
 
       notify('success', `[CONSOLA MULTIMEDIA]: Imagen subida y asociada a ${targetAssetId}.`);
@@ -332,6 +439,40 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     if (activeTab === 'SHIPS') {
       cloned.stack = 'Stackeable';
     }
+    
+    if (activeTab === 'BLUEPRINTS') {
+      let matsObj: Record<string, number> = {};
+      let currsObj: Record<string, number> = {};
+      try {
+        if (typeof item.required_materials === 'string') {
+          matsObj = JSON.parse(item.required_materials || '{}');
+        } else if (typeof item.required_materials === 'object' && item.required_materials) {
+          matsObj = item.required_materials;
+        }
+      } catch (e) { matsObj = {}; }
+
+      try {
+        if (typeof item.required_currencies === 'string') {
+          currsObj = JSON.parse(item.required_currencies || '{}');
+        } else if (typeof item.required_currencies === 'object' && item.required_currencies) {
+          currsObj = item.required_currencies;
+        }
+      } catch (e) { currsObj = {}; }
+
+      setBpMaterials(matsObj);
+      setBpCurrencies(currsObj);
+      setTargetAssetSearch('');
+    }
+
+    if (activeTab === 'BADGES') {
+      if (cloned.duration_days === undefined || cloned.duration_days === null) {
+        cloned.duration_days = Number(cloned.duration) || 30;
+      }
+      if (cloned.can_slots === undefined || cloned.can_slots === null) {
+        cloned.can_slots = 1;
+      }
+    }
+
     setEditingItem(cloned);
     setNewSkillInput('');
   };
@@ -345,6 +486,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       description: '',
       image_url: '',
       avatar_url: '',
+      badge_url: '',
       collection: 'NOVA',
       set_skills: '',
       duration: 'Permanent',
@@ -380,6 +522,20 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       defaultItem.production_max = 1.0;
     }
 
+    if (activeTab === 'BLUEPRINTS') {
+      defaultItem.target_asset_type = 'SHIPS';
+      defaultItem.target_asset_id = '';
+      defaultItem.default_max_uses = 1;
+      setBpMaterials({});
+      setBpCurrencies({});
+      setTargetAssetSearch('');
+    }
+
+    if (activeTab === 'BADGES') {
+      defaultItem.duration_days = 30;
+      defaultItem.can_slots = 1;
+    }
+
     setEditingItem(defaultItem);
   };
 
@@ -387,6 +543,58 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     setEditingItem((prev: any) => {
       if (!prev) return null;
       return { ...prev, [key]: value };
+    });
+  };
+
+  // Manejadores para filas de Materiales Requeridos
+  const handleAddMaterialRow = () => {
+    const unused = MATERIAL_OPTIONS.find(m => !(m.id in bpMaterials));
+    const keyToAdd = unused ? unused.id : 'metal';
+    setBpMaterials(prev => ({ ...prev, [keyToAdd]: 1000 }));
+  };
+
+  const handleUpdateMaterialRow = (oldKey: string, newKey: string, qty: number) => {
+    setBpMaterials(prev => {
+      const updated = { ...prev };
+      if (oldKey !== newKey) {
+        delete updated[oldKey];
+      }
+      updated[newKey] = qty;
+      return updated;
+    });
+  };
+
+  const handleRemoveMaterialRow = (keyToRemove: string) => {
+    setBpMaterials(prev => {
+      const updated = { ...prev };
+      delete updated[keyToRemove];
+      return updated;
+    });
+  };
+
+  // Manejadores para filas de Monedas Requeridas
+  const handleAddCurrencyRow = () => {
+    const unused = CURRENCY_OPTIONS.find(c => !(c.id in bpCurrencies));
+    const keyToAdd = unused ? unused.id : 'gd_coins';
+    setBpCurrencies(prev => ({ ...prev, [keyToAdd]: 50 }));
+  };
+
+  const handleUpdateCurrencyRow = (oldKey: string, newKey: string, qty: number) => {
+    setBpCurrencies(prev => {
+      const updated = { ...prev };
+      if (oldKey !== newKey) {
+        delete updated[oldKey];
+      }
+      updated[newKey] = qty;
+      return updated;
+    });
+  };
+
+  const handleRemoveCurrencyRow = (keyToRemove: string) => {
+    setBpCurrencies(prev => {
+      const updated = { ...prev };
+      delete updated[keyToRemove];
+      return updated;
     });
   };
 
@@ -422,10 +630,11 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     if (!editingItem) return;
 
     const pkCol = currentTabConfig.pk;
-    const currentId = editingItem[pkCol];
+    // Resolver ID dinámico (Soporte dual id / blueprint_id / ship_id / defense_id)
+    const currentId = editingItem[pkCol] || editingItem.id || editingItem.blueprint_id || editingItem.ship_id || editingItem.defense_id;
 
     if (editorMode === 'CREATE' && (!currentId || !currentId.trim())) {
-      return alert("El ID único es obligatorio.");
+      return alert("El ID único del activo es obligatorio.");
     }
 
     try {
@@ -433,29 +642,73 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       const table = currentTabConfig.table;
       const payload = { ...editingItem };
 
+      // Limpieza de campos volátiles o no soportados
       delete payload.skill_requirements;
       delete payload.effect;
 
+      if (activeTab === 'BLUEPRINTS') {
+        payload.required_materials = bpMaterials;
+        payload.required_currencies = bpCurrencies;
+        // Normalizar ID único en ambas columnas por compatibilidad
+        payload.id = currentId;
+        payload.blueprint_id = currentId;
+      }
+
+      // Limpiar propiedades nulas o no numéricas según corresponda
       Object.keys(payload).forEach(f => {
-        if (typeof payload[f] === 'string' && payload[f] !== '' && !isNaN(payload[f] as any) && f !== pkCol) {
+        if (payload[f] === null || payload[f] === undefined) {
+          delete payload[f];
+        } else if (
+          typeof payload[f] === 'string' && 
+          payload[f] !== '' && 
+          !isNaN(payload[f] as any) && 
+          f !== pkCol && 
+          f !== 'id' &&
+          f !== 'blueprint_id' &&
+          f !== 'target_asset_id' && 
+          f !== 'required_materials' && 
+          f !== 'required_currencies'
+        ) {
           payload[f] = Number(payload[f]);
         }
       });
 
+      // Asegurar el formato adecuado para columnas JSONB
+      if (Array.isArray(payload.skills)) {
+        payload.skills = payload.skills;
+      }
+
       if (editorMode === 'EDIT') {
-        delete payload[pkCol];
-        const { error } = await supabase.from(table).update(payload).eq(pkCol, currentId);
+        // Se ejecuta UPDATE validando modificación de fila real mediante consulta amplia
+        const { data: updatedData, error } = await supabase
+          .from(table)
+          .update(payload)
+          .or(`${pkCol}.eq.${currentId},id.eq.${currentId}`)
+          .select();
+
         if (error) throw error;
+
+        if (!updatedData || updatedData.length === 0) {
+          // Fallback a Upsert si el registro fue creado con una columna primaria alternativa
+          const { error: upsertErr } = await supabase
+            .from(table)
+            .upsert([payload]);
+
+          if (upsertErr) throw upsertErr;
+        }
       } else {
-        const { error } = await supabase.from(table).insert([payload]);
+        const { error } = await supabase
+          .from(table)
+          .insert([payload]);
+
         if (error) throw error;
       }
 
-      notify('success', "Balance central sincronizado con éxito.");
+      notify('success', `¡Guardado exitoso! Asset [${currentId}] actualizado en Postgres.`);
       setEditingItem(null);
       loadLiveMatrixData();
     } catch (err: any) {
-      alert(`FALLO TRANSACCIONAL: ${err.message}`);
+      alert(`FALLO TRANSACCIONAL EN POSTGRES: ${err.message}`);
     } finally {
       setSaveLoading(false);
     }
@@ -465,15 +718,11 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     const nameCol = currentTabConfig.nameCol;
     const pkCol = currentTabConfig.pk;
     return rawItems.filter(item => {
-      const matchSearch = String(item[nameCol] || '').toLowerCase().includes(searchFilter.toLowerCase()) || String(item[pkCol] || '').toLowerCase().includes(searchFilter.toLowerCase());
+      const matchSearch = String(item[nameCol] || item.name || '').toLowerCase().includes(searchFilter.toLowerCase()) || String(item[pkCol] || item.id || '').toLowerCase().includes(searchFilter.toLowerCase());
       const matchRarity = rarityFilter === 'Todas' || item.rarity === rarityFilter;
       return matchSearch && matchRarity;
     });
   }, [rawItems, searchFilter, rarityFilter, currentTabConfig]);
-
-  const formatPureDecimal = (val: number) => {
-    return val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  };
 
   const renderStatInput = (label: string, field: string) => {
     return (
@@ -644,9 +893,10 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {filteredItems.map((item) => {
-                const currentId = item[currentTabConfig.pk];
-                const currentName = item[currentTabConfig.nameCol] || 'Asset Sin Nombre';
+                const currentId = item[currentTabConfig.pk] || item.id || item.blueprint_id;
+                const currentName = item[currentTabConfig.nameCol] || item.name || 'Asset Sin Nombre';
                 const isSelected = selectedIds.includes(currentId);
+                const assetImg = item.image_url || item.avatar_url || item.badge_url || item.icon_url;
 
                 return (
                   <div key={currentId} className={`bg-black/40 border ${isSelected ? 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.15)]' : 'border-zinc-900'} p-4 rounded-xl flex flex-col justify-between space-y-4 hover:border-zinc-800 transition-all relative cursor-pointer`} onClick={() => setSelectedMatrixItem(item)}>
@@ -679,9 +929,9 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                             <RefreshCw size={22} className="animate-spin" />
                             <span className="text-[10px]">Subiendo...</span>
                           </div>
-                        ) : (item.image_url || item.avatar_url) ? (
+                        ) : assetImg ? (
                           <>
-                            <img src={item.image_url || item.avatar_url} alt={currentName} loading="lazy" className="w-full h-full object-contain scale-95 z-0" />
+                            <img src={assetImg} alt={currentName} loading="lazy" className="w-full h-full object-contain scale-95 z-0" />
                             <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
                               <UploadCloud size={24} className="text-white mb-1" />
                               <span className="text-white text-[10px] font-bold">Reemplazar Asset</span>
@@ -731,14 +981,14 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
               <span className="text-[10px] text-zinc-500 block border-b border-zinc-900 pb-1 uppercase">Módulos en Órbita ({playerInventory.length})</span>
 
               {filteredItems.map(seed => {
-                const currentId = seed[currentTabConfig.pk];
+                const currentId = seed[currentTabConfig.pk] || seed.id || seed.blueprint_id;
                 const userAsset = playerInventory.find(item => item.asset_id === currentId);
                 const currentLevel = userAsset ? userAsset.current_level : 0;
 
                 return (
                   <div key={currentId} className="p-2.5 bg-zinc-900/60 border border-zinc-850 rounded-md flex justify-between items-center gap-3 text-xs">
                     <div className="max-w-[60%]">
-                      <span className="font-bold text-zinc-200 block truncate">{seed[currentTabConfig.nameCol] || currentId}</span>
+                      <span className="font-bold text-zinc-200 block truncate">{seed[currentTabConfig.nameCol] || seed.name || currentId}</span>
                       <span className="text-[10px] font-mono text-zinc-500">Nivel: <strong className={currentLevel > 0 ? 'text-red-500' : 'text-zinc-600'}>{currentLevel}</strong></span>
                     </div>
 
@@ -764,7 +1014,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
               <div className="flex justify-between items-start border-b border-zinc-900 pb-3">
                 <div>
                   <span className="text-red-500 text-[10px] font-bold block uppercase tracking-widest">{editorMode === 'CREATE' ? '🚀 NUEVA INYECCIÓN SEMILLA' : '📡 CONSOLA DE BALANCE OPERATIVO'}</span>
-                  <h2 className="text-sm font-bold text-white mt-1 font-sans truncate">{editorMode === 'CREATE' ? `Alta en ${currentTabConfig.table}` : `Modificando: ${editingItem[currentTabConfig.nameCol] || editingItem[currentTabConfig.pk]}`}</h2>
+                  <h2 className="text-sm font-bold text-white mt-1 font-sans truncate">{editorMode === 'CREATE' ? `Alta en ${currentTabConfig.table}` : `Modificando: ${editingItem[currentTabConfig.nameCol] || editingItem[currentTabConfig.pk] || editingItem.id}`}</h2>
                 </div>
                 <button type="button" onClick={() => setEditingItem(null)} className="p-1 rounded bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"><X size={14} /></button>
               </div>
@@ -773,12 +1023,12 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                 <div className="grid grid-cols-2 gap-3 text-zinc-400">
                   <div className="col-span-2">
                     <label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">ID del Asset ({currentTabConfig.pk})</label>
-                    <input type="text" disabled={editorMode === 'EDIT'} value={editingItem[currentTabConfig.pk] || ''} onChange={(e) => updateFormKey(currentTabConfig.pk, e.target.value)} className="w-full bg-black border border-zinc-850 p-2 rounded text-white font-mono font-bold text-xs disabled:opacity-45 focus:outline-none focus:border-red-500 uppercase" />
+                    <input type="text" disabled={editorMode === 'EDIT'} value={editingItem[currentTabConfig.pk] || editingItem.id || ''} onChange={(e) => updateFormKey(currentTabConfig.pk, e.target.value)} className="w-full bg-black border border-zinc-850 p-2 rounded text-white font-mono font-bold text-xs disabled:opacity-45 focus:outline-none focus:border-red-500 uppercase" />
                   </div>
 
                   <div className="col-span-2">
                     <label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">Nombre del Componente ({currentTabConfig.nameCol})</label>
-                    <input type="text" value={editingItem[currentTabConfig.nameCol] || ''} onChange={(e) => updateFormKey(currentTabConfig.nameCol, e.target.value)} className="w-full bg-black border border-zinc-850 p-2 rounded text-white focus:outline-none focus:border-red-500 font-sans text-xs uppercase" />
+                    <input type="text" value={editingItem[currentTabConfig.nameCol] || editingItem.name || ''} onChange={(e) => updateFormKey(currentTabConfig.nameCol, e.target.value)} className="w-full bg-black border border-zinc-850 p-2 rounded text-white focus:outline-none focus:border-red-500 font-sans text-xs uppercase" />
                   </div>
 
                   <div>
@@ -805,35 +1055,244 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                     </>
                   )}
 
-                  <div className="col-span-2 border-t border-zinc-900 pt-3">
-                    <label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">Módulos de Habilidad (Skills)</label>
-                    <div className="flex gap-2">
-                      <select
-                        value={newSkillInput}
-                        onChange={(e) => setNewSkillInput(e.target.value)}
-                        className="flex-1 bg-black border border-zinc-850 p-2 rounded text-zinc-200 text-xs font-mono outline-none focus:border-red-500 cursor-pointer"
-                      >
-                        <option value="">-- Seleccionar Skill --</option>
-                        {masterSkills.map(sk => (
-                          <option key={sk.skill_code} value={sk.skill_code}>
-                            {sk.base_name} (T{sk.tier_level})
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={addSkillTag} className="bg-red-650 hover:bg-red-700 text-white font-bold px-3 py-2 rounded text-xs transition-all flex items-center gap-1 cursor-pointer"><PlusCircle size={14} /> EQUIPAR</button>
-                    </div>
-
-                    {Array.isArray(editingItem.skills) && editingItem.skills.length > 0 && (
-                      <div className="mt-2.5 space-y-1.5">
-                        {editingItem.skills.map((sk: any, idx: number) => (
-                          <div key={idx} className="flex justify-between items-center bg-black/40 border border-zinc-850 p-1.5 px-2 rounded-lg">
-                            <span className="text-[10px] font-mono text-cyan-300">{typeof sk === 'string' ? sk : sk?.skill_id}</span>
-                            <button type="button" onClick={() => removeSkillTag(idx)} className="text-red-500 hover:text-red-400 p-1 cursor-pointer"><Trash2 size={12} /></button>
-                          </div>
-                        ))}
+                  {activeTab === 'BADGES' && (
+                    <div className="col-span-2 grid grid-cols-2 gap-3 bg-zinc-950 p-3.5 rounded-xl border border-zinc-900">
+                      <span className="col-span-2 text-[10.5px] text-amber-400 font-bold uppercase block border-b border-zinc-900 pb-1 flex items-center gap-1.5">
+                        <Award size={14} /> PARÁMETROS OPERATIVOS DE LA INSIGNIA (BADGE)
+                      </span>
+                      <div>
+                        {renderStatInput('Duración en Días (duration_days)', 'duration_days')}
+                        <span className="text-[8.5px] text-zinc-500 mt-1 block">Días de validez tras equiparse</span>
                       </div>
-                    )}
-                  </div>
+                      <div>
+                        {renderStatInput('Slots Ocupados en C.A.N. (can_slots)', 'can_slots')}
+                        <span className="text-[8.5px] text-zinc-500 mt-1 block">Capacidad consumida en C.A.N.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeTab === 'BLUEPRINTS' && (
+                    <div className="col-span-2 space-y-4 bg-zinc-950 p-3.5 rounded-xl border border-zinc-900">
+                      <span className="text-[10.5px] text-cyan-400 font-bold uppercase block border-b border-zinc-900 pb-1">
+                        🗺️ CONFIGURACIÓN DEL BLUEPRINT (PLANOS DE CRAFTEO)
+                      </span>
+
+                      {/* TIPO Y SELECCIÓN DE ACTIVO RESULTANTE */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">
+                            Tipo de Activo Resultante
+                          </label>
+                          <select
+                            value={editingItem.target_asset_type || 'SHIPS'}
+                            onChange={(e) => {
+                              updateFormKey('target_asset_type', e.target.value);
+                              updateFormKey('target_asset_id', '');
+                              setTargetAssetSearch('');
+                            }}
+                            className="w-full bg-black border border-zinc-800 p-2 rounded text-white text-xs focus:outline-none focus:border-red-500 cursor-pointer font-mono uppercase"
+                          >
+                            {TARGET_ASSET_TYPES.map(cat => (
+                              <option key={`target-cat-${cat.id}`} value={cat.id}>{cat.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">
+                              Activo Resultante ({targetCategoryAssets.length} Disponibles)
+                            </label>
+                            {loadingTargetAssets && (
+                              <span className="text-[9px] text-cyan-400 animate-pulse font-mono">Cargando...</span>
+                            )}
+                          </div>
+
+                          {/* BUSCADOR RÁPIDO DENTRO DE LOS ACTIVOS DE LA CATEGORÍA */}
+                          <input
+                            type="text"
+                            placeholder="🔍 Filtrar activos por nombre o ID..."
+                            value={targetAssetSearch}
+                            onChange={(e) => setTargetAssetSearch(e.target.value)}
+                            className="w-full bg-zinc-900 border border-zinc-800 p-1.5 rounded text-zinc-200 font-mono text-[10px] focus:outline-none focus:border-red-500 mb-1.5"
+                          />
+
+                          <select
+                            value={editingItem.target_asset_id || ''}
+                            onChange={(e) => updateFormKey('target_asset_id', e.target.value)}
+                            className="w-full bg-black border border-zinc-800 p-2 rounded text-cyan-300 font-mono text-xs focus:outline-none focus:border-red-500 cursor-pointer uppercase"
+                          >
+                            <option value="">-- SELECCIONAR ACTIVO EXISTENTE --</option>
+                            {filteredTargetAssets.map(asset => {
+                              const { id: assetId, name: assetName } = extractAssetDetails(asset);
+                              return (
+                                <option key={`target-asset-${assetId}`} value={assetId}>
+                                  {assetName} [{assetId}]
+                                </option>
+                              );
+                            })}
+                          </select>
+
+                          <div className="mt-1.5">
+                            <label className="text-[8.5px] text-zinc-500 uppercase font-mono block mb-0.5">
+                              ID de Activo Vinculado (O Ingrese ID Manual):
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="ID de Activo Resultante..."
+                              value={editingItem.target_asset_id || ''}
+                              onChange={(e) => updateFormKey('target_asset_id', e.target.value)}
+                              className="w-full bg-black border border-zinc-900 p-1.5 rounded text-amber-300 font-mono text-[10px] focus:outline-none focus:border-red-500 uppercase font-bold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* USOS POR DEFECTO */}
+                      <div>
+                        {renderStatInput('Usos por Defecto (Max Uses)', 'default_max_uses')}
+                      </div>
+
+                      {/* MATERIALES REQUERIDOS */}
+                      <div className="space-y-2 border-t border-zinc-900 pt-3">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[9px] text-amber-400 font-bold uppercase tracking-wider block">
+                            🪨 Materiales Requeridos para Crafteo
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleAddMaterialRow}
+                            className="px-2 py-1 bg-amber-950/60 hover:bg-amber-900 border border-amber-800/60 text-amber-300 font-bold text-[9px] uppercase rounded flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus size={12} /> Añadir Material
+                          </button>
+                        </div>
+
+                        {Object.keys(bpMaterials).length === 0 ? (
+                          <p className="text-[10px] text-zinc-600 italic py-1">Sin costo de materiales registrado (Crafteo gratuito en recursos).</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {Object.entries(bpMaterials).map(([matKey, matQty]) => (
+                              <div key={`bp-mat-${matKey}`} className="flex items-center gap-2 bg-black/60 p-2 rounded-lg border border-zinc-850">
+                                <select
+                                  value={matKey}
+                                  onChange={(e) => handleUpdateMaterialRow(matKey, e.target.value, Number(matQty))}
+                                  className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-amber-300 font-mono text-xs outline-none cursor-pointer flex-1"
+                                >
+                                  {MATERIAL_OPTIONS.map(m => (
+                                    <option key={`mat-opt-${m.id}`} value={m.id}>{m.label}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={matQty}
+                                  onChange={(e) => handleUpdateMaterialRow(matKey, matKey, Number(e.target.value) || 0)}
+                                  className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-mono text-xs outline-none w-28 text-right font-bold"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveMaterialRow(matKey)}
+                                  className="p-1.5 text-zinc-500 hover:text-red-400 cursor-pointer"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* MONEDAS REQUERIDAS */}
+                      <div className="space-y-2 border-t border-zinc-900 pt-3">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider block">
+                            🪙 Monedas / Divisas Requeridas
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleAddCurrencyRow}
+                            className="px-2 py-1 bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-800/60 text-emerald-300 font-bold text-[9px] uppercase rounded flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus size={12} /> Añadir Moneda
+                          </button>
+                        </div>
+
+                        {Object.keys(bpCurrencies).length === 0 ? (
+                          <p className="text-[10px] text-zinc-600 italic py-1">Sin costo en monedas registrado.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {Object.entries(bpCurrencies).map(([currKey, currQty]) => (
+                              <div key={`bp-curr-${currKey}`} className="flex items-center gap-2 bg-black/60 p-2 rounded-lg border border-zinc-850">
+                                <select
+                                  value={currKey}
+                                  onChange={(e) => handleUpdateCurrencyRow(currKey, e.target.value, Number(currQty))}
+                                  className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-emerald-400 font-mono text-xs outline-none cursor-pointer flex-1"
+                                >
+                                  {CURRENCY_OPTIONS.map(c => (
+                                    <option key={`curr-opt-${c.id}`} value={c.id}>{c.label}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={currQty}
+                                  onChange={(e) => handleUpdateCurrencyRow(currKey, currKey, Number(e.target.value) || 0)}
+                                  className="bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-mono text-xs outline-none w-28 text-right font-bold"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveCurrencyRow(currKey)}
+                                  className="p-1.5 text-zinc-500 hover:text-red-400 cursor-pointer"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* MÓDULOS DE HABILIDAD (OCULTO EN BLUEPRINTS) */}
+                  {activeTab !== 'BLUEPRINTS' ? (
+                    <div className="col-span-2 border-t border-zinc-900 pt-3">
+                      <label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">Módulos de Habilidad (Skills)</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={newSkillInput}
+                          onChange={(e) => setNewSkillInput(e.target.value)}
+                          className="flex-1 bg-black border border-zinc-850 p-2 rounded text-zinc-200 text-xs font-mono outline-none focus:border-red-500 cursor-pointer"
+                        >
+                          <option value="">-- Seleccionar Skill --</option>
+                          {masterSkills.map(sk => (
+                            <option key={`sk-opt-${sk.skill_code}`} value={sk.skill_code}>
+                              {sk.base_name} (T{sk.tier_level})
+                            </option>
+                          ))}
+                        </select>
+                        <button type="button" onClick={addSkillTag} className="bg-red-650 hover:bg-red-700 text-white font-bold px-3 py-2 rounded text-xs transition-all flex items-center gap-1 cursor-pointer"><PlusCircle size={14} /> EQUIPAR</button>
+                      </div>
+
+                      {Array.isArray(editingItem.skills) && editingItem.skills.length > 0 && (
+                        <div className="mt-2.5 space-y-1.5">
+                          {editingItem.skills.map((sk: any, idx: number) => (
+                            <div key={`equipped-sk-${idx}`} className="flex justify-between items-center bg-black/40 border border-zinc-850 p-1.5 px-2 rounded-lg">
+                              <span className="text-[10px] font-mono text-cyan-300">{typeof sk === 'string' ? sk : sk?.skill_id}</span>
+                              <button type="button" onClick={() => removeSkillTag(idx)} className="text-red-500 hover:text-red-400 p-1 cursor-pointer"><Trash2 size={12} /></button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="col-span-2 border-t border-zinc-900 pt-3">
+                      <div className="p-2.5 bg-zinc-950/80 border border-zinc-900 rounded-lg text-zinc-500 text-[10px] font-mono italic">
+                        ℹ️ Los Blueprints son esquemas de ensamblaje estáticos. Su función única es fabricar el activo resultante indicado utilizando recursos y monedas.
+                      </div>
+                    </div>
+                  )}
 
                   <div className="col-span-2">
                     <label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">Descripción</label>
