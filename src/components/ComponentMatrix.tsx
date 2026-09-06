@@ -748,6 +748,53 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     }
   };
 
+  const handleDeleteAsset = async (asset: any) => {
+    const pkCol = currentTabConfig.pk;
+    const assetId = asset[pkCol] || asset.id;
+    const assetName = asset[currentTabConfig.nameCol] || asset.name || assetId;
+    
+    if (!window.confirm(`¿Estás seguro de eliminar el activo "${assetName}" (ID: ${assetId}) de la tabla ${currentTabConfig.table}?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from(currentTabConfig.table)
+        .delete()
+        .eq(pkCol, assetId);
+
+      if (error) {
+        alert('Error al eliminar: ' + error.message);
+      } else {
+        loadLiveMatrixData();
+      }
+    } catch (e: any) {
+      alert('Error al eliminar: ' + e.message);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`¿Deseas eliminar permanentemente los ${selectedIds.length} activos seleccionados de ${currentTabConfig.table}?`)) return;
+
+    try {
+      setLoading(true);
+      const { error } = await supabase
+        .from(currentTabConfig.table)
+        .delete()
+        .in(currentTabConfig.pk, selectedIds);
+
+      if (error) {
+        alert('Error en borrado masivo: ' + error.message);
+        setLoading(false);
+      } else {
+        notify('success', `Se eliminaron ${selectedIds.length} activos correctamente.`);
+        setSelectedIds([]);
+        loadLiveMatrixData();
+      }
+    } catch (e: any) {
+      alert('Error en borrado masivo: ' + e.message);
+      setLoading(false);
+    }
+  };
+
   const filteredItems = useMemo(() => {
     const nameCol = currentTabConfig.nameCol;
     const pkCol = currentTabConfig.pk;
@@ -911,6 +958,13 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
             >
               Aplicar a la Base Semilla ({selectedIds.length})
             </button>
+
+            <button
+              onClick={handleBulkDelete}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded shadow-lg flex items-center gap-2 text-xs uppercase cursor-pointer"
+            >
+              <Trash2 size={13} /> ELIMINAR SELECCIONADOS ({selectedIds.length})
+            </button>
           </div>
         </div>
       )}
@@ -990,9 +1044,16 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                       <p className="text-zinc-400 font-sans leading-relaxed text-[11px] line-clamp-2">{item.description || 'Sin manifiesto registrado.'}</p>
                     </div>
 
-                    <div className="pt-2 z-10 relative border-t border-zinc-900">
-                      <button onClick={(e) => { e.stopPropagation(); handleOpenEditor(item); }} className="w-full flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-red-650 border border-zinc-800 text-zinc-300 hover:text-white transition-all py-1.5 rounded-lg text-[11px] font-bold font-sans cursor-pointer">
+                    <div className="pt-2 z-10 relative border-t border-zinc-900 flex gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); handleOpenEditor(item); }} className="flex-1 flex items-center justify-center gap-1.5 bg-zinc-900 hover:bg-red-650 border border-zinc-800 text-zinc-300 hover:text-white transition-all py-1.5 rounded-lg text-[11px] font-bold font-sans cursor-pointer">
                         <Edit3 size={12} /> CONFIGURAR STATS
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteAsset(item); }}
+                        className="bg-red-950/40 hover:bg-red-800/60 text-red-400 border border-red-700/50 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Eliminar Asset"
+                      >
+                        <Trash2 size={12} />
                       </button>
                     </div>
                   </div>

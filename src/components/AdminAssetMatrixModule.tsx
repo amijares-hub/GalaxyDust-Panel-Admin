@@ -324,6 +324,34 @@ export const AdminAssetMatrixModule: React.FC = () => {
     }
   };
 
+  // 5. Eliminar Asset Semilla
+  const handleDeleteSeedAsset = async (asset: any) => {
+    const assetId = asset.ship_id || asset.id;
+    const name = asset.ship_name || asset.name || assetId;
+    const tableName = asset._sourceTable;
+    
+    if (!tableName || !assetId) {
+      alert("Error: No se pudo determinar la tabla origen o el ID del asset.");
+      return;
+    }
+
+    if (!window.confirm(`¿Estás seguro de eliminar "${name}" (${assetId}) de la tabla ${tableName}?`)) {
+      return;
+    }
+
+    try {
+      // Intentamos con la PK típica que podría ser id o ship_id
+      const primaryKeyColumn = asset.ship_id ? 'ship_id' : 'id';
+      const { error } = await supabase.from(tableName).delete().eq(primaryKeyColumn, assetId);
+      
+      if (error) throw error;
+      
+      fetchSeedAssets(activeCategory);
+    } catch (e: any) {
+      alert(`Error al eliminar: ${e.message}`);
+    }
+  };
+
   // Filtrado de Semillas
   const filteredSeedAssets = useMemo(() => {
     return seedAssets.filter(item => {
@@ -510,6 +538,14 @@ export const AdminAssetMatrixModule: React.FC = () => {
                         <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/80 text-cyan-300 border border-cyan-800 rounded text-[8px] font-black uppercase shadow-md">
                           {rarity}
                         </span>
+                        
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteSeedAsset(asset); }}
+                          title="Eliminar Asset"
+                          className="absolute top-2 left-2 p-1.5 bg-black/80 text-red-500 hover:text-red-400 hover:bg-red-950/80 border border-red-900/50 rounded shadow-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
                       </div>
 
                       <div>
