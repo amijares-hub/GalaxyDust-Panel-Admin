@@ -159,8 +159,42 @@ export default function AdminPhantomStationModule({
         setLoadingRotationLists(false);
       }
     };
+
+    const fetchStoreSettings = async () => {
+      try {
+        const { data, error } = await supabase.from('phantom_rotation_config').select('items').eq('id', 'global_store_settings').single();
+        if (!error && data && data.items && data.items.length > 0) {
+          const settings = data.items[0];
+          setPhantomStation(prev => ({
+            ...prev,
+            autoRefreshStockTimerSeconds: settings.autoRefreshStockTimerSeconds || 680,
+            refreshCostVoidCrystals: settings.refreshCostVoidCrystals || 10
+          }));
+        }
+      } catch (err) {
+        // Ignorar si no existe
+      }
+    };
+
     fetchRotationLists();
+    fetchStoreSettings();
   }, []);
+
+  const saveStoreSettingsToDB = async (timer: number, cost: number) => {
+    try {
+      const payload = {
+        id: 'global_store_settings',
+        name: 'Store Global Settings',
+        description: 'Configuraciones de la tienda (Timer y Peaje)',
+        is_active: false,
+        items: [{ autoRefreshStockTimerSeconds: timer, refreshCostVoidCrystals: cost }] as any[],
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('phantom_rotation_config').upsert(payload, { onConflict: 'id' });
+    } catch (err) {
+      console.error("Error al persistir configuraciones globales", err);
+    }
+  };
 
   const saveRotationListToDB = async (list: PhantomRotationList) => {
     try {
@@ -918,8 +952,9 @@ export default function AdminPhantomStationModule({
                   max="86400"
                   value={phantomStation.autoRefreshStockTimerSeconds}
                   onChange={e => {
-                    const val = Number(e.target.value) || 600;
+                    const val = Number(e.target.value);
                     saveToGlobalAndHUD({ ...phantomStation, autoRefreshStockTimerSeconds: val });
+                    saveStoreSettingsToDB(val, phantomStation.refreshCostVoidCrystals);
                   }}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold outline-none"
                 />
@@ -933,8 +968,9 @@ export default function AdminPhantomStationModule({
                   min="0"
                   value={phantomStation.refreshCostVoidCrystals}
                   onChange={e => {
-                    const val = Number(e.target.value) || 0;
+                    const val = Number(e.target.value);
                     saveToGlobalAndHUD({ ...phantomStation, refreshCostVoidCrystals: val });
+                    saveStoreSettingsToDB(phantomStation.autoRefreshStockTimerSeconds, val);
                   }}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-purple-400 font-bold outline-none"
                 />

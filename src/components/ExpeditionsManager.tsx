@@ -561,15 +561,14 @@ export const ExpeditionsManager: React.FC = () => {
       setEditEventsList(Array.isArray(data.assigned_events) ? data.assigned_events : []);
       
       if (selectedEntityType === 'GC') {
-        setEditSsDiscoveryRate(Number(data.ss_discovery_rate ?? 5));
-        setEditGcLootList(Array.isArray(data.loot_pool) ? data.loot_pool : []);
+        setEditSsDiscoveryRate(data.ss_discovery_rate ?? '');
         const reqs = data.entry_requirements || {};
-        setEditReqShip(reqs.require_ship ?? true);
-        setEditReqTool(reqs.require_tool ?? false);
-        setEditReqLicense(reqs.require_license ?? false);
-        setEditReqNonNFT(reqs.require_non_nft ?? false);
-        setEditReqPrevGc(reqs.prev_gc ?? '');
-        setEditReqRequiredPrevCount(reqs.required_prev_count ?? 0);
+        setEditReqShip(!!reqs.require_ship);
+        setEditReqTool(!!reqs.require_tool);
+        setEditReqLicense(!!reqs.require_license);
+        setEditReqNonNFT(!!reqs.require_non_nft);
+        setEditReqPrevGc(reqs.prev_gc || '');
+        setEditReqRequiredPrevCount(reqs.required_prev_count ?? '');
       }
     }
   };
@@ -709,7 +708,7 @@ export const ExpeditionsManager: React.FC = () => {
       id: cleanId,
       name: newGcName.trim(),
       base_duration_minutes: Number(newGcDuration || 60),
-      ss_discovery_rate: Number(newGcSsDiscoveryRate || 5),
+      ss_discovery_rate: newGcSsDiscoveryRate === '' ? null : Number(newGcSsDiscoveryRate),
       assigned_events: gcEventsList,
       loot_pool: newGcLootList,
       base_metal_min: Number(newGcMinMetal || 5000),
@@ -722,7 +721,7 @@ export const ExpeditionsManager: React.FC = () => {
         require_license: reqLicense,
         require_non_nft: reqNonNFT,
         prev_gc: reqPrevGc || null,
-        required_prev_count: Number(reqRequiredPrevCount || 0)
+        required_prev_count: reqRequiredPrevCount === '' ? null : Number(reqRequiredPrevCount)
       }
     };
 
@@ -1366,7 +1365,7 @@ export const ExpeditionsManager: React.FC = () => {
         payload = {
           name: editName,
           base_duration_minutes: Number(editDuration || 60),
-          ss_discovery_rate: Number(editSsDiscoveryRate || 5),
+          ss_discovery_rate: editSsDiscoveryRate === '' ? null : Number(editSsDiscoveryRate),
           base_metal_min: Number(editMinMetal || 5000),
           base_metal_max: Number(editMaxMetal || 25000),
           base_crystal_min: Number(editMinCrystal || 2000),
@@ -1379,7 +1378,7 @@ export const ExpeditionsManager: React.FC = () => {
             require_license: editReqLicense,
             require_non_nft: editReqNonNFT,
             prev_gc: editReqPrevGc || null,
-            required_prev_count: Number(editReqRequiredPrevCount || 0)
+            required_prev_count: editReqRequiredPrevCount === '' ? null : Number(editReqRequiredPrevCount)
           }
         };
       } else if (selectedEntityType === 'GALAXY') {
@@ -2132,7 +2131,7 @@ export const ExpeditionsManager: React.FC = () => {
 
                           <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-left bg-zinc-950 p-3 rounded-xl border border-zinc-850">
                             <div><span className="text-zinc-500 block text-[8px]">DURACIÓN VIAJE:</span><strong className="text-emerald-400">{dbClusters[carouselIndex]?.base_duration_minutes} min</strong></div>
-                            <div><span className="text-zinc-500 block text-[8px]">🎯 DESCUBRIMIENTO SS:</span><strong className="text-amber-400">{dbClusters[carouselIndex]?.ss_discovery_rate ?? 5}%</strong></div>
+                            <div><span className="text-zinc-500 block text-[8px]">🎯 DESCUBRIMIENTO SS:</span><strong className="text-amber-400">{dbClusters[carouselIndex]?.ss_discovery_rate !== null && dbClusters[carouselIndex]?.ss_discovery_rate !== undefined ? dbClusters[carouselIndex].ss_discovery_rate : 'N/A'}%</strong></div>
                             <div><span className="text-zinc-500 block text-[8px]">EVENTOS MAPEADOS:</span><strong className="text-purple-400">{dbClusters[carouselIndex]?.assigned_events?.length || 0} Eventos</strong></div>
                             <div><span className="text-zinc-500 block text-[8px]">RANGO METAL BASE:</span><strong className="text-white">{dbClusters[carouselIndex]?.base_metal_min || 5000} - {dbClusters[carouselIndex]?.base_metal_max || 25000}</strong></div>
                             <div><span className="text-zinc-500 block text-[8px]">RANGO CRISTAL BASE:</span><strong className="text-cyan-300">{dbClusters[carouselIndex]?.base_crystal_min || 2000} - {dbClusters[carouselIndex]?.base_crystal_max || 12000}</strong></div>

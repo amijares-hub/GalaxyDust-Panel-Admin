@@ -100,6 +100,10 @@ export default function AdminMarketplaceModule({
   const [pushedMessages, setPushedMessages] = useState<InboxMarketPushMessage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // CONFIGURACIÓN DE MERCADO
+  const [marketFeePercent, setMarketFeePercent] = useState<number>(5);
+  const [siphonThreshold, setSiphonThreshold] = useState<number>(50000);
+
   // PAGINACIÓN
   const [page, setPage] = useState<number>(0);
   const [txPage, setTxPage] = useState<number>(0);
@@ -190,9 +194,9 @@ export default function AdminMarketplaceModule({
             buyerId: tx.buyer_id,
             buyerName: buyerObj?.username || 'Comprador',
             grossPrice: Number(tx.gross_price) || 0,
-            feeApplied: Number(tx.fee_applied) || 0,
-            netToSeller: Number(tx.net_to_seller) || 0,
-            isSuspicious: !!tx.is_suspicious || Number(tx.gross_price) >= 50000,
+            feeApplied: Number(tx.gross_price) * (marketFeePercent / 100),
+            netToSeller: Number(tx.gross_price) - (Number(tx.gross_price) * (marketFeePercent / 100)),
+            isSuspicious: Number(tx.gross_price) >= siphonThreshold,
             purchasedAt: tx.purchased_at || new Date().toISOString()
           };
         });
@@ -512,7 +516,39 @@ export default function AdminMarketplaceModule({
 
         {/* VISTA 1: GRID EN VIVO DE MERCADO */}
         {viewTab === 'grid' && (
-          <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-5 space-y-4">
+          <div className="space-y-4 animate-fadeIn">
+            {/* Controles del Sistema de Mercado */}
+            <div className="bg-[#05070a] p-4 rounded-xl border border-cyan-950 flex flex-col sm:flex-row gap-4 items-center justify-between">
+              <div className="flex gap-4 w-full sm:w-auto">
+                <div>
+                  <label className="text-[10px] text-zinc-500 font-bold block mb-1">COMISIÓN MERCADO (%)</label>
+                  <input
+                    type="number"
+                    value={marketFeePercent}
+                    onChange={e => setMarketFeePercent(Number(e.target.value))}
+                    className="bg-black/50 border border-zinc-800 focus:border-cyan-500 text-cyan-400 font-bold text-sm px-3 py-1 rounded w-24"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-500 font-bold block mb-1">UMBRAL ANTI-SIFÓN (GD)</label>
+                  <input
+                    type="number"
+                    value={siphonThreshold}
+                    onChange={e => setSiphonThreshold(Number(e.target.value))}
+                    className="bg-black/50 border border-zinc-800 focus:border-red-500 text-red-400 font-bold text-sm px-3 py-1 rounded w-32"
+                  />
+                </div>
+              </div>
+              <button 
+                onClick={fetchRealMarketData}
+                className="px-4 py-2 bg-zinc-900 border border-zinc-700 text-zinc-300 font-bold text-xs rounded uppercase hover:bg-zinc-800 transition-colors cursor-pointer w-full sm:w-auto flex items-center gap-2 justify-center"
+              >
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                Aplicar Reglas
+              </button>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-900 rounded-lg p-5 space-y-4">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-zinc-900 pb-4 gap-2">
               <div className="flex items-center gap-2">
                 <Coins size={16} className="text-[#ff1e1e] shrink-0" />
@@ -750,6 +786,7 @@ export default function AdminMarketplaceModule({
               </button>
             </div>
           </div>
+        </div>
         )}
 
         {/* VISTA 2: HISTORIAL Y COMISIONES (5%) */}

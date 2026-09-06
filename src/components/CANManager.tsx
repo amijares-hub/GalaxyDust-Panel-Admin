@@ -191,9 +191,34 @@ export const CANManager: React.FC = () => {
     }
   };
 
-  const handleSaveFormulas = () => {
-    alert("⚙️ FÓRMULAS DE PRODUCCIÓN Y ACTIVE SKILLS GUARDADAS EN EL NÚCLEO C.A.N.");
+  const handleSaveFormulas = async () => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from('sasori_game_hud')
+        .upsert({ id: 'can_formulas', config: formulas });
+      if (error) throw error;
+      alert("⚙️ FÓRMULAS DE PRODUCCIÓN Y ACTIVE SKILLS GUARDADAS EN EL NÚCLEO C.A.N.");
+    } catch (err: any) {
+      alert(`Error guardando fórmulas: ${err.message}`);
+    }
   };
+
+  const loadFormulas = async () => {
+    if (!supabase) return;
+    try {
+      const { data } = await supabase.from('sasori_game_hud').select('config').eq('id', 'can_formulas').single();
+      if (data && data.config) {
+        setFormulas(data.config);
+      }
+    } catch (e) {
+      // Si no existe, usamos los valores por defecto
+    }
+  };
+
+  useEffect(() => {
+    loadFormulas();
+  }, [supabase]);
 
   if (loading && vaults.length === 0) {
     return (
