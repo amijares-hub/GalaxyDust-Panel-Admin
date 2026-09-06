@@ -1562,8 +1562,8 @@ export const ExpeditionsManager: React.FC = () => {
                       const progressPct = Math.min(100, Math.max(0, (elapsedMs / totalDurationMs) * 100));
 
                       return (
-                        <div key={exp.id || `exp-${idx}`} className="p-3.5 bg-zinc-950 border border-slate-800 hover:border-cyan-500/50 rounded-xl space-y-2.5 transition-colors">
-                          <div className="flex flex-col md:flex-row justify-between md:items-center gap-2">
+                        <div key={exp.id || `exp-${idx}`} className="p-3.5 bg-zinc-950 border border-slate-800 hover:border-cyan-500/50 rounded-xl space-y-3 transition-colors">
+                          <div className="flex flex-col md:flex-row justify-between md:items-start gap-2">
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-white text-xs uppercase">{exp.fleet_name || 'FLOTA INDEPENDIENTE'}</span>
@@ -1576,22 +1576,92 @@ export const ExpeditionsManager: React.FC = () => {
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 mt-2 md:mt-0">
                               <button onClick={() => handleForceCompleteExpedition(exp.id)} className="px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-300 font-bold text-[8.5px] uppercase rounded cursor-pointer">🚀 Completar</button>
                               <button onClick={() => handleForceRecallExpedition(exp.id)} className="px-2.5 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-700 text-amber-300 font-bold text-[8.5px] uppercase rounded cursor-pointer">🛑 Retornar</button>
                               <button onClick={() => handleForceDestroyExpedition(exp.id)} className="px-2.5 py-1 bg-red-950 hover:bg-red-900 border border-red-700 text-red-300 font-bold text-[8.5px] uppercase rounded cursor-pointer">💥 Destruir</button>
                             </div>
                           </div>
 
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-[8.5px] text-zinc-400 font-bold">
-                              <span>PROGRESO ({formatDuration(remainingMs)} RESTANTE)</span>
-                              <span className="text-cyan-400">{progressPct.toFixed(1)}%</span>
-                            </div>
-                            <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
-                              <div className="h-full bg-cyan-400 transition-all duration-300" style={{ width: `${progressPct}%` }} />
-                            </div>
-                          </div>
+                          {/* Snapshot Telemetry */}
+                          {(() => {
+                            let snap: any = {};
+                            try { snap = typeof exp.expedition_snapshot === 'string' ? JSON.parse(exp.expedition_snapshot) : (exp.expedition_snapshot || {}); } catch(e) {}
+                            
+                            const allowedRes: string[] = snap.allowed_resources || ['metal', 'crystal', 'deuterium'];
+                            const getRate = (res: string, multKey: string) => allowedRes.includes(res) ? ((snap[`base_${res}_rate`] || 10) * (snap[multKey] || 1)) : 0;
+                            
+                            const metalRate = getRate('metal', 'metal_multiplier');
+                            const crystalRate = getRate('crystal', 'crystal_multiplier');
+                            const deutRate = getRate('deuterium', 'deuterium_multiplier');
+                            
+                            const totalCargoCapacity = snap.total_cargo_capacity || 0;
+                            const totalGathered = (metalRate + crystalRate + deutRate) * (elapsedMs / 1000);
+                            const cargoPct = totalCargoCapacity > 0 ? Math.min(100, Math.max(0, (totalGathered / totalCargoCapacity) * 100)) : 0;
+                            const activeBuffs = snap.active_buffs || [];
+
+                            return (
+                              <div className="space-y-3 pt-2 border-t border-slate-850">
+                                {/* Resources */}
+                                <div className="grid grid-cols-3 gap-2">
+                                  {[
+                                    { res: 'metal', label: 'Metal', rate: metalRate, allowed: allowedRes.includes('metal'), color: 'text-zinc-300' },
+                                    { res: 'crystal', label: 'Crystal', rate: crystalRate, allowed: allowedRes.includes('crystal'), color: 'text-purple-400' },
+                                    { res: 'deuterium', label: 'Deuterium', rate: deutRate, allowed: allowedRes.includes('deuterium'), color: 'text-blue-400' }
+                                  ].map(r => (
+                                    <div key={r.res} className="bg-black/50 border border-slate-800 p-2 rounded flex flex-col items-center text-center">
+                                      <span className={`text-[9px] font-bold uppercase mb-1 ${r.allowed ? r.color : 'text-slate-600'}`}>{r.label}</span>
+                                      {r.allowed ? (
+                                        <span className="text-[10px] font-mono text-white">{(r.rate * (elapsedMs/1000)).toFixed(0)} <span className="text-[8px] text-slate-500">({r.rate.toFixed(1)}/s)</span></span>
+                                      ) : (
+                                        <span className="text-[7.5px] font-bold text-red-900 uppercase">DESACTIVADO POR SKILL / HERRAMIENTA (0)</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Cargo Capacity Progress */}
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-[8.5px] text-amber-400 font-bold">
+                                    <span>CARGA TOTAL ({totalGathered.toFixed(0)} / {totalCargoCapacity})</span>
+                                    <span>{cargoPct.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                                    <div className="h-full bg-amber-400 transition-all duration-300" style={{ width: `${cargoPct}%` }} />
+                                  </div>
+                                </div>
+
+                                {/* Flight Progress */}
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-[8.5px] text-zinc-400 font-bold">
+                                    <span>PROGRESO DE VUELO ({formatDuration(remainingMs)} RESTANTE)</span>
+                                    <span className="text-cyan-400">{progressPct.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">
+                                    <div className="h-full bg-cyan-400 transition-all duration-300" style={{ width: `${progressPct}%` }} />
+                                  </div>
+                                </div>
+
+                                {/* Active Buffs */}
+                                {activeBuffs.length > 0 && (
+                                  <details className="text-[9px] text-slate-400 border border-slate-800 rounded bg-slate-900/30">
+                                    <summary className="px-2 py-1.5 cursor-pointer font-bold uppercase hover:bg-slate-800/50 flex justify-between items-center outline-none">
+                                      <span>🔮 Buffs Activos en Vuelo ({activeBuffs.length})</span>
+                                      <span className="text-slate-500 text-[10px]">Ver Desglose</span>
+                                    </summary>
+                                    <div className="p-2 space-y-1.5 border-t border-slate-800 max-h-32 overflow-y-auto">
+                                      {activeBuffs.map((buff: any, bIdx: number) => (
+                                        <div key={bIdx} className="flex justify-between items-center bg-black/40 px-2 py-1 rounded">
+                                          <span className="font-bold text-cyan-300">{buff.name || buff.buff_name || 'Buff Desconocido'}</span>
+                                          <span className="text-slate-500 italic">Source: {buff.source || buff.type || 'N/A'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}

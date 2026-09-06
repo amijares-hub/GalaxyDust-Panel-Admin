@@ -51,11 +51,7 @@ interface SkillRecord {
   allowed_resources?: string[];
 }
 
-/** Invoca la Edge Function centralizada de administración */
-const invokeAdminAction = async (body: Record<string, unknown>) => {
-  const { error } = await supabase.functions.invoke('save-admin-item', { body });
-  if (error) throw error;
-};
+
 
 export const SkillManager: React.FC = () => {
   // Datos y estado de la vista
@@ -150,11 +146,19 @@ export const SkillManager: React.FC = () => {
     setIsSubmitting(true);
     setError(null);
     try {
-      await invokeAdminAction({
-        action: 'upsert',
-        tableName: 'matrix_skills_registry',
-        recordData: { ...formDataToSave, asset_tab: activeTab },
-      });
+      const { error: upsertError } = await supabase
+        .from('matrix_skills_registry')
+        .upsert([{
+          ...formDataToSave,
+          asset_tab: activeTab,
+          skill_code: formDataToSave.skill_code,
+          base_name: formDataToSave.base_name,
+          tier_level: Number(formDataToSave.tier_level || 1),
+          rarity: formDataToSave.rarity || 'Common'
+        }]);
+        
+      if (upsertError) throw upsertError;
+
       await fetchSkillsByTab(activeTab);
       setIsFormOpen(false);
       setSelectedSkill(null);
@@ -170,15 +174,23 @@ export const SkillManager: React.FC = () => {
     if (!window.confirm(`⚠️ ¿Eliminar "${skill.skill_code}" de forma permanente?`)) return;
     setError(null);
     try {
-      await invokeAdminAction({
-        action: 'delete',
-        tableName: 'matrix_skills_registry',
-        recordId: skill.skill_code,
-        primaryKeyCol: 'skill_code',
-      });
+      setLoading(true);
+      const { error: deleteError } = await supabase
+        .from('matrix_skills_registry')
+        .delete()
+        .eq('skill_code', skill.skill_code);
+
+      if (deleteError) throw deleteError;
+
+      if (selectedSkill?.skill_code === skill.skill_code) {
+        setSelectedSkill(null);
+        setIsFormOpen(false);
+      }
+
       await fetchSkillsByTab(activeTab);
     } catch (err: any) {
       setError(`[Error de Eliminación]: ${err.message}`);
+      setLoading(false); // Only set loading false here because fetchSkillsByTab will set it false on success.
     }
   };
 
@@ -190,14 +202,18 @@ export const SkillManager: React.FC = () => {
       skill_code: `${skill.skill_code}_copy`,
     };
     try {
-      await invokeAdminAction({
-        action: 'upsert',
-        tableName: 'matrix_skills_registry',
-        recordData: cloned,
-      });
+      setLoading(true);
+      const { error: cloneError } = await supabase
+        .from('matrix_skills_registry')
+        .upsert([cloned]);
+        
+      if (cloneError) throw cloneError;
+      
       await fetchSkillsByTab(activeTab);
     } catch (err: any) {
       setError(`[Error de Clonación]: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -207,15 +223,20 @@ export const SkillManager: React.FC = () => {
     if (!window.confirm(`🚨 ¿Eliminar ${selectedSkillCodes.length} skill(s) seleccionados? Esta acción no se puede deshacer.`)) return;
     setError(null);
     try {
-      await invokeAdminAction({
-        action: 'bulk_delete',
-        tableName: 'matrix_skills_registry',
-        recordIds: selectedSkillCodes,
-        primaryKeyCol: 'skill_code',
-      });
+      setLoading(true);
+      const { error: bulkDeleteError } = await supabase
+        .from('matrix_skills_registry')
+        .delete()
+        .in('skill_code', selectedSkillCodes);
+
+      if (bulkDeleteError) throw bulkDeleteError;
+
+      setSelectedSkillCodes([]);
       await fetchSkillsByTab(activeTab);
     } catch (err: any) {
       setError(`[Error Masivo]: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 

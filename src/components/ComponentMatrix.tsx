@@ -657,6 +657,18 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       const table = currentTabConfig.table;
       const payload = { ...editingItem };
 
+      // --- MEJORA 1: Auto-equipar skill pendiente en newSkillInput ---
+      if (newSkillInput.trim()) {
+        const currentSkills = Array.isArray(payload.skills) ? [...payload.skills] : [];
+        const MAX_SKILLS = 4;
+        if (currentSkills.length < MAX_SKILLS) {
+          const skillObj = skillCache.get(newSkillInput.trim());
+          currentSkills.push(skillObj ? skillObj.skill_code : newSkillInput.trim());
+          payload.skills = currentSkills;
+          setNewSkillInput('');
+        }
+      }
+
       // Limpieza de campos volátiles o no soportados
       delete payload.skill_requirements;
       delete payload.effect;
@@ -667,6 +679,13 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         // Normalizar ID único en ambas columnas por compatibilidad
         payload.id = currentId;
         payload.blueprint_id = currentId;
+      }
+
+      // --- MEJORA 2: Dual sync de clave primaria para TOOLS (y otros con pk != 'id') ---
+      // Asigna currentId a 'id' y al pkCol específico para evitar conflictos en seed_tools y similares
+      payload.id = currentId;
+      if (pkCol !== 'id') {
+        payload[pkCol] = currentId;
       }
 
       // Limpiar propiedades nulas o no numéricas según corresponda
@@ -694,7 +713,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       }
 
       if (editorMode === 'EDIT') {
-        // Se ejecuta UPDATE validando modificación de fila real mediante consulta amplia
+        // --- MEJORA 3: Validación de UPDATE estricta con fallback a upsert ---
         const { data: updatedData, error } = await supabase
           .from(table)
           .update(payload)
