@@ -38,16 +38,23 @@ interface DistributionTier {
   planetsPerSS: number;
 }
 
+const formatDuration = (ms: number): string => {
+  if (ms <= 0) return '00h 00m 00s';
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+};
+
 export const ExpeditionsManager: React.FC = () => {
   const supabase = getSupabaseClient();
   const [activeTab, setActiveTab] = useState<TabId>('exploration');
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Sub-Navegación Interna
   const [activeExploreTab, setActiveExploreTab] = useState<ExploreSubTab>('monitor');
   const [activeEventTab, setActiveEventTab] = useState<EventSubTab>('creator');
 
-  // Datos en vivo
   const [activeExpeditions, setActiveExpeditions] = useState<any[]>([]);
   const [historicalLogs, setHistoricalLogs] = useState<any[]>([]);
   const [detailedLosses, setDetailedLosses] = useState<DetailedLossLog[]>([]);
@@ -57,36 +64,31 @@ export const ExpeditionsManager: React.FC = () => {
   const [seedCatalog, setSeedCatalog] = useState<{ id: string; name: string; type: string }[]>([]);
   const [now, setNow] = useState<number>(Date.now());
 
-  // ─── 🌌 ESTADOS DEL GENERADOR DE GALAXIAS ───
   const [genConsoleMode, setGenConsoleMode] = useState<'creation' | 'edition' | 'autogen'>('creation');
   const [selectedEntityType, setSelectedEntityType] = useState<GenEntityType>('GC');
 
-  // Coordenadas y Catálogos para Jerarquías
   const [dbClusters, setDbClusters] = useState<any[]>([]);
   const [dbGalaxies, setDbGalaxies] = useState<any[]>([]);
   const [dbStarClusters, setDbStarClusters] = useState<any[]>([]);
   const [dbStarSystems, setDbStarSystems] = useState<any[]>([]);
   const [dbLocations, setLocations] = useState<any[]>([]);
 
-  // Selección de Padres para Creación/Edición
   const [parentGcId, setParentGcId] = useState<string>('');
   const [parentGalaxyId, setParentGalaxyId] = useState<string>('');
   const [parentScId, setParentScId] = useState<string>('');
   const [parentSystemId, setParentSystemId] = useState<string>('');
 
-  // Historial de Undo (Ctrl + Z)
   const [creationHistoryStack, setCreationHistoryStack] = useState<CreationHistoryAction[]>([]);
 
-  // Formulario Creación de GC
   const [newGcId, setNewGcId] = useState<string>('');
   const [newGcName, setNewGcName] = useState<string>('');
   const [newGcDuration, setNewGcDuration] = useState<number | ''>(60);
+  const [newGcSsDiscoveryRate, setNewGcSsDiscoveryRate] = useState<number | ''>(5);
   const [newGcMinMetal, setNewGcMinMetal] = useState<number | ''>(5000);
   const [newGcMaxMetal, setNewGcMaxMetal] = useState<number | ''>(25000);
   const [newGcMinCrystal, setNewGcMinCrystal] = useState<number | ''>(2000);
   const [newGcMaxCrystal, setNewGcMaxCrystal] = useState<number | ''>(12000);
 
-  // 🛡️ ESTADOS DE REQUERIMIENTOS DE ENTRADA AL GC (CREACIÓN)
   const [reqShip, setReqShip] = useState<boolean>(true);
   const [reqTool, setReqTool] = useState<boolean>(false);
   const [reqLicense, setReqLicense] = useState<boolean>(false);
@@ -99,7 +101,6 @@ export const ExpeditionsManager: React.FC = () => {
   const [bindEventName, setBindEventName] = useState<string>('');
   const [bindEventRate, setBindEventRate] = useState<number | ''>(5);
   
-  // Búsqueda y Selección de Assets
   const [bindLootId, setBindLootId] = useState<string>('');
   const [bindLootQty, setBindLootQty] = useState<number | ''>(100);
   const [lootSearchTermNew, setLootSearchTermNew] = useState<string>('');
@@ -108,7 +109,6 @@ export const ExpeditionsManager: React.FC = () => {
   const [lootSearchTermEdit, setLootSearchTermEdit] = useState<string>('');
   const [showLootSuggestionsEdit, setShowLootSuggestionsEdit] = useState<boolean>(false);
 
-  // Formulario Creación de Hijos Paso a Paso
   const [childCodeOrNumber, setChildCodeOrNumber] = useState<string>('1');
   const [bulkQty, setBulkQty] = useState<number | ''>(1);
   const [enableManualOverride, setEnableOverride] = useState<boolean>(false);
@@ -118,31 +118,27 @@ export const ExpeditionsManager: React.FC = () => {
   const [overrideMinCrystal, setOverrideMinCrystal] = useState<number | ''>(2000);
   const [overrideMaxCrystal, setOverrideMaxCrystal] = useState<number | ''>(12000);
 
-  // 📊 ESTADOS DE DISTRIBUCIÓN PORCENTUAL DE PLANETAS EN STAR CLUSTER
   const [planetGenMode, setPlanetGenMode] = useState<'single_ss' | 'distribution_sc'>('distribution_sc');
   const [distributionTiers, setDistributionTiers] = useState<DistributionTier[]>([
     { percentage: 60, planetsPerSS: 3 },
     { percentage: 40, planetsPerSS: 6 },
   ]);
 
-  // ESTADOS DEL AUTO-GENERADOR (CASCADA)
   const [autoQtyGal, setAutoQtyGal] = useState<number | ''>(2);
   const [autoQtySc, setAutoQtySc] = useState<number | ''>(5);
   const [autoQtySys, setAutoQtySys] = useState<number | ''>(10);
   const [autoQtyPlanet, setAutoQtyPlanet] = useState<number | ''>(5);
 
-  // Tipos de Planeta
   const [bodyType, setBodyType] = useState<'planeta' | 'estrella'>('planeta');
   const [planetSubtype, setPlanetType] = useState<string>('rocoso');
   const [starSubtype, setStarType] = useState<string>('blancas');
 
-  // Indice de Carrusel GC
   const [carouselIndex, setCarouselIndex] = useState<number>(0);
 
-  // Estados de Edición
   const [editSelectedEntityId, setEditSelectedEntityId] = useState<string>('');
   const [editName, setEditName] = useState<string>('');
   const [editDuration, setEditDuration] = useState<number | ''>(60);
+  const [editSsDiscoveryRate, setEditSsDiscoveryRate] = useState<number | ''>(5);
   const [editMinMetal, setEditMinMetal] = useState<number | ''>(5000);
   const [editMaxMetal, setEditMaxMetal] = useState<number | ''>(25000);
   const [editMinCrystal, setEditMinCrystal] = useState<number | ''>(2000);
@@ -150,7 +146,6 @@ export const ExpeditionsManager: React.FC = () => {
   const [editEventsList, setEditEventsList] = useState<{ name: string; spawn_rate: number }[]>([]);
   const [editGcLootList, setEditGcLootList] = useState<{ asset_id: string; asset_name: string; type: string; qty: number }[]>([]);
 
-  // 🛡️ ESTADOS DE REQUERIMIENTOS EN MODO EDICIÓN
   const [editReqShip, setEditReqShip] = useState<boolean>(true);
   const [editReqTool, setEditReqTool] = useState<boolean>(false);
   const [editReqLicense, setEditReqLicense] = useState<boolean>(false);
@@ -158,12 +153,10 @@ export const ExpeditionsManager: React.FC = () => {
   const [editReqPrevGc, setEditReqPrevGc] = useState<string>('');
   const [editReqRequiredPrevCount, setEditReqRequiredPrevCount] = useState<number | ''>(0);
 
-  // 🚀 ESTADOS DE SELECCIÓN MÚLTIPLE (BULK DELETE) EN MODO EDICIÓN
   const [isBulkModeEdit, setIsBulkModeEdit] = useState<boolean>(false);
   const [selectedBulkIdsEdit, setSelectedBulkIdsEdit] = useState<string[]>([]);
   const [searchTermEditGrid, setSearchTermEditGrid] = useState<string>('');
 
-  // Gestor de Eventos
   const [newEventName, setNewEventName] = useState<string>('');
   const [newEventDesc, setNewEventDesc] = useState<string>('');
   const [newEventEffect, setNewEventEffect] = useState<string>('negative');
@@ -173,10 +166,10 @@ export const ExpeditionsManager: React.FC = () => {
   const [skillImpactFormula, setSkillImpactFormula] = useState<string>('');
   const [spawnRegion, setSpawnRegion] = useState<string>('');
   const [specialCondition, setSpecialCondition] = useState<string>('');
-  const [rewardAssetType, setRewardAssetType] = useState<string>('gd_balance');
+  
+  const [rewardAssetType, setRewardAssetType] = useState<string>('dark_matter');
   const [rewardAssetQty, setRewardAssetQty] = useState<number | ''>(500);
 
-  // ─── FILTROS PREDICTORES ───
   const filteredSeedsNew = useMemo(() => {
     if (!lootSearchTermNew.trim()) return seedCatalog;
     const term = lootSearchTermNew.toLowerCase();
@@ -197,7 +190,6 @@ export const ExpeditionsManager: React.FC = () => {
     );
   }, [seedCatalog, lootSearchTermEdit]);
 
-  // ─── LISTA DINÁMICA DE ENTIDADES DE EDICIÓN PARA SELECCIÓN MÚLTIPLE ───
   const currentEditionEntitiesList = useMemo(() => {
     if (selectedEntityType === 'GC') {
       return dbClusters.map(c => ({ id: String(c.id), name: c.name || c.id }));
@@ -244,7 +236,6 @@ export const ExpeditionsManager: React.FC = () => {
     setSelectedBulkIdsEdit([]);
   }, [selectedEntityType, parentGcId, parentGalaxyId, parentScId, parentSystemId]);
 
-  // ─── DERIVACIONES SEGURAS DEL GALAXY CLUSTER PADRE ───
   const activeClusterData = useMemo(() => {
     return dbClusters.find(c => String(c.id) === String(parentGcId)) || dbClusters[0] || null;
   }, [dbClusters, parentGcId]);
@@ -259,13 +250,11 @@ export const ExpeditionsManager: React.FC = () => {
     }
   }, [activeClusterData]);
 
-  // Reloj en vivo
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Escucha de teclado para Ctrl + Z
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -279,7 +268,6 @@ export const ExpeditionsManager: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeTab, genConsoleMode, creationHistoryStack]);
 
-  // Auto-sugerencia del siguiente número correlativo al cambiar de tipo de entidad
   useEffect(() => {
     if (genConsoleMode !== 'creation') return;
 
@@ -302,7 +290,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   }, [selectedEntityType, genConsoleMode, parentGcId, parentGalaxyId, parentScId, parentSystemId, dbGalaxies, dbStarClusters, dbStarSystems, dbLocations]);
 
-  // Eventos de 24h
   const dailyEventsCount = useMemo(() => {
     const twentyFourHoursAgo = now - 24 * 3600 * 1000;
     return historicalLogs.filter(log => {
@@ -311,7 +298,6 @@ export const ExpeditionsManager: React.FC = () => {
     }).length;
   }, [historicalLogs, now]);
 
-  // DESCARGA TOTALMENTE REAL DESDE SUPABASE
   const fetchTelemetryAndCatalogs = async () => {
     if (!supabase) return;
     try {
@@ -326,7 +312,6 @@ export const ExpeditionsManager: React.FC = () => {
         });
       } catch (errProf) {}
 
-      // Expediciones
       let expData: any[] = [];
       try {
         const { data: expRes1, error: err1 } = await supabase.from('active_expeditions').select('*');
@@ -353,7 +338,6 @@ export const ExpeditionsManager: React.FC = () => {
 
       setActiveExpeditions(flyingFleets);
 
-      // Conteo histórico
       try {
         const { count: historyCount } = await supabase.from('expedition_history').select('*', { count: 'exact', head: true });
         const completedInActive = (expData || []).filter((e: any) => {
@@ -365,7 +349,6 @@ export const ExpeditionsManager: React.FC = () => {
         setTotalHistoricalExpeditionsCount((expData || []).length);
       }
 
-      // Histórico Logs
       let safeLogs: any[] = [];
       try {
         const { data: logsData } = await supabase.from('expedition_logs').select('*').order('created_at', { ascending: false });
@@ -373,7 +356,6 @@ export const ExpeditionsManager: React.FC = () => {
       } catch (lErr) {}
       setHistoricalLogs(safeLogs);
 
-      // Pérdidas y Enclaves
       const losses: DetailedLossLog[] = safeLogs.map((log: any, idx: number) => {
         const statusType: 'DESTRUIDO' | 'PERDIDO' = (log.damage_sustained > 5000 || String(log.title || '').includes('Destrucción')) ? 'DESTRUIDO' : 'PERDIDO';
         const cluster = log.galaxy_cluster || log.cluster_id || 'SECTOR';
@@ -397,7 +379,6 @@ export const ExpeditionsManager: React.FC = () => {
 
       setDetailedLosses(losses);
 
-      // Carga individual segura para descubrimientos, eventos y clusters
       try {
         const { data: discData } = await supabase.from('user_discovered_stars').select('*').order('discovered_at', { ascending: false });
         if (discData) setDiscoveries(discData);
@@ -424,7 +405,6 @@ export const ExpeditionsManager: React.FC = () => {
         setParentGcId(String(clustersData[0].id));
       }
 
-      // Carga del Catálogo Semilla
       const realCatalog: { id: string; name: string; type: string }[] = [];
       const loadSeedTable = async (tableName: string, typeName: string, nameCol: string = 'name', idCol: string = 'id') => {
         try {
@@ -468,7 +448,6 @@ export const ExpeditionsManager: React.FC = () => {
     };
   }, []);
 
-  // Cascadas Jerárquicas Creadas para Navegación en Tiempo Real
   useEffect(() => {
     if (!parentGcId || !supabase) { setDbGalaxies([]); return; }
     const loadGalaxies = async () => {
@@ -555,7 +534,6 @@ export const ExpeditionsManager: React.FC = () => {
     loadLocations();
   }, [parentSystemId, supabase]);
 
-  // CARGA AUTOMÁTICA DE DATOS AL MODO EDICIÓN
   const handleLoadEntityForEdition = (entityId: string) => {
     setEditSelectedEntityId(entityId);
     if (!entityId) return;
@@ -583,6 +561,7 @@ export const ExpeditionsManager: React.FC = () => {
       setEditEventsList(Array.isArray(data.assigned_events) ? data.assigned_events : []);
       
       if (selectedEntityType === 'GC') {
+        setEditSsDiscoveryRate(Number(data.ss_discovery_rate ?? 5));
         setEditGcLootList(Array.isArray(data.loot_pool) ? data.loot_pool : []);
         const reqs = data.entry_requirements || {};
         setEditReqShip(reqs.require_ship ?? true);
@@ -615,7 +594,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   }, [selectedEntityType, genConsoleMode, parentGcId, dbGalaxies, dbStarClusters, dbStarSystems, dbLocations]);
 
-  // Acciones en vivo
   const handleForceCompleteExpedition = async (expId: string) => {
     if (!supabase) return;
     try {
@@ -655,7 +633,6 @@ export const ExpeditionsManager: React.FC = () => {
     } catch (e: any) { alert(`Error en Insta-Recall: ${e.message}`); }
   };
 
-  // Creación procedural
   const handleAddEventToGc = () => {
     if (!bindEventName) return;
     if (gcEventsList.some(e => e.name === bindEventName)) return;
@@ -667,7 +644,6 @@ export const ExpeditionsManager: React.FC = () => {
     setGcEventsList(prev => prev.filter(e => e.name !== evtName));
   };
 
-  // AUTO-MATCHING LOOT ADDER
   const handleAddLootToGc = (mode: 'new' | 'edit') => {
     let targetId = bindLootId;
     const searchTerm = mode === 'new' ? lootSearchTermNew : lootSearchTermEdit;
@@ -717,7 +693,6 @@ export const ExpeditionsManager: React.FC = () => {
     else setEditGcLootList(prev => prev.filter(l => l.asset_id !== id));
   };
 
-  // 🛡️ Fundar Galaxy Cluster Real con Requerimientos de Entrada
   const handleCreateGCSubmit = async () => {
     if (!newGcId.trim() || !newGcName.trim()) {
       alert("Introduce el ID (2-4 letras) y el Nombre del Clúster.");
@@ -734,13 +709,13 @@ export const ExpeditionsManager: React.FC = () => {
       id: cleanId,
       name: newGcName.trim(),
       base_duration_minutes: Number(newGcDuration || 60),
+      ss_discovery_rate: Number(newGcSsDiscoveryRate || 5),
       assigned_events: gcEventsList,
       loot_pool: newGcLootList,
       base_metal_min: Number(newGcMinMetal || 5000),
       base_metal_max: Number(newGcMaxMetal || 25000),
       base_crystal_min: Number(newGcMinCrystal || 2000),
       base_crystal_max: Number(newGcMaxCrystal || 12000),
-      // 🛡️ REQUERIMIENTOS DINÁMICOS DE ENTRADA
       entry_requirements: {
         require_ship: reqShip,
         require_tool: reqTool,
@@ -772,7 +747,6 @@ export const ExpeditionsManager: React.FC = () => {
     fetchTelemetryAndCatalogs();
   };
 
-  // ─── MANEJADORES DE TIERS DE DISTRIBUCIÓN PORCENTUAL ───
   const handleTierChange = (index: number, field: keyof DistributionTier, value: number) => {
     setDistributionTiers(prev => {
       const copy = [...prev];
@@ -790,7 +764,6 @@ export const ExpeditionsManager: React.FC = () => {
     setDistributionTiers(prev => prev.filter((_, i) => i !== index));
   };
 
-  // ─── 🚀 FUNCIÓN DE GENERACIÓN PORCENTUAL DE PLANETAS HEREDANDO PARÁMETROS DEL GC ───
   const handleCreatePlanetsWithDistribution = async () => {
     if (!supabase) return;
     if (!parentScId) {
@@ -899,7 +872,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  // ─── CREACIÓN DE HIJOS PASO A PASO HEREDANDO PARÁMETROS DEL GC ───
   const handleCreateChildEntitySubmit = async () => {
     if (!supabase) return;
     try {
@@ -1121,7 +1093,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  // AUTO-GENERADOR INTELIGENTE (CASCADA CON BATCHING RESILIENTE)
   const handleAutoGenerateCascade = async () => {
     if (!supabase || !parentGcId) return alert("Selecciona un Galaxy Cluster padre para iniciar la cascada.");
     
@@ -1235,7 +1206,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  // DESHACER (UNDO / CTRL + Z)
   const handleUndoLastCreation = async () => {
     if (creationHistoryStack.length === 0) {
       alert("No hay acciones de creación recientes en la pila para deshacer.");
@@ -1272,7 +1242,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  // ELIMINACIÓN INDIVIDUAL
   const handleDeleteSingleEntity = async () => {
     if (!editSelectedEntityId) {
       alert("Selecciona primero un elemento específico para eliminar.");
@@ -1302,7 +1271,6 @@ export const ExpeditionsManager: React.FC = () => {
     }
   };
 
-  // ─── 💥 ELIMINACIÓN MASIVA (BULK DELETE) MEJORADA CON CHECKBOXES ───
   const handleDeleteBulkEntities = async () => {
     if (!supabase) return;
 
@@ -1398,6 +1366,7 @@ export const ExpeditionsManager: React.FC = () => {
         payload = {
           name: editName,
           base_duration_minutes: Number(editDuration || 60),
+          ss_discovery_rate: Number(editSsDiscoveryRate || 5),
           base_metal_min: Number(editMinMetal || 5000),
           base_metal_max: Number(editMaxMetal || 25000),
           base_crystal_min: Number(editMinCrystal || 2000),
@@ -1508,7 +1477,6 @@ export const ExpeditionsManager: React.FC = () => {
   return (
     <div className="p-6 bg-slate-900 min-h-screen text-slate-100 font-mono text-xs space-y-6 rounded-xl border border-slate-800 text-left select-none">
 
-      {/* HEADER CRONOMETRADO */}
       <div className="bg-slate-950/80 p-3.5 border border-slate-850 rounded-lg flex justify-between items-center">
         <div className="flex items-center gap-2 text-emerald-400 font-bold tracking-wider text-[11px]">
           <Clock size={13} className="animate-pulse" /> {new Date().toUTCString().split(' ')[4]} UTC
@@ -1519,7 +1487,6 @@ export const ExpeditionsManager: React.FC = () => {
         </div>
       </div>
 
-      {/* TABS NAVEGACIÓN */}
       <div className="flex flex-wrap border-b border-slate-800 gap-1">
         {[
           { id: 'exploration', label: '🚀 Exploración / Minería', icon: <Compass size={14} /> },
@@ -1530,7 +1497,6 @@ export const ExpeditionsManager: React.FC = () => {
         ))}
       </div>
 
-      {/* TAB 1: EXPLORACIÓN Y MINERÍA */}
       {activeTab === 'exploration' && (
         <div className="space-y-6 animate-fadeIn">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1719,7 +1685,6 @@ export const ExpeditionsManager: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: CATÁLOGO DE EVENTOS */}
       {activeTab === 'events' && (
         <div className="space-y-6 animate-fadeIn">
           <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-slate-850 select-none">
@@ -1764,11 +1729,8 @@ export const ExpeditionsManager: React.FC = () => {
         </div>
       )}
 
-      {/* ─── 🌌 TAB 3: GENERADOR DE GALAXIAS ─── */}
       {activeTab === 'generator' && (
         <div className="space-y-6 animate-fadeIn">
-          
-          {/* BARRA SUPERIOR DE MODO Y BOTÓN DE UNDO (CTRL + Z) */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-950 p-3.5 border border-slate-850 rounded-xl gap-3">
             <span className="text-cyan-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
               <MapIcon size={16} /> GENERADOR PROCEDURAL Y CONSOLA DE MAPEO ESTELAR
@@ -1815,7 +1777,6 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           </div>
 
-          {/* 1. SELECCIÓN DE TIPO DE ENTIDAD */}
           {(genConsoleMode === 'creation' || genConsoleMode === 'edition') && (
             <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4">
               <span className="text-zinc-400 font-bold text-[10.5px] uppercase block tracking-wider">
@@ -1879,10 +1840,8 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           )}
 
-          {/* 3. MODO AUTO-GENERADOR */}
           {genConsoleMode === 'autogen' && (
             <div className="bg-slate-950 p-6 border border-purple-500/40 rounded-xl space-y-6 shadow-xl animate-fadeIn">
-              
               <div className="space-y-2">
                 <span className="text-purple-400 font-bold text-sm uppercase tracking-wider flex items-center gap-2">
                   <Network size={18} /> GENERACIÓN PROCEDURAL EN CASCADA
@@ -1893,7 +1852,6 @@ export const ExpeditionsManager: React.FC = () => {
               </div>
 
               <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
-                
                 <div>
                   <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1.5">
                     1. Seleccionar Galaxy Cluster (Punto de Origen):
@@ -1951,18 +1909,13 @@ export const ExpeditionsManager: React.FC = () => {
                   Ejecutar Auto-Generación Procedural en Cascada
                 </button>
               </div>
-
             </div>
           )}
 
-          {/* MODO CREACIÓN MANUAL */}
           {genConsoleMode === 'creation' && (
             <div className="space-y-6">
-
               {selectedEntityType === 'GC' && (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-                  
-                  {/* VENTANA 1: FORMULARIO CREACIÓN DE GC */}
                   <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4 shadow-xl">
                     <span className="text-cyan-400 font-bold text-xs uppercase tracking-wider block border-b border-zinc-850 pb-2">
                       📝 VENTANA 1: FUNDAR NUEVO GALAXY CLUSTER (GC)
@@ -1981,10 +1934,14 @@ export const ExpeditionsManager: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850">
-                        <div className="col-span-2 text-emerald-400 font-bold text-[9.5px] uppercase">⏱️ Tiempo Base de Expedición</div>
-                        <div className="col-span-2">
+                        <div>
+                          <label className="text-emerald-400 font-bold text-[9.5px] uppercase block mb-1">⏱️ Tiempo Base (min)</label>
                           <input type="number" min={1} className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold text-xs" value={newGcDuration} onChange={e => setNewGcDuration(e.target.value === '' ? '' : Number(e.target.value))} />
-                          <span className="text-[8.5px] text-zinc-500 mt-1 block">Minutos requeridos para llegar a este Clúster</span>
+                        </div>
+
+                        <div>
+                          <label className="text-amber-400 font-bold text-[9.5px] uppercase block mb-1">🎯 Descubrimiento SS (%)</label>
+                          <input type="number" min={0} max={100} className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-amber-400 font-bold text-xs" value={newGcSsDiscoveryRate} onChange={e => setNewGcSsDiscoveryRate(e.target.value === '' ? '' : Number(e.target.value))} />
                         </div>
                       </div>
 
@@ -1998,7 +1955,6 @@ export const ExpeditionsManager: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 🛡️ REQUERIMIENTOS DINÁMICOS DE ENTRADA AL GC */}
                       <div className="bg-zinc-900/40 p-3.5 rounded-xl border border-cyan-900/60 space-y-3">
                         <span className="text-cyan-400 font-bold text-[9.5px] uppercase block flex items-center gap-1.5 border-b border-cyan-950 pb-1">
                           <ShieldCheck size={14} /> 🛡️ REQUERIMIENTOS Y REGLAS DE ENTRADA
@@ -2078,7 +2034,6 @@ export const ExpeditionsManager: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* BUSCADOR Y PREDICTOR DE LOOT OCULTO (CREACIÓN) */}
                       <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2 relative">
                         <span className="text-emerald-400 font-bold text-[9.5px] uppercase block flex items-center gap-1">
                           <PackageOpen size={12} /> 🎁 ASSETS OCULTOS / LOOT DEL CLÚSTER
@@ -2156,7 +2111,6 @@ export const ExpeditionsManager: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* VENTANA 2: CARRUSEL DE GCS CREADOS */}
                   <div className="bg-slate-950 p-5 border border-slate-850 rounded-xl space-y-4 shadow-xl">
                     <span className="text-purple-400 font-bold text-xs uppercase tracking-wider block border-b border-zinc-850 pb-2">
                       🎠 VENTANA 2: CARRUSEL DE GALAXY CLUSTERS EXISTENTES ({dbClusters.length})
@@ -2178,6 +2132,7 @@ export const ExpeditionsManager: React.FC = () => {
 
                           <div className="grid grid-cols-2 gap-3 text-[10px] font-mono text-left bg-zinc-950 p-3 rounded-xl border border-zinc-850">
                             <div><span className="text-zinc-500 block text-[8px]">DURACIÓN VIAJE:</span><strong className="text-emerald-400">{dbClusters[carouselIndex]?.base_duration_minutes} min</strong></div>
+                            <div><span className="text-zinc-500 block text-[8px]">🎯 DESCUBRIMIENTO SS:</span><strong className="text-amber-400">{dbClusters[carouselIndex]?.ss_discovery_rate ?? 5}%</strong></div>
                             <div><span className="text-zinc-500 block text-[8px]">EVENTOS MAPEADOS:</span><strong className="text-purple-400">{dbClusters[carouselIndex]?.assigned_events?.length || 0} Eventos</strong></div>
                             <div><span className="text-zinc-500 block text-[8px]">RANGO METAL BASE:</span><strong className="text-white">{dbClusters[carouselIndex]?.base_metal_min || 5000} - {dbClusters[carouselIndex]?.base_metal_max || 25000}</strong></div>
                             <div><span className="text-zinc-500 block text-[8px]">RANGO CRISTAL BASE:</span><strong className="text-cyan-300">{dbClusters[carouselIndex]?.base_crystal_min || 2000} - {dbClusters[carouselIndex]?.base_crystal_max || 12000}</strong></div>
@@ -2203,7 +2158,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </div>
                     )}
                   </div>
-
                 </div>
               )}
 
@@ -2213,7 +2167,6 @@ export const ExpeditionsManager: React.FC = () => {
                     🛠️ CREACIÓN PASO A PASO: [{selectedEntityType}]
                   </span>
 
-                  {/* SELECTOR MODO GENERACIÓN SI ES ENTIDAD PLANET */}
                   {selectedEntityType === 'PLANET' && (
                     <div className="flex gap-2 bg-[#121927] p-2 rounded-lg border border-[#232f48]">
                       <button
@@ -2289,7 +2242,6 @@ export const ExpeditionsManager: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* VISTA A: DISTRIBUCIÓN PORCENTUAL POR TIERS (PLANETAS) */}
                   {selectedEntityType === 'PLANET' && planetGenMode === 'distribution_sc' ? (
                     <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-4">
                       <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
@@ -2361,7 +2313,6 @@ export const ExpeditionsManager: React.FC = () => {
                         <Plus size={14} /> Añadir Tier de Distribución
                       </button>
 
-                      {/* CONFIGURACIÓN DE RECURSOS OVERRIDE PARA LA DISTRIBUCIÓN */}
                       <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2">
                         <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
                           <span className="text-amber-400 font-bold text-[10px] uppercase">
@@ -2404,7 +2355,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </button>
                     </div>
                   ) : (
-                    /* VISTA B: CREACIÓN MANUAL TRADICIONAL */
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
                         <span className="text-white font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
@@ -2481,7 +2431,6 @@ export const ExpeditionsManager: React.FC = () => {
             </div>
           )}
 
-          {/* 3. MODO EDICIÓN CON CASCADA COMPLETA DE SELECCIÓN */}
           {genConsoleMode === 'edition' && (
             <div className="bg-slate-950 p-6 border border-slate-850 rounded-xl space-y-6 shadow-xl animate-fadeIn">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-zinc-850 pb-3 gap-3">
@@ -2513,7 +2462,6 @@ export const ExpeditionsManager: React.FC = () => {
                 </div>
               </div>
 
-              {/* TOGGLE MODO SELECCIÓN MÚLTIPLE EN EDICIÓN */}
               <div className="flex items-center justify-between bg-[#121927] border border-[#232f48] p-3 rounded-lg">
                 <label className="flex items-center gap-3 text-xs font-bold text-gray-300 cursor-pointer select-none">
                   <input
@@ -2538,7 +2486,6 @@ export const ExpeditionsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* SELECCIÓN DE OBJETIVO CON CASCADA COMPLETA (GC -> GAL -> SC -> SS -> PLANET) */}
               <div className="bg-zinc-900/40 p-4 border border-zinc-850 rounded-xl space-y-3">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-zinc-800 pb-2">
                   <span className="text-white font-bold text-[10px] uppercase block">
@@ -2557,9 +2504,7 @@ export const ExpeditionsManager: React.FC = () => {
                 </div>
 
                 {!isBulkModeEdit ? (
-                  /* MODO SINGLE: CASCADA DE DESPLEGABLES SEGÚN EL TIPO SELECCIONADO */
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-[11px]">
-                    {/* Nivel 1: Galaxy Cluster (Siempre visible) */}
                     <div>
                       <label className="text-[9px] text-zinc-500 block mb-1">Galaxy Cluster (GC):</label>
                       <select 
@@ -2575,7 +2520,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </select>
                     </div>
 
-                    {/* Nivel 2: Galaxia (Visible para GALAXY, SC, SS, PLANET) */}
                     {(selectedEntityType === 'GALAXY' || selectedEntityType === 'SC' || selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
                       <div>
                         <label className="text-[9px] text-zinc-500 block mb-1">Galaxia Padre:</label>
@@ -2596,7 +2540,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Nivel 3: Star Cluster (Visible para SC, SS, PLANET) */}
                     {(selectedEntityType === 'SC' || selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
                       <div>
                         <label className="text-[9px] text-zinc-500 block mb-1">Star Cluster (SC) Padre:</label>
@@ -2617,7 +2560,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Nivel 4: Star System (Visible para SS, PLANET) */}
                     {(selectedEntityType === 'SS' || selectedEntityType === 'PLANET') && (
                       <div>
                         <label className="text-[9px] text-zinc-500 block mb-1">Star System (SS) Padre:</label>
@@ -2638,7 +2580,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Nivel 5: Planeta / Cuerpo (Visible sólo para PLANET) */}
                     {selectedEntityType === 'PLANET' && (
                       <div>
                         <label className="text-[9px] text-zinc-500 block mb-1">Seleccionar Planeta / Cuerpo:</label>
@@ -2654,7 +2595,6 @@ export const ExpeditionsManager: React.FC = () => {
                     )}
                   </div>
                 ) : (
-                  /* MODO BULK: GRILLA DE CHECKBOXES PARA SELECCIÓN MÚLTIPLE DE BORRADO */
                   <div className="max-h-64 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pr-1">
                     {filteredEditionEntities.length === 0 ? (
                       <div className="col-span-full text-center py-8 text-gray-500 text-xs">
@@ -2693,7 +2633,6 @@ export const ExpeditionsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* FORMULARIO DE EDICIÓN DEL ELEMENTO SELECCIONADO */}
               {!isBulkModeEdit && (
                 <div className="bg-zinc-900/40 p-5 border border-zinc-850 rounded-xl space-y-4">
                   <span className="text-amber-400 font-bold text-[10px] uppercase block border-b border-zinc-800 pb-1">
@@ -2711,6 +2650,21 @@ export const ExpeditionsManager: React.FC = () => {
                       <input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold" value={editDuration} onChange={e => setEditDuration(e.target.value === '' ? '' : Number(e.target.value))} />
                     </div>
 
+                    {selectedEntityType === 'GC' && (
+                      <div className="md:col-span-2 bg-amber-950/20 p-3 rounded-xl border border-amber-500/40">
+                        <label className="text-amber-400 font-bold text-[10px] uppercase block mb-1">🎯 Probabilidad Base de Descubrimiento de Sistemas Solares (SS %):</label>
+                        <input 
+                          type="number" 
+                          min={0} 
+                          max={100} 
+                          className="w-full bg-zinc-950 border border-amber-900/60 p-2 rounded text-amber-300 font-bold text-xs" 
+                          value={editSsDiscoveryRate} 
+                          onChange={e => setEditSsDiscoveryRate(e.target.value === '' ? '' : Number(e.target.value))} 
+                        />
+                        <span className="text-[8.5px] text-zinc-400 mt-1 block">Este porcentaje aplicará a todas las expediciones dirigidas a los SC de este Clúster.</span>
+                      </div>
+                    )}
+
                     <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-black/40 p-3 rounded-xl border border-zinc-850">
                       <div><span className="text-zinc-500 block text-[8px]">Min Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMinMetal} onChange={e => setEditMinMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                       <div><span className="text-zinc-500 block text-[8px]">Max Metal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold" value={editMaxMetal} onChange={e => setEditMaxMetal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
@@ -2718,7 +2672,6 @@ export const ExpeditionsManager: React.FC = () => {
                       <div><span className="text-zinc-500 block text-[8px]">Max Cristal Base:</span><input type="number" className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold" value={editMaxCrystal} onChange={e => setEditMaxCrystal(e.target.value === '' ? '' : Number(e.target.value))} /></div>
                     </div>
 
-                    {/* 🛡️ REQUERIMIENTOS DINÁMICOS DE ENTRADA AL GC (MODO EDICIÓN) */}
                     {selectedEntityType === 'GC' && (
                       <div className="md:col-span-2 bg-zinc-900/40 p-3.5 rounded-xl border border-cyan-900/60 space-y-3">
                         <span className="text-cyan-400 font-bold text-[9.5px] uppercase block flex items-center gap-1.5 border-b border-cyan-950 pb-1">
@@ -2776,7 +2729,6 @@ export const ExpeditionsManager: React.FC = () => {
                       </div>
                     )}
 
-                    {/* EDICIÓN DE LOOT POOL CON BUSCADOR PREDICTOR */}
                     {selectedEntityType === 'GC' && (
                       <div className="md:col-span-2 bg-zinc-900/40 p-3 rounded-xl border border-zinc-850 space-y-2 mt-2">
                         <span className="text-emerald-400 font-bold text-[9.5px] uppercase block flex items-center gap-1">

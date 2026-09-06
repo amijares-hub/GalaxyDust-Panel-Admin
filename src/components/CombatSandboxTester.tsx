@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component } from 'react';
 import { AlertTriangle, Plus, Shield, Swords, Activity, ArrowRight, Trash2 } from 'lucide-react';
 
 // ==========================================
@@ -142,13 +142,13 @@ const StatPreviewer: React.FC<StatPreviewerProps> = ({ label, baseValue, modifie
 // 4. ERROR BOUNDARY
 // ==========================================
 
-class SandboxErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, errorMsg: string }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, errorMsg: '' };
-  }
+interface SandboxErrorState { hasError: boolean; errorMsg: string; }
+interface SandboxErrorProps { children: React.ReactNode; }
 
-  static getDerivedStateFromError(error: Error) {
+class SandboxErrorBoundary extends Component<SandboxErrorProps, SandboxErrorState> {
+  state: SandboxErrorState = { hasError: false, errorMsg: '' };
+
+  static getDerivedStateFromError(error: Error): SandboxErrorState {
     return { hasError: true, errorMsg: error.message };
   }
 
@@ -167,7 +167,7 @@ class SandboxErrorBoundary extends React.Component<{ children: React.ReactNode }
             <p className="text-red-400/50 text-xs mt-2 font-mono bg-black/30 p-2 rounded">{this.state.errorMsg}</p>
           </div>
           <button
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => this.setState({ hasError: false, errorMsg: '' })}
             className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg transition-colors text-sm"
           >
             Reiniciar Sandbox
@@ -229,7 +229,6 @@ export const CombatSandboxOverlayInner: React.FC<CombatSandboxOverlayProps> = ({
   const addTestSkill = () => {
     setActiveSkills([...activeSkills, {
       skill_code: Math.random().toString(),
-      name: `Simulación Skill ${activeSkills.length + 1}`,
       base_name: `Simulación Skill ${activeSkills.length + 1}`,
       stat_affected: testStat,
       math_operator: 'add',
@@ -285,7 +284,7 @@ export const CombatSandboxOverlayInner: React.FC<CombatSandboxOverlayProps> = ({
               {activeSkills.map(skill => (
                 <div key={skill.skill_code} className="flex items-center justify-between bg-black/20 p-2 rounded border border-gray-700/50">
                   <div>
-                    <p className="text-xs font-bold text-gray-200">{skill.name}</p>
+                    <p className="text-xs font-bold text-gray-200">{skill.base_name}</p>
                     <p className="text-[10px] text-emerald-400 font-mono">
                       {skill.stat_affected} • +{skill.modifier_value * 100}%
                     </p>

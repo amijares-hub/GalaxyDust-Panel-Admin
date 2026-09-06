@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Tauri / Android compiled artifacts
+src-tauri/gen/android/

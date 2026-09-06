@@ -126,7 +126,7 @@ export interface SupabaseConfig {
   isConnected: boolean;
 }
 
-export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'can' | 'ships' | 'matrix' | 'skills' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer';
+export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'hud' | 'can' | 'ships' | 'matrix' | 'skills' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer' | 'social_crm' | 'rankings';
 
 export type SubFunctionType = 
   | 'branding_global' | 'branding_landing' | 'branding_auth' | 'branding_lobby' | 'branding_hud'
@@ -143,8 +143,10 @@ export type SubFunctionType =
   | 'phantom_store' | 'phantom_refresh' | 'phantom_cleansing' | 'phantom_events' | 'phantom_audit'
   | 'promo_main'
   | 'alliance_main'
-  | 'security_main' | 'security_blackbox'
-  | 'sanitizer_main';
+  | 'security_main' | 'security_blackbox' | 'anticheat'
+  | 'sanitizer_main'
+  | 'hud_main' | 'rules_conditions' | 'social_main' | 'rankings_main'
+  | 'expediciones_main' | 'store_manager';
 
 export interface NavigationState {
   activeMain: MainFunction;

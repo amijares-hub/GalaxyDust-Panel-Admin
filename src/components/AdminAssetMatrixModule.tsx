@@ -232,16 +232,14 @@ export const AdminAssetMatrixModule: React.FC = () => {
         .eq('id', userId)
         .single();
 
-      if (!profile?.legacy_id) {
-        setPilotUserAssets([]);
-        return;
-      }
+      const queryColumn = profile?.legacy_id ? 'id_user' : 'user_id';
+      const queryValue = profile?.legacy_id || userId;
 
-      // 2. Consultar la tabla usando id_user = legacy_id
+      // 2. Consultar la tabla usando el fallback dinámico
       const { data } = await supabase
         .from(userTable)
         .select('*')
-        .eq('id_user', profile.legacy_id);
+        .eq(queryColumn, queryValue);
         
       setPilotUserAssets(data || []);
     } catch (e) {
@@ -273,17 +271,17 @@ export const AdminAssetMatrixModule: React.FC = () => {
         .eq('id', syncedPilot.id)
         .single();
 
-      if (!profile?.legacy_id) {
-        alert("El piloto no posee un ID numérico válido (legacy_id).");
-        return;
-      }
-
       const payload: any = {
-        id_user: profile.legacy_id,
         quantity: injectQty,
         current_level: injectLevel,
         created_at: new Date().toISOString()
       };
+
+      if (profile?.legacy_id) {
+        payload.id_user = profile.legacy_id;
+      } else {
+        payload.user_id = syncedPilot.id;
+      }
 
       if (activeCategory === 'Naves') payload.ship_id = assetId;
       else if (activeCategory === 'Estructuras') payload.structure_id = assetId;

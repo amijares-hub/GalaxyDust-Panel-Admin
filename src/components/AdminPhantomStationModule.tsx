@@ -134,51 +134,60 @@ export default function AdminPhantomStationModule({
     };
   });
 
-  // 📦 3 COLECCIONES DE PRUEBA CON ASSETS REALES DE LA BASE DE DATOS
-  const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>(() => {
-    const saved = localStorage.getItem('phantom_rotation_lists');
-    if (saved) {
-      try { 
-        const parsed = JSON.parse(saved); 
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) { console.error(e); }
-    }
-    return [
-      {
-        id: 'list-1',
-        name: 'Colección 1: Armada Estelar (Naves)',
-        description: 'Cazas y naves capitanas de la flota principal.',
-        isActive: true,
-        items: [
-          { id: 'ship-1', name: 'Sasori Apex Devastator Mk1', category: 'Naves', rarity: 'Legendary', priceValue: 45000, currencyType: 'GD Coins', storageLeft: 5, discountPercent: 0 },
-          { id: 'ship-2', name: 'Imperator Sovereign Prime', category: 'Naves', rarity: 'Legendary', priceValue: 38000, currencyType: 'Quantum Tokens', storageLeft: 3, discountPercent: 5 },
-          { id: 'ship-3', name: 'Phantasm Void Stalker Mk5', category: 'Naves', rarity: 'Phantom', priceValue: 25000, currencyType: 'Phantom Coins', storageLeft: 8, discountPercent: 10 }
-        ]
-      },
-      {
-        id: 'list-2',
-        name: 'Colección 2: Extracción & Minería',
-        description: 'Estructuras mineras, recolectores y herramientas de sector.',
-        isActive: false,
-        items: [
-          { id: 'struct-1', name: 'Mina de Orichaltron Hassac-X', category: 'Estructuras', rarity: 'Epic', priceValue: 18000, currencyType: 'GD Coins', storageLeft: 10, discountPercent: 15 },
-          { id: 'ship-min-1', name: 'Helix Mining Harvester', category: 'Naves', rarity: 'Rare', priceValue: 8500, currencyType: 'Phantom Coins', storageLeft: 15, discountPercent: 0 },
-          { id: 'tool-1', name: 'Inara Metal Tool', category: 'Herramientas', rarity: 'Rare', priceValue: 3200, currencyType: 'Phantom Coins', storageLeft: 20, discountPercent: 5 }
-        ]
-      },
-      {
-        id: 'list-3',
-        name: 'Colección 3: Tecnología & Hiperespacio',
-        description: 'Laboratorios cuánticos, propulsores e inyectores de tiempo.',
-        isActive: false,
-        items: [
-          { id: 'struct-2', name: 'Laboratorio Cuántico Dramco', category: 'Estructuras', rarity: 'Legendary', priceValue: 32000, currencyType: 'GD Coins', storageLeft: 4, discountPercent: 10 },
-          { id: 'tech-1', name: 'Propulsor de Hiperespacio Cuántico', category: 'Tecnologías', rarity: 'Legendary', priceValue: 12000, currencyType: 'Quantum Tokens', storageLeft: 6, discountPercent: 0 },
-          { id: 'item-boost', name: 'Chronos Time-Booster T3', category: 'Consumibles', rarity: 'Epic', priceValue: 2400, currencyType: 'GD Coins', storageLeft: 12, discountPercent: 20 }
-        ]
+  // 📦 COLECCIONES DESDE SUPABASE phantom_rotation_config
+  const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>([]);
+  const [loadingRotationLists, setLoadingRotationLists] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchRotationLists = async () => {
+      setLoadingRotationLists(true);
+      try {
+        const { data, error } = await supabase.from('phantom_rotation_config').select('*').order('created_at', { ascending: true });
+        if (!error && data) {
+          const parsed = data.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            description: row.description || '',
+            isActive: row.is_active || false,
+            items: row.items || []
+          }));
+          setRotationLists(parsed);
+        }
+      } catch (err) {
+        console.error("Error al cargar rotation lists", err);
+      } finally {
+        setLoadingRotationLists(false);
       }
-    ];
-  });
+    };
+    fetchRotationLists();
+  }, []);
+
+  const saveRotationListToDB = async (list: PhantomRotationList) => {
+    try {
+      const payload = {
+        id: list.id,
+        name: list.name,
+        description: list.description,
+        is_active: list.isActive,
+        items: list.items,
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('phantom_rotation_config').upsert(payload, { onConflict: 'id' });
+    } catch (err) {
+      console.error("Error al persistir lista de rotación", err);
+    }
+  };
+
+  const deleteRotationListFromDB = async (listId: string) => {
+    try {
+      await supabase.from('phantom_rotation_config').delete().eq('id', listId);
+    } catch (err) {
+      console.error("Error eliminando lista", err);
+    }
+  };
+
+  /* Datos de prueba locales eliminados */
+
 
   const [activeListId, setActiveListId] = useState<string>(() => {
     const active = rotationLists.find(l => l.isActive);
@@ -293,10 +302,6 @@ export default function AdminPhantomStationModule({
     }
   }, [gameHud]);
 
-  // Guardado de Listas en localStorage
-  useEffect(() => {
-    localStorage.setItem('phantom_rotation_lists', JSON.stringify(rotationLists));
-  }, [rotationLists]);
 
   const saveToGlobalAndHUD = (updatedPhantom: typeof phantomStation) => {
     setPhantomStation(updatedPhantom);
@@ -324,6 +329,7 @@ export default function AdminPhantomStationModule({
     };
 
     setRotationLists(prev => [...prev, newList]);
+    saveRotationListToDB(newList);
     if (rotationLists.length === 0) setActiveListId(newList.id);
 
     setNewListName('');
@@ -351,15 +357,20 @@ export default function AdminPhantomStationModule({
       discountPercent: Number(customDiscount) || 0
     };
 
-    setRotationLists(prev => prev.map(list => {
-      if (list.id === destId) {
-        return {
-          ...list,
-          items: [...list.items, newItem]
-        };
-      }
-      return list;
-    }));
+    setRotationLists(prev => {
+      const newList = prev.map(list => {
+        if (list.id === destId) {
+          const updated = {
+            ...list,
+            items: [...list.items, newItem]
+          };
+          saveRotationListToDB(updated);
+          return updated;
+        }
+        return list;
+      });
+      return newList;
+    });
 
     if (destId === activeListId) {
       applyListToStationOffers(destId);
@@ -372,15 +383,20 @@ export default function AdminPhantomStationModule({
 
   // ── 3. ELIMINAR ÍTEM DE UNA COLECCIÓN ──
   const handleDeleteItemFromList = (listId: string, itemId: string) => {
-    setRotationLists(prev => prev.map(list => {
-      if (list.id === listId) {
-        return {
-          ...list,
-          items: list.items.filter(i => i.id !== itemId)
-        };
-      }
-      return list;
-    }));
+    setRotationLists(prev => {
+      const newList = prev.map(list => {
+        if (list.id === listId) {
+          const updated = {
+            ...list,
+            items: list.items.filter(i => i.id !== itemId)
+          };
+          saveRotationListToDB(updated);
+          return updated;
+        }
+        return list;
+      });
+      return newList;
+    });
 
     if (listId === activeListId) {
       applyListToStationOffers(listId);
@@ -395,6 +411,7 @@ export default function AdminPhantomStationModule({
     }
 
     setRotationLists(prev => prev.filter(l => l.id !== listId));
+    deleteRotationListFromDB(listId);
     if (activeListId === listId) {
       const remaining = rotationLists.filter(l => l.id !== listId);
       if (remaining.length > 0) {
@@ -406,10 +423,17 @@ export default function AdminPhantomStationModule({
   // ── 5. ACTIVAR UNA LISTA ESPECÍFICA EN LA PHANTOM STATION ──
   const handleSetActiveRotationList = (listId: string) => {
     setActiveListId(listId);
-    setRotationLists(prev => prev.map(l => ({
-      ...l,
-      isActive: l.id === listId
-    })));
+    setRotationLists(prev => {
+      const newList = prev.map(l => {
+        const updated = {
+          ...l,
+          isActive: l.id === listId
+        };
+        saveRotationListToDB(updated);
+        return updated;
+      });
+      return newList;
+    });
 
     applyListToStationOffers(listId);
     alertTrigger('success', `🔄 Colección activa cambiada a [${rotationLists.find(l => l.id === listId)?.name}].`);
@@ -737,8 +761,9 @@ export default function AdminPhantomStationModule({
 
             {/* LISTADO Y ADMINISTRADOR DE COLECCIONES EXISTENTES */}
             <div className="space-y-4 pt-2">
-              <span className="text-[10px] font-mono text-zinc-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-2">
-                📂 DIRECTORIO DE COLECCIONES DE ROTACIÓN DISPONIBLES ({rotationLists.length})
+              <span className="text-[10px] font-mono text-zinc-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-2 flex justify-between items-center">
+                <span>📂 DIRECTORIO DE COLECCIONES DE ROTACIÓN DISPONIBLES ({rotationLists.length})</span>
+                {loadingRotationLists && <span className="text-cyan-400 text-[8px] animate-pulse">Sincronizando con BD...</span>}
               </span>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

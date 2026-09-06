@@ -12,7 +12,6 @@
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,
-    "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
@@ -21,10 +20,14 @@
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true
   },
   "exclude": [
     "node_modules",
-    "supabase"
+    "supabase",
+    "src-tauri/target",
+    "src-tauri/gen"
   ]
 }

@@ -98,42 +98,23 @@ export const AdminPromoModule: React.FC<AdminPromoModuleProps> = ({ setIsAlertTo
 
     setIsBroadcasting(true);
     try {
-      // 1. Inyectar notificación global en Supabase
-      const { data: users } = await supabase.from('user_profiles').select('id, user_id').limit(100);
+      // Invocación directa del RPC seguro sin mapeo manual en cliente ni límite de 100
+      const { data: rpcData, error: rpcError } = await supabase.rpc('broadcast_system_message', { 
+        p_message: broadcastMessage.trim() 
+      });
 
-      if (users && users.length > 0) {
-        const notificationsPayload = users.map((u: any) => ({
-          user_id: u.id || u.user_id,
-          title: '📢 COMUNICADO MAESTRO DEL SISTEMA',
-          message: broadcastMessage.trim(),
-          type: 'SYSTEM',
-          read: false,
-          created_at: new Date().toISOString()
-        }));
+      if (rpcError) throw rpcError;
 
-        await supabase.from('user_notifications').insert(notificationsPayload);
-      }
-
-      // 2. Transmisión al chat global como mensaje de sistema
-      await supabase.from('chat_messages').insert([{
-        channel_id: 'global-main',
-        user_id: 'SYSTEM_ADMIN',
-        user_name: '📢 SISTEMA CENTRAL',
-        user_role: 'ADMINISTRACIÓN',
-        user_avatar: 'https://qldjeysusithpblfrmtq.supabase.co/storage/v1/object/public/Assets%20para%20la%20Pagina%20Web/Avatares%20de%20Comandantes/1.png',
-        content: `COMUNICADO OFICIAL: ${broadcastMessage.trim()}`,
-        message_type: 'SYSTEM',
-        created_at: new Date().toISOString()
-      }]);
+      const totalNotified = typeof rpcData === 'number' ? rpcData : (rpcData as any)?.notified_count || 'todos los';
 
       if (setIsAlertToShow) {
         setIsAlertToShow({
           show: true,
           status: 'success',
-          message: '📢 Transmisión de System Broadcast enviada con éxito a todos los comandantes en línea.'
+          message: `📢 Transmisión de System Broadcast enviada con éxito a ${totalNotified} comandantes en línea.`
         });
       } else {
-        alert(`📢 System Broadcast Enviado:\n\n${broadcastMessage}`);
+        alert(`📢 System Broadcast Enviado a ${totalNotified} comandantes:\n\n${broadcastMessage}`);
       }
 
       setBroadcastMessage('');

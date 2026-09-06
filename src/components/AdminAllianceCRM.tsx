@@ -46,6 +46,10 @@ export const AdminAllianceCRM: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
 
+  // PAGINACIÓN
+  const [page, setPage] = useState<number>(0);
+  const pageSize = 20;
+
   const fetchAlliancesData = async () => {
     setLoading(true);
     try {
@@ -56,7 +60,8 @@ export const AdminAllianceCRM: React.FC = () => {
           *,
           leader:leader_id (username)
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
       if (allianceData) {
         // Obtener conteo de miembros por alianza
@@ -121,7 +126,7 @@ export const AdminAllianceCRM: React.FC = () => {
 
   useEffect(() => {
     fetchAlliancesData();
-  }, []);
+  }, [page]);
 
   const handleKickMember = async (memberId: string, username: string) => {
     if (!window.confirm(`¿Expulsar a ${username} de la alianza?`)) return;
@@ -212,6 +217,25 @@ export const AdminAllianceCRM: React.FC = () => {
                 </div>
               </button>
             ))}
+          </div>
+
+          {/* Paginación - Alianzas */}
+          <div className="flex justify-between items-center pt-2 border-t border-zinc-900 mt-2">
+            <button 
+              disabled={page === 0} 
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+            >
+              Anterior
+            </button>
+            <span className="text-zinc-500 text-xs">Página {page + 1}</span>
+            <button 
+              disabled={filteredAlliances.length < pageSize}
+              onClick={() => setPage(p => p + 1)}
+              className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+            >
+              Siguiente
+            </button>
           </div>
         </div>
 

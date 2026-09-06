@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Database, Shield, Cpu, Users, ChevronDown, ChevronRight, CheckCircle,
   X, AlertTriangle, LayoutGrid, Clock, Wifi, WifiOff, Settings,
@@ -8,7 +8,7 @@ import {
 
 import {
   BrandConfig, WebComponent, GameRule, UserProfile, SupabaseConfig,
-  NavigationState, GalaxyDustConfig
+  NavigationState, GalaxyDustConfig, SubFunctionType
 } from './types';
 
 import {
@@ -26,12 +26,12 @@ import UserCRM from './components/UserCRM';
 import GalaxyDustHUD from './components/GalaxyDustHUD';
 import CANManager from './components/CANManager';
 import { ComponentMatrix } from './components/ComponentMatrix';
-import { ExpeditionsManager } from './components/ExpeditionsManager';
+import ExpeditionsManager from './components/ExpeditionsManager';
 import { SkillManager } from './components/SkillManager';
-import AdminMarketplaceModule from './components/AdminMarketplaceModule';
-import AdminPhantomStationModule from './components/AdminPhantomStationModule';
+const AdminMarketplaceModule = React.lazy(() => import('./components/AdminMarketplaceModule'));
+const AdminPhantomStationModule = React.lazy(() => import('./components/AdminPhantomStationModule'));
+const AdminAllianceCRM = React.lazy(() => import('./components/AdminAllianceCRM'));
 import { AdminPromoModule } from './components/AdminPromoModule';
-import { AdminAllianceCRM } from './components/AdminAllianceCRM';
 import { AdminSecurityModule } from './components/AdminSecurityModule';
 import AdminSanitizerModule from './components/AdminSanitizerModule';
 import AdminSocialCRM from './components/AdminSocialCRM';
@@ -199,7 +199,7 @@ export default function App() {
   };
 
   // Helper: navigate and auto-close mobile sidebar
-  const navTo = (main: NavigationState['activeMain'], sub: string) => {
+  const navTo = (main: NavigationState['activeMain'], sub: SubFunctionType) => {
     setNav({ activeMain: main, activeSub: sub });
     setIsMobileMenuOpen(false);
   };
@@ -415,8 +415,6 @@ export default function App() {
                   )}
                 </AnimatePresence>
               </div>
-
-
 
               {/* FUNCTION: Gestor de Assets e Inventario */}
               <div className="space-y-0.5">
@@ -682,40 +680,24 @@ export default function App() {
               <span className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Sincronizando información...</span>
             </div>
           ) : (
-            <>
+            <React.Suspense fallback={<div className="flex flex-col items-center justify-center h-full space-y-3"><div className="w-8 h-8 border-4 border-red-500/20 border-t-red-500 rounded-full animate-spin"></div><span className="text-xs font-mono text-zinc-500 tracking-widest animate-pulse">CARGANDO MÓDULO...</span></div>}>
               {/* RULES AND GAME CONDITIONS */}
               {nav.activeMain === 'rules' && (
                 <ConditionEditor
-                  rules={rules}
                   users={users}
-                  onSaveRules={handleSaveRules}
                   setIsAlertToShow={alertTrigger}
                 />
               )}
 
               {/* USER CRM */}
               {nav.activeMain === 'crm' && (
-                <UserCRM
-                  users={users}
-                  rules={rules}
-                  onSaveUsers={handleSaveUsers}
-                  setIsAlertToShow={alertTrigger}
-                />
+                <UserCRM />
               )}
 
               {/* C.A.N. MAINTENANCE AREA */}
               {nav.activeMain === 'can' && (
-                <CANManager
-                  users={users}
-                  rules={rules}
-                  onSaveUsers={handleSaveUsers}
-                  onRefreshData={fetchAllData}
-                  setIsAlertToShow={alertTrigger}
-                  activeSubTab={nav.activeSub as any}
-                />
+                <CANManager />
               )}
-
-
 
               {/* MATRIX OF COMPONENTS MODULE */}
               {nav.activeMain === 'matrix' && (
@@ -790,7 +772,7 @@ export default function App() {
                   setIsAlertToShow={(alertObj) => alertTrigger(alertObj.status, alertObj.message)}
                 />
               )}
-            </>
+            </React.Suspense>
           )}
         </div>
 

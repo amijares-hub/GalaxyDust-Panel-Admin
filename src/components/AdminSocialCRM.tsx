@@ -192,7 +192,7 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
                 <span className="text-[10px] font-bold uppercase text-red-400 tracking-widest flex items-center gap-1.5">
                   <MessageSquare size={12} /> Log de Comunicaciones (DMs)
                 </span>
-                <ShieldAlert size={12} className="text-red-500" title="Auditoría Restringida" />
+                <ShieldAlert size={12} className="text-red-500" aria-label="Auditoría Restringida" />
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
@@ -285,7 +285,7 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
               <div>
                 <h3 className="text-xl font-black text-white font-mono uppercase truncate flex items-center gap-2">
                   {showProfileCard.username}
-                  {showProfileCard.role === 'admin' && <Shield size={14} className="text-red-500" title="Administrador del Sistema" />}
+                  {showProfileCard.role === 'admin' && <Shield size={14} className="text-red-500" aria-label="Administrador del Sistema" />}
                 </h3>
                 <p className="text-xs text-zinc-500 mt-1">
                   Nivel de Flota: <strong className="text-cyan-400 font-mono text-sm">{showProfileCard.level}</strong>

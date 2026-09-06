@@ -100,6 +100,11 @@ export default function AdminMarketplaceModule({
   const [pushedMessages, setPushedMessages] = useState<InboxMarketPushMessage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // PAGINACIÓN
+  const [page, setPage] = useState<number>(0);
+  const [txPage, setTxPage] = useState<number>(0);
+  const pageSize = 20;
+
   // CONTROLES DE EDICIÓN Y VISTA
   const [selectedAuctionId, setSelectedAuctionId] = useState<string>("");
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -127,11 +132,11 @@ export default function AdminMarketplaceModule({
     try {
       // 1. Cargar Publicaciones Reales (Búsqueda híbrida en marketplace_listings y market_listings)
       let listingsData: any[] = [];
-      const { data: pListings } = await supabase.from('marketplace_listings').select('*').order('created_at', { ascending: false });
+      const { data: pListings } = await supabase.from('marketplace_listings').select('*').order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
       if (pListings && pListings.length > 0) {
         listingsData = pListings;
       } else {
-        const { data: mListings } = await supabase.from('market_listings').select('*').order('created_at', { ascending: false });
+        const { data: mListings } = await supabase.from('market_listings').select('*').order('created_at', { ascending: false }).range(page * pageSize, (page + 1) * pageSize - 1);
         if (mListings) listingsData = mListings;
       }
 
@@ -170,7 +175,8 @@ export default function AdminMarketplaceModule({
       const { data: txData } = await supabase
         .from('marketplace_transactions_log')
         .select('*')
-        .order('purchased_at', { ascending: false });
+        .order('purchased_at', { ascending: false })
+        .range(txPage * pageSize, (txPage + 1) * pageSize - 1);
 
       if (txData && txData.length > 0) {
         const mappedTx: TransactionLog[] = txData.map((tx: any) => {
@@ -246,7 +252,7 @@ export default function AdminMarketplaceModule({
 
   useEffect(() => {
     fetchRealMarketData();
-  }, []);
+  }, [page, txPage]);
 
   const handleEditExpiration = async (assetId: string, action: 'ADD' | 'SUBTRACT') => {
     const hours = editCooldownHours || 1;
@@ -724,6 +730,25 @@ export default function AdminMarketplaceModule({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Paginación - Mercado */}
+            <div className="flex justify-between items-center pt-2">
+              <button 
+                disabled={page === 0} 
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+              >
+                Anterior
+              </button>
+              <span className="text-zinc-500 text-xs">Página {page + 1}</span>
+              <button 
+                disabled={marketAssets.length < pageSize}
+                onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
 
@@ -775,6 +800,25 @@ export default function AdminMarketplaceModule({
                   </div>
                 ))
               )}
+            </div>
+
+            {/* Paginación - Transacciones */}
+            <div className="flex justify-between items-center pt-2 border-t border-zinc-900 mt-2">
+              <button 
+                disabled={txPage === 0} 
+                onClick={() => setTxPage(p => Math.max(0, p - 1))}
+                className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+              >
+                Anterior
+              </button>
+              <span className="text-zinc-500 text-xs">Página {txPage + 1}</span>
+              <button 
+                disabled={transactions.length < pageSize}
+                onClick={() => setTxPage(p => p + 1)}
+                className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+              >
+                Siguiente
+              </button>
             </div>
           </div>
         )}

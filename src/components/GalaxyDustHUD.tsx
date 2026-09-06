@@ -11,14 +11,14 @@ import { CANManager } from './CANManager';
 import ConditionEditor from './ConditionEditor';
 import { UserCRM } from './UserCRM';
 import AdminShipsModule from './AdminShipsModule';
-import AdminAssetMatrixModule from './AdminAssetMatrixModule';
+const AdminAssetMatrixModule = React.lazy(() => import('./AdminAssetMatrixModule'));
 import { ComponentMatrix } from './ComponentMatrix';
 import { SkillManager } from './SkillManager';
 import ExpeditionsManager from './ExpeditionsManager';
-import AdminMarketplaceModule from './AdminMarketplaceModule';
-import AdminPhantomStationModule from './AdminPhantomStationModule';
+const AdminMarketplaceModule = React.lazy(() => import('./AdminMarketplaceModule'));
+const AdminPhantomStationModule = React.lazy(() => import('./AdminPhantomStationModule'));
 import AdminPromoModule from './AdminPromoModule';
-import AdminAllianceCRM from './AdminAllianceCRM';
+const AdminAllianceCRM = React.lazy(() => import('./AdminAllianceCRM'));
 import AdminSecurityModule from './AdminSecurityModule';
 import AdminSanitizerModule from './AdminSanitizerModule';
 import AdminSocialCRM from './AdminSocialCRM';
@@ -241,107 +241,109 @@ export const GalaxyDustHUD: React.FC<GalaxyDustHUDProps> = ({
       {/* 💻 ÁREA DE CONTENIDO PRINCIPAL (RENDERIZADO DINÁMICO)     */}
       {/* ========================================================= */}
       <main className="flex-1 bg-[#050507] overflow-y-auto relative">
-        <AnimatePresence mode="wait">
+        <React.Suspense fallback={<div className="flex flex-col items-center justify-center h-full space-y-3"><div className="w-8 h-8 border-4 border-red-500/20 border-t-red-500 rounded-full animate-spin"></div><span className="text-xs font-mono text-zinc-500 tracking-widest animate-pulse">CARGANDO MÓDULO...</span></div>}>
+          <AnimatePresence mode="wait">
 
-          {/* C.A.N. MANAGER */}
-          {activeTab === 'can_manager' && (
-            <motion.div key="can" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <CANManager />
-            </motion.div>
-          )}
+            {/* C.A.N. MANAGER */}
+            {activeTab === 'can_manager' && (
+              <motion.div key="can" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <CANManager />
+              </motion.div>
+            )}
 
-          {/* CONDICIONES Y REGLAS */}
-          {activeTab === 'game_rules' && (
-            <motion.div key="rules" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <ConditionEditor users={users} setIsAlertToShow={setIsAlertToShow} />
-            </motion.div>
-          )}
+            {/* CONDICIONES Y REGLAS */}
+            {activeTab === 'game_rules' && (
+              <motion.div key="rules" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <ConditionEditor users={users} setIsAlertToShow={setIsAlertToShow} />
+              </motion.div>
+            )}
 
-          {/* GESTOR CRM */}
-          {activeTab === 'user_crm' && (
-            <motion.div key="crm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <UserCRM />
-            </motion.div>
-          )}
+            {/* GESTOR CRM */}
+            {activeTab === 'user_crm' && (
+              <motion.div key="crm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <UserCRM />
+              </motion.div>
+            )}
 
-          {/* CONSOLA DE CONTROL (ComponentMatrix) */}
-          {activeTab === 'control_console' && (
-            <motion.div key="console" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <ComponentMatrix users={users} setIsAlertToShow={setIsAlertToShow} onRefreshData={onSaveGameHud} />
-            </motion.div>
-          )}
+            {/* CONSOLA DE CONTROL (ComponentMatrix) */}
+            {activeTab === 'control_console' && (
+              <motion.div key="console" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <ComponentMatrix users={users} setIsAlertToShow={setIsAlertToShow} onRefreshData={() => onSaveGameHud(undefined as any)} />
+              </motion.div>
+            )}
 
-          {/* MATRIZ DE CRAFTEO Y COMPONENTES (AdminAssetMatrixModule) */}
-          {activeTab === 'assets_matrix' && (
-            <motion.div key="matrix" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <AdminAssetMatrixModule users={users} setIsAlertToShow={setIsAlertToShow} onRefreshData={onSaveGameHud} />
-            </motion.div>
-          )}
+            {/* MATRIZ DE CRAFTEO Y COMPONENTES (AdminAssetMatrixModule) */}
+            {activeTab === 'assets_matrix' && (
+              <motion.div key="matrix" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <AdminAssetMatrixModule />
+              </motion.div>
+            )}
 
-          {/* GESTOR DE SKILLS */}
-          {activeTab === 'skill_manager' && (
-            <motion.div key="skills" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <SkillManager />
-            </motion.div>
-          )}
+            {/* GESTOR DE SKILLS */}
+            {activeTab === 'skill_manager' && (
+              <motion.div key="skills" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <SkillManager />
+              </motion.div>
+            )}
 
-          {/* EXPEDICIONES */}
-          {activeTab === 'expeditions' && (
-            <motion.div key="expeditions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <ExpeditionsManager />
-            </motion.div>
-          )}
+            {/* EXPEDICIONES */}
+            {activeTab === 'expeditions' && (
+              <motion.div key="expeditions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <ExpeditionsManager />
+              </motion.div>
+            )}
 
-          {/* P2P MARKETPLACE */}
-          {activeTab === 'marketplace' && (
-            <motion.div key="market" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminMarketplaceModule users={users} setIsAlertToShow={setIsAlertToShow} activeSubTab="market" />
-            </motion.div>
-          )}
+            {/* P2P MARKETPLACE */}
+            {activeTab === 'marketplace' && (
+              <motion.div key="market" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <AdminMarketplaceModule users={users} setIsAlertToShow={setIsAlertToShow} activeSubTab="market" />
+              </motion.div>
+            )}
 
-          {/* PHANTOM STATION */}
-          {activeTab === 'phantom_station' && (
-            <motion.div key="phantom" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminPhantomStationModule gameHud={gameHud} users={users} onSaveGameHud={onSaveGameHud} setIsAlertToShow={(alertObj) => alertTrigger(alertObj.status, alertObj.message)} />
-            </motion.div>
-          )}
+            {/* PHANTOM STATION */}
+            {activeTab === 'phantom_station' && (
+              <motion.div key="phantom" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <AdminPhantomStationModule gameHud={gameHud} users={users} onSaveGameHud={onSaveGameHud} setIsAlertToShow={(alertObj) => alertTrigger(alertObj.status, alertObj.message)} />
+              </motion.div>
+            )}
 
-          {/* PROMOCIONES P2P */}
-          {activeTab === 'promotions' && (
-            <motion.div key="promo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminPromoModule setIsAlertToShow={setIsAlertToShow} />
-            </motion.div>
-          )}
+            {/* PROMOCIONES P2P */}
+            {activeTab === 'promotions' && (
+              <motion.div key="promo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <AdminPromoModule setIsAlertToShow={setIsAlertToShow} />
+              </motion.div>
+            )}
 
-          {/* ALLIANCE CRM */}
-          {activeTab === 'alliance_crm' && (
-            <motion.div key="alliance" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminAllianceCRM />
-            </motion.div>
-          )}
+            {/* ALLIANCE CRM */}
+            {activeTab === 'alliance_crm' && (
+              <motion.div key="alliance" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <AdminAllianceCRM />
+              </motion.div>
+            )}
 
-          {/* RADAR ANTI-CHEAT */}
-          {activeTab === 'anticheat' && (
-            <motion.div key="anticheat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminSecurityModule />
-            </motion.div>
-          )}
+            {/* RADAR ANTI-CHEAT */}
+            {activeTab === 'anticheat' && (
+              <motion.div key="anticheat" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <AdminSecurityModule />
+              </motion.div>
+            )}
 
-          {/* DATA SANITIZER */}
-          {activeTab === 'sanitizer' && (
-            <motion.div key="sanitizer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
-              <AdminSanitizerModule gameHud={gameHud} saveGameHud={onSaveGameHud} alertTrigger={(status, message) => alertTrigger(status, message)} />
-            </motion.div>
-          )}
+            {/* DATA SANITIZER */}
+            {activeTab === 'sanitizer' && (
+              <motion.div key="sanitizer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6">
+                <AdminSanitizerModule gameHud={gameHud} saveGameHud={onSaveGameHud} alertTrigger={(status, message) => alertTrigger(status, message)} />
+              </motion.div>
+            )}
 
-          {/* SOCIAL CRM */}
-          {activeTab === 'social_crm' && (
-            <motion.div key="social" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
-              <AdminSocialCRM users={users} />
-            </motion.div>
-          )}
+            {/* SOCIAL CRM */}
+            {activeTab === 'social_crm' && (
+              <motion.div key="social" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                <AdminSocialCRM users={users} />
+              </motion.div>
+            )}
 
-        </AnimatePresence>
+          </AnimatePresence>
+        </React.Suspense>
       </main>
 
     </div>

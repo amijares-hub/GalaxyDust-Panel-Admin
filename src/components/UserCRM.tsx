@@ -85,13 +85,13 @@ export const UserCRM: React.FC = () => {
       can_level: parseNum(row, 'can_level', 'level') || 1,
       xp: parseNum(row, 'xp', 'can_xp', 'exp_points'),
       
-      // Recursos extraídos directamente según types.ts
+      // 🎯 BILLETERA REAL: Lectura unificada desde gd_coin y phantom_coin (singular)
       metal: parseNum(row, 'metal', 'metal_balance'),
       crystal: parseNum(row, 'crystal', 'crystal_balance'),
       deuterium: parseNum(row, 'deuterium', 'deuterium_balance'),
       dark_matter: parseNum(row, 'dark_matter', 'dark_matter_balance'),
-      gd_coins: parseNum(row, 'gd_coins', 'gd_coin', 'gd_balance'),
-      phantom_coins: parseNum(row, 'phantom_coins', 'phantom_coin', 'phantom_coins_balance'),
+      gd_coins: parseNum(row, 'gd_coin', 'gd_coins', 'gd_balance'),
+      phantom_coins: parseNum(row, 'phantom_coin', 'phantom_coins', 'phantom_coins_balance'),
       
       omniplate: parseNum(row, 'omniplate'),
       orichaltron: parseNum(row, 'orichaltron'),
@@ -128,29 +128,17 @@ export const UserCRM: React.FC = () => {
       const { data: freshProfile } = await supabase
         .from('user_profiles')
         .select('*')
-        .or(`id.eq.${userId},user_id.eq.${userId}`)
+        .eq('id', userId)
         .maybeSingle();
 
       if (freshProfile) {
         setSelectedPlayer(mapProfileRow(freshProfile));
       }
 
-      const legacyId = freshProfile?.legacy_id;
-
+      // 🎯 BÚSQUEDA LIMPIA DE ASSETS EVITANDO MEZCLAR TIPOS UUID CON INTEGERS (HTTP 400 FIX)
       const fetchAssetTable = async (tableName: string) => {
         try {
-          let q = supabase.from(tableName).select('*');
-          if (legacyId) {
-            q = q.or(`user_id.eq.${userId},id_user.eq.${legacyId}`);
-          } else {
-            q = q.eq('user_id', userId);
-          }
-          const { data, error } = await q;
-          if (error) {
-            const altCol = legacyId ? 'id_user' : 'user_id';
-            const { data: altData } = await supabase.from(tableName).select('*').eq(altCol, legacyId || userId);
-            return altData || [];
-          }
+          const { data } = await supabase.from(tableName).select('*').eq('user_id', userId);
           return data || [];
         } catch {
           return [];
@@ -217,39 +205,54 @@ export const UserCRM: React.FC = () => {
     fetchActiveSeedCatalog();
   }, [entityGroup, supabase]);
 
-  // ── INYECTOR MONETARIO MAPPING 1:1 CON TYPES.TS Y POSTGRES ──
+  // 🎯 INYECTOR MONETARIO DE BILLETERA REAL MEDIANTE RPC SEGURA (SOPORTA VALORES NEGATIVOS PARA RESTAR)
   const handleLiveAssetInjection = async () => {
-    if (!selectedPlayer || injectAmount <= 0) return;
+    if (!selectedPlayer || injectAmount === 0 || !supabase) return;
+
     try {
-      const currentVal = Number((selectedPlayer as any)[injectType]) || 0;
-      const newVal = currentVal + Number(injectAmount);
-      
-      const updatePayload: any = { [injectType]: newVal };
+      const currencyMap: Record<string, string> = {
+        gd_coins: 'gd_coin',
+        gd_coin: 'gd_coin',
+        phantom_coins: 'phantom_coin',
+        phantom_coin: 'phantom_coin',
+        dark_matter: 'dark_matter',
+        deuterium: 'deuterium',
+        metal: 'metal',
+        crystal: 'crystal'
+      };
 
-      // Inyectar sinónimos para garantizar compatibilidad con esquemas mixtos
-      if (injectType === 'metal') updatePayload.metal_balance = newVal;
-      if (injectType === 'crystal') updatePayload.crystal_balance = newVal;
-      if (injectType === 'deuterium') updatePayload.deuterium_balance = newVal;
-      if (injectType === 'dark_matter') updatePayload.dark_matter_balance = newVal;
-      if (injectType === 'gd_coins') { updatePayload.gd_coin = newVal; updatePayload.gd_balance = newVal; }
-      if (injectType === 'phantom_coins') { updatePayload.phantom_coin = newVal; updatePayload.phantom_coins_balance = newVal; }
+      const targetCurrency = currencyMap[injectType as string];
 
-      // Actualizar buscando por id o user_id y exigir el retorno de datos (.select())
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .update(updatePayload)
-        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`)
-        .select();
+      if (targetCurrency) {
+        // Ejecución por RPC segura de Administración con Audit Log
+        const { data, error } = await supabase.rpc('admin_inject_currency_secure', {
+          p_target_user_id: selectedPlayer.id,
+          p_currency: targetCurrency,
+          p_amount: Number(injectAmount),
+          p_reason: `Ajuste manual desde UserCRM por Administrador`
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Materiales secundarios no monetarios
+        const currentVal = Number((selectedPlayer as any)[injectType]) || 0;
+        const newVal = Math.max(0, currentVal + Number(injectAmount));
+        const updatePayload: any = { [injectType]: newVal };
 
-      if (!data || data.length === 0) {
-        throw new Error(`No se encontró ningún registro para el usuario [${selectedPlayer.id}] en user_profiles.`);
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .update(updatePayload)
+          .eq('id', selectedPlayer.id)
+          .select();
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          throw new Error(`No se encontró registro para el usuario [${selectedPlayer.id}].`);
+        }
       }
 
-      alert(`⚡ Inyección Exitosa: +${injectAmount} agregados a ${String(injectType)}`);
+      alert(`⚡ Ajuste de Billetera Exitoso: ${injectAmount > 0 ? '+' : ''}${injectAmount} en ${String(injectType)}`);
       
-      // Forzar recarga en tiempo real
       await fetchPlayerAssets(selectedPlayer.id);
       await fetchPlayers();
     } catch (e: any) {
@@ -266,41 +269,17 @@ export const UserCRM: React.FC = () => {
     if (!config) return;
 
     try {
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('legacy_id')
-        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`)
-        .maybeSingle();
-
-      const legacyVal = profile?.legacy_id || 9001;
       const cleanId = blueprintId.trim();
       const lvl = Number(entityLevel || 1);
 
-      const payloadsToTry = [
-        { id_user: legacyVal, user_id: selectedPlayer.id, [config.idColumn]: cleanId, level: lvl },
-        { id_user: legacyVal, [config.idColumn]: cleanId, level: lvl },
-        { user_id: selectedPlayer.id, [config.idColumn]: cleanId, level: lvl },
-        { id_user: legacyVal, [config.idColumn]: cleanId },
-        { user_id: selectedPlayer.id, [config.idColumn]: cleanId }
-      ];
+      const payload = {
+        user_id: selectedPlayer.id,
+        [config.idColumn]: cleanId,
+        level: lvl
+      };
 
-      let insertedSuccessfully = false;
-      let lastErrorMessage = '';
-
-      for (const payload of payloadsToTry) {
-        const { error } = await supabase.from(config.targetTable).insert([payload]);
-        if (!error) {
-          insertedSuccessfully = true;
-          break;
-        } else {
-          lastErrorMessage = error.message;
-          console.warn(`Intento inyección en [${config.targetTable}] rechazado:`, error.message);
-        }
-      }
-
-      if (!insertedSuccessfully) {
-        throw new Error(lastErrorMessage || "No se pudo inyectar la entidad.");
-      }
+      const { error } = await supabase.from(config.targetTable).insert([payload]);
+      if (error) throw error;
 
       alert(`🚀 TRANSMISIÓN COMPLETADA: Instancia de [${cleanId}] inyectada con éxito.`);
       setBlueprintId('');
@@ -314,9 +293,7 @@ export const UserCRM: React.FC = () => {
   const handleDeleteEntity = async (tableName: string, record: any) => {
     if (!supabase || !selectedPlayer) return;
 
-    const recordId = typeof record === 'object' 
-      ? (record.id || record.ship_id || record.id_ship || record.building_id || record.tool_id || record.license_id) 
-      : record;
+    const recordId = typeof record === 'object' ? record.id : record;
 
     if (!recordId) {
       alert("🚨 No se encontró un identificador válido para eliminar este registro.");
@@ -326,38 +303,8 @@ export const UserCRM: React.FC = () => {
     if (!window.confirm("¿🚨 ADVERTENCIA MASTER: Estás seguro de desintegrar permanentemente este asset del inventario del jugador?")) return;
 
     try {
-      let deleted = false;
-      let lastError = '';
-
-      if (typeof record === 'object' && record.id) {
-        const res1 = await supabase.from(tableName).delete().eq('id', record.id);
-        if (!res1.error) deleted = true;
-        else lastError = res1.error.message;
-      } else if (typeof record === 'string') {
-        const res1 = await supabase.from(tableName).delete().eq('id', record);
-        if (!res1.error) deleted = true;
-        else lastError = res1.error.message;
-      }
-
-      if (!deleted && typeof record === 'object') {
-        const config = Object.values(categoryMap).find(c => c.targetTable === tableName);
-        const idCol = config?.idColumn || 'ship_id';
-        const targetVal = record[idCol] || record.id_ship || record.ship_id;
-
-        if (targetVal) {
-          const res2 = await supabase.from(tableName)
-            .delete()
-            .eq(idCol, targetVal)
-            .or(`user_id.eq.${selectedPlayer.id},id_user.eq.${selectedPlayer.id}`);
-
-          if (!res2.error) deleted = true;
-          else lastError = res2.error.message;
-        }
-      }
-
-      if (!deleted) {
-        throw new Error(lastError || "No se pudo eliminar el registro de Supabase.");
-      }
+      const { error } = await supabase.from(tableName).delete().eq('id', recordId);
+      if (error) throw error;
 
       alert("¡Asset desintegrado del servidor con éxito!");
       fetchPlayerAssets(selectedPlayer.id);
@@ -375,7 +322,7 @@ export const UserCRM: React.FC = () => {
       const { error } = await supabase
         .from('user_profiles')
         .update({ status: newStatus, is_banned: newStatus === 'banned' })
-        .or(`id.eq.${selectedPlayer.id},user_id.eq.${selectedPlayer.id}`);
+        .eq('id', selectedPlayer.id);
 
       if (error) throw error;
       alert(`✅ Piloto ${selectedPlayer.username} marcado como ${newStatus.toUpperCase()}`);
@@ -407,6 +354,46 @@ export const UserCRM: React.FC = () => {
   const totalCommanders = players.length;
   const totalGDCirculating = players.reduce((acc, p) => acc + (p.gd_coins || 0), 0);
   const totalMetalCirculating = players.reduce((acc, p) => acc + (p.metal || 0), 0);
+
+  const renderActiveAssetList = () => {
+    const assetList = (playerAssets as any)[activeAssetTab] || [];
+    const targetTableMap: Record<string, string> = {
+      ships: 'user_ships',
+      structures: 'user_structures',
+      technologies: 'user_technologies',
+      astrobots: 'user_astrobots',
+      tools: 'user_tools',
+      licenses: 'user_licenses',
+      consumibles: 'user_consumibles'
+    };
+    const currentTable = targetTableMap[activeAssetTab] || 'user_ships';
+
+    if (assetList.length === 0) {
+      return (
+        <div className="p-4 text-center text-zinc-600 text-[10px] uppercase italic">
+          Sin registros en [{activeAssetTab.toUpperCase()}] para este piloto.
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {assetList.map((item: any) => (
+          <div key={item.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center">
+            <span className="font-bold text-white block truncate max-w-[180px]">
+              {item.custom_name || item.name_ship || item.name || item.title || item.ship_id || item.building_id || item.tool_id || item.id}
+            </span>
+            <button 
+              onClick={() => handleDeleteEntity(currentTable, item)} 
+              className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 font-mono text-xs text-left text-white select-none">
@@ -501,7 +488,7 @@ export const UserCRM: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* VISTA EN VIVO DE RECURSOS SEGÚN TYPES.TS */}
+                  {/* VISTA EN VIVO DE RECURSOS CON GD_COIN REAL */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
                       <span className="text-[8.5px] text-zinc-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Database size={11} /> Recursos Core de Extracción</span>
@@ -514,10 +501,10 @@ export const UserCRM: React.FC = () => {
                     </div>
 
                     <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
-                      <span className="text-[8.5px] text-yellow-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Coins size={11} /> Divisas del Ledger</span>
+                      <span className="text-[8.5px] text-yellow-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Coins size={11} /> Divisas del Ledger (Billetera Real)</span>
                       <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div><span className="text-yellow-500 block text-[8px]">GD_COINS:</span> <span className="text-yellow-400 font-bold">{selectedPlayer.gd_coins.toLocaleString()}</span></div>
-                        <div><span className="text-emerald-500 block text-[8px]">PHANTOM_COINS:</span> <span className="text-emerald-400 font-bold">{selectedPlayer.phantom_coins.toLocaleString()}</span></div>
+                        <div><span className="text-yellow-500 block text-[8px]">GD_COIN (USD 1:1):</span> <span className="text-yellow-400 font-bold">${selectedPlayer.gd_coins.toLocaleString()}</span></div>
+                        <div><span className="text-emerald-500 block text-[8px]">PHANTOM_COIN:</span> <span className="text-emerald-400 font-bold">{selectedPlayer.phantom_coins.toLocaleString()}</span></div>
                       </div>
                     </div>
 
@@ -563,7 +550,8 @@ export const UserCRM: React.FC = () => {
                         { id: 'technologies', label: '🔬 Tecnologías', count: playerAssets.technologies.length, color: 'border-purple-500 text-purple-400 bg-purple-950/10' },
                         { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'border-emerald-500 text-emerald-400 bg-emerald-500/10' },
                         { id: 'tools', label: '🔧 Tools', count: playerAssets.tools.length, color: 'border-blue-500 text-blue-400 bg-blue-500/10' },
-                        { id: 'licenses', label: '📜 Licencias', count: playerAssets.licenses.length, color: 'border-yellow-500 text-yellow-400 bg-yellow-500/10' }
+                        { id: 'licenses', label: '📜 Licencias', count: playerAssets.licenses.length, color: 'border-yellow-500 text-yellow-400 bg-yellow-500/10' },
+                        { id: 'consumibles', label: '🧪 Consumibles', count: playerAssets.consumibles.length, color: 'border-pink-500 text-pink-400 bg-pink-500/10' }
                       ].map(tab => (
                         <button
                           key={tab.id}
@@ -580,32 +568,23 @@ export const UserCRM: React.FC = () => {
                     </div>
 
                     <div className="max-h-60 overflow-y-auto pr-1 font-mono text-[11px]">
-                      {activeAssetTab === 'ships' && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {playerAssets.ships.map((ship: any) => (
-                            <div key={ship.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center">
-                              <span className="font-bold text-white block truncate max-w-[180px]">
-                                {ship.custom_name || ship.name_ship || ship.ship_id || ship.id_ship || "Nave sin nombre"}
-                              </span>
-                              <button onClick={() => handleDeleteEntity('user_ships', ship)} className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer"><Trash2 size={12} /></button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {renderActiveAssetList()}
                     </div>
                   </div>
 
-                  {/* INYECTOR MAESTRO MAPEADO A TYPES.TS */}
+                  {/* INYECTOR / DEDUCTOR MAESTRO (VALORES POSITIVOS SUMAN, VALORES NEGATIVOS RESTAN) */}
                   <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3">
-                    <span className="text-[9px] text-zinc-400 font-bold uppercase block tracking-wider flex items-center gap-1"><ShieldAlert size={12} className="text-red-500" /> INYECTOR MAESTRO DE ASSETS EN CALIENTE</span>
+                    <span className="text-[9px] text-amber-400 font-bold uppercase block tracking-wider flex items-center gap-1">
+                      <ShieldAlert size={12} className="text-amber-400" /> INYECTOR Y DEDUCTOR MANUAL DE BILLETERA (+ PARA SUMAR, - PARA RESTAR)
+                    </span>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={injectType as string} onChange={e => setInjectType(e.target.value as keyof UserProfile)}>
+                        <option value="gd_coins">GD COIN (REAL USD 1:1)</option>
+                        <option value="phantom_coins">Phantom Coin (phantom_coin)</option>
+                        <option value="dark_matter">Materia Oscura (dark_matter)</option>
+                        <option value="deuterium">Deuterio (deuterium)</option>
                         <option value="metal">Metal (metal)</option>
                         <option value="crystal">Cristal (crystal)</option>
-                        <option value="deuterium">Deuterio (deuterium)</option>
-                        <option value="dark_matter">Materia Oscura (dark_matter)</option>
-                        <option value="gd_coins">Galaxy Dust Coins (gd_coins)</option>
-                        <option value="phantom_coins">Phantom Coins (phantom_coins)</option>
                         <option value="omniplate">Omniplate (omniplate)</option>
                         <option value="orichaltron">Orichaltron (orichaltron)</option>
                         <option value="lunar_fiber">Lunar Fiber (lunar_fiber)</option>
@@ -615,8 +594,8 @@ export const UserCRM: React.FC = () => {
                         <option value="organium">Organium (organium)</option>
                         <option value="mana">Mana / Energy (mana)</option>
                       </select>
-                      <input type="number" placeholder="Cantidad..." className="bg-zinc-950 border border-zinc-800 p-2 rounded font-bold text-emerald-400 outline-none text-[11px]" value={injectAmount || ''} onChange={e => setInjectAmount(Number(e.target.value))} />
-                      <button onClick={handleLiveAssetInjection} className="bg-cyan-600 hover:bg-cyan-500 text-white font-black uppercase rounded flex items-center justify-center gap-1.5 transition-all text-[10px] cursor-pointer shadow-lg shadow-cyan-950/40"><Zap size={12} /> Ejecutar Inyección</button>
+                      <input type="number" placeholder="Monto (+50 o -100)..." className="bg-zinc-950 border border-zinc-800 p-2 rounded font-bold text-amber-400 outline-none text-[11px]" value={injectAmount || ''} onChange={e => setInjectAmount(Number(e.target.value))} />
+                      <button onClick={handleLiveAssetInjection} className="bg-amber-600 hover:bg-amber-500 text-white font-black uppercase rounded flex items-center justify-center gap-1.5 transition-all text-[10px] cursor-pointer shadow-lg"><Zap size={12} /> Ejecutar Ajuste de Billetera</button>
                     </div>
                   </div>
 
@@ -678,8 +657,8 @@ export const UserCRM: React.FC = () => {
 
             <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 shadow-lg flex items-center justify-between">
               <div>
-                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Masa Circulante GD Coins</span>
-                <div className="text-2xl font-black text-yellow-500">{totalGDCirculating.toLocaleString()} <span className="text-xs text-zinc-600 font-normal">GD</span></div>
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Masa Circulante GD Coins REAL (USD)</span>
+                <div className="text-2xl font-black text-yellow-500">${totalGDCirculating.toLocaleString()} <span className="text-xs text-zinc-600 font-normal">GD</span></div>
               </div>
               <Coins size={20} className="text-yellow-500 opacity-60" />
             </div>
