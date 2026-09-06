@@ -438,7 +438,6 @@ export async function uploadAssetImage({ tableName, assetId, file }: UploadAsset
 
     // 6. Actualizar la columna image_url en la tabla correspondiente
     // Nota: Las tablas de naves usan 'ship_id' en vez de 'id', determinamos la columna correcta
-    const idColumn = tableName === 'seed_ships' ? 'ship_id' : 'id';
     const { error: dbError } = await supabase
       .from(tableName)
       .update({ image_url: imageUrlWithCacheBuster })
