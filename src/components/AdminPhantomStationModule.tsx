@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Ghost, RefreshCw, Trash2, Plus, Sliders, Database,
-  TrendingUp, DollarSign, Calendar, FileText, CheckCircle,
-  Flame, ToggleLeft, ToggleRight, Sparkles, AlertTriangle, ShieldCheck,
-  Settings, Info, Power, Layers, FolderPlus, ArrowRightLeft,
-  Search, Shuffle, ListOrdered, LayoutGrid, Check, X
+  Ghost, RefreshCw, Trash2, Plus, Sliders, ArrowRightLeft,
+  FolderPlus, Search, Shuffle, ListOrdered, LayoutGrid, X, ToggleLeft, ToggleRight
 } from 'lucide-react';
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip
-} from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { GalaxyDustConfig, UserProfile, PhantomStationConfig } from '../types';
 import { supabase } from '../lib/supabase';
 
@@ -105,111 +100,83 @@ export default function AdminPhantomStationModule({
 }: AdminPhantomStationModuleProps) {
   const [activeTab, setActiveTab] = useState<'rotation_lists' | 'store_manager' | 'refresh_engine' | 'events_ops' | 'economy_audit'>('rotation_lists');
 
-  // Catálogo completo de las 10 categorías de assets
   const [dbAssetsCatalog, setDbAssetsCatalog] = useState<RealDbAsset[]>([]);
   const [loadingDbAssets, setLoadingDbAssets] = useState<boolean>(true);
 
-  // Estado base de la estación
-  const [phantomStation, setPhantomStation] = useState<PhantomStationConfig>(() => {
-    const base = gameHud.phantomStation || {} as PhantomStationConfig;
-    return {
-      phantomCrystalsBalance: base.phantomCrystalsBalance || 14500,
-      recentTelemetryLogs: base.recentTelemetryLogs || [],
-      autoRefreshStockTimerSeconds: base.autoRefreshStockTimerSeconds || 680,
-      refreshAttemptsUsed: base.refreshAttemptsUsed !== undefined ? base.refreshAttemptsUsed : 0,
-      refreshAttemptsMax: base.refreshAttemptsMax || 90,
-      autoRefreshEnabled: base.autoRefreshEnabled !== undefined ? base.autoRefreshEnabled : true,
-      refreshCostVoidCrystals: base.refreshCostVoidCrystals !== undefined ? base.refreshCostVoidCrystals : 10,
-      unitsCatalog: base.unitsCatalog || [],
-      suppliesCatalog: base.suppliesCatalog || [],
-      selectedBadgeDiscount: base.selectedBadgeDiscount || 'Insignia Nova Guardian 2026',
-      badgeDiscountPercent: base.badgeDiscountPercent !== undefined ? base.badgeDiscountPercent : 5,
-      badgeDiscountCategories: base.badgeDiscountCategories || ['Naves', 'Estructuras'],
-      totalBlueprintsGoal: base.totalBlueprintsGoal !== undefined ? base.totalBlueprintsGoal : 50,
-      loyaltyRewardType: base.loyaltyRewardType || 'Origin Box',
-      npcName: base.npcName || 'Síndico Coloidal',
-      npcAvatar: base.npcAvatar || 'colloidal_syndicate',
-      npcGreeting: base.npcGreeting || 'TODO TIENE UN VALOR',
-      terminalStateOnline: base.terminalStateOnline !== undefined ? base.terminalStateOnline : true,
-      freeRefreshCountdown: base.freeRefreshCountdown !== undefined ? base.freeRefreshCountdown : 831,
-      freeRefreshIntervalType: base.freeRefreshIntervalType || '12_hours',
-    };
-  });
+  const [phantomStation, setPhantomStation] = useState<PhantomStationConfig>(() => ({
+    phantomCrystalsBalance: gameHud.phantomStation?.phantomCrystalsBalance || 14500,
+    recentTelemetryLogs: gameHud.phantomStation?.recentTelemetryLogs || [],
+    autoRefreshStockTimerSeconds: gameHud.phantomStation?.autoRefreshStockTimerSeconds || 60,
+    refreshAttemptsUsed: gameHud.phantomStation?.refreshAttemptsUsed || 0,
+    refreshAttemptsMax: gameHud.phantomStation?.refreshAttemptsMax || 90,
+    autoRefreshEnabled: gameHud.phantomStation?.autoRefreshEnabled ?? true,
+    refreshCostVoidCrystals: gameHud.phantomStation?.refreshCostVoidCrystals || 10,
+    unitsCatalog: gameHud.phantomStation?.unitsCatalog || [],
+    suppliesCatalog: gameHud.phantomStation?.suppliesCatalog || [],
+  }));
 
-  // Colecciones con lectura híbrida (LocalStorage + Supabase)
+  // Inicialización resiliente leyendo almacenamiento local de inmediato
   const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>(() => {
     const local = localStorage.getItem('sasori_phantom_rotation_lists');
     if (local) {
-      try { return JSON.parse(local); } catch (e) {}
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
     }
     return [];
   });
+
   const [loadingRotationLists, setLoadingRotationLists] = useState<boolean>(true);
-
-  const syncLocalToStorage = (lists: PhantomRotationList[]) => {
-    localStorage.setItem('sasori_phantom_rotation_lists', JSON.stringify(lists));
-  };
-
-  useEffect(() => {
-    const fetchRotationLists = async () => {
-      setLoadingRotationLists(true);
-      try {
-        const { data, error } = await supabase.from('phantom_rotation_config').select('*').order('created_at', { ascending: true });
-        if (!error && data && data.length > 0) {
-          const parsed = data
-            .filter((row: any) => row.id !== 'global_store_settings')
-            .map((row: any) => ({
-              id: row.id,
-              name: row.name,
-              description: row.description || '',
-              isActive: row.is_active || false,
-              items: row.items || [],
-              displaySlots: row.display_slots || row.displaySlots || 8,
-              selectionMode: row.selection_mode || row.selectionMode || 'sequential'
-            }));
-          setRotationLists(parsed);
-          syncLocalToStorage(parsed);
-        }
-      } catch (err) {
-        console.warn("Utilizando respaldo LocalStorage para Colecciones de Rotación.");
-      } finally {
-        setLoadingRotationLists(false);
-      }
-    };
-
-    fetchRotationLists();
-  }, []);
-
-  const saveRotationListToDB = async (list: PhantomRotationList) => {
-    try {
-      const payload = {
-        id: list.id,
-        name: list.name,
-        description: list.description,
-        is_active: list.isActive,
-        items: list.items,
-        display_slots: list.displaySlots,
-        selection_mode: list.selectionMode,
-        updated_at: new Date().toISOString()
-      };
-      await supabase.from('phantom_rotation_config').upsert(payload, { onConflict: 'id' });
-    } catch (err) {
-      console.warn("No se pudo conectar con la tabla de Supabase, guardado en LocalStorage.");
-    }
-  };
-
-  const deleteRotationListFromDB = async (listId: string) => {
-    try {
-      await supabase.from('phantom_rotation_config').delete().eq('id', listId);
-    } catch (err) {}
-  };
-
   const [activeListId, setActiveListId] = useState<string>(() => {
     const active = rotationLists.find(l => l.isActive);
     return active ? active.id : (rotationLists[0]?.id || '');
   });
 
-  // Carga total de catálogos semilla
+  const syncLocal = (lists: PhantomRotationList[]) => {
+    localStorage.setItem('sasori_phantom_rotation_lists', JSON.stringify(lists));
+  };
+
+  // Carga con autorreparación desde Supabase
+  const fetchRotationLists = async () => {
+    setLoadingRotationLists(true);
+    try {
+      const { data, error } = await supabase.from('phantom_rotation_config').select('*').order('created_at', { ascending: true });
+      if (!error && data && data.length > 0) {
+        const parsed: PhantomRotationList[] = data.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          description: row.description || '',
+          isActive: !!row.is_active,
+          items: row.items || [],
+          displaySlots: row.display_slots || row.displaySlots || 8,
+          selectionMode: row.selection_mode || row.selectionMode || 'sequential'
+        }));
+        setRotationLists(parsed);
+        syncLocal(parsed);
+        const active = parsed.find(l => l.isActive);
+        if (active) setActiveListId(active.id);
+        else if (parsed.length > 0) setActiveListId(parsed[0].id);
+      } else {
+        // Restauración automática si Supabase está vacío pero hay datos locales
+        if (rotationLists.length > 0) {
+          for (const list of rotationLists) {
+            await saveRotationListToDB(list);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error al consultar Supabase:", err);
+    } finally {
+      setLoadingRotationLists(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRotationLists();
+  }, []);
+
+  // Carga de las 10 tablas semilla de activos
   useEffect(() => {
     const fetchRealDbCatalog = async () => {
       setLoadingDbAssets(true);
@@ -231,36 +198,32 @@ export default function AdminPhantomStationModule({
         ]);
 
         const catalog: RealDbAsset[] = [];
-
         (shipsRes.data || []).forEach((s: any) => catalog.push({ id: s.ship_id || s.id, name: s.ship_name || s.name || 'Nave Estelar', category: 'Naves', rarity: s.rarity || 'Common', defaultPrice: 15000, defaultCurrency: 'GD Coins' }));
         (structsRes.data || []).forEach((s: any) => catalog.push({ id: s.id, name: s.name || 'Estructura', category: 'Estructuras', rarity: s.rarity || 'Common', defaultPrice: 12000, defaultCurrency: 'GD Coins' }));
-        (defRes.data || []).forEach((d: any) => catalog.push({ id: d.defense_id || d.id, name: d.defense_name || d.name || 'Sistema Defensivo', category: 'Defensas', rarity: d.rarity || 'Common', defaultPrice: 9000, defaultCurrency: 'GD Coins' }));
+        (defRes.data || []).forEach((d: any) => catalog.push({ id: d.defense_id || d.id, name: d.defense_name || d.name || 'Defensa', category: 'Defensas', rarity: d.rarity || 'Common', defaultPrice: 9000, defaultCurrency: 'GD Coins' }));
         (techsRes.data || []).forEach((t: any) => catalog.push({ id: t.id, name: t.name || 'Tecnología', category: 'Tecnologías', rarity: t.rarity || 'Common', defaultPrice: 8000, defaultCurrency: 'Quantum Tokens' }));
-        (badgesRes.data || []).forEach((b: any) => catalog.push({ id: b.id, name: b.name || 'Insignia / Badge', category: 'Insignias', rarity: b.rarity || 'Epic', defaultPrice: 5000, defaultCurrency: 'Phantom Coins' }));
-        (bpRes.data || []).forEach((bp: any) => catalog.push({ id: bp.id, name: bp.name || 'Blueprint / Plano', category: 'Blueprints', rarity: bp.rarity || 'Rare', defaultPrice: 10000, defaultCurrency: 'GD Coins' }));
-        (licRes.data || []).forEach((l: any) => catalog.push({ id: l.id, name: l.name || 'Licencia Estelar', category: 'Licencias', rarity: l.rarity || 'Common', defaultPrice: 6000, defaultCurrency: 'GD Coins' }));
-        (toolsRes.data || []).forEach((tl: any) => catalog.push({ id: tl.id, name: tl.name || 'Herramienta de Minería', category: 'Tools', rarity: tl.rarity || 'Common', defaultPrice: 3500, defaultCurrency: 'Phantom Coins' }));
+        (badgesRes.data || []).forEach((b: any) => catalog.push({ id: b.id, name: b.name || 'Insignia', category: 'Insignias', rarity: b.rarity || 'Epic', defaultPrice: 5000, defaultCurrency: 'Phantom Coins' }));
+        (bpRes.data || []).forEach((bp: any) => catalog.push({ id: bp.id, name: bp.name || 'Blueprint', category: 'Blueprints', rarity: bp.rarity || 'Rare', defaultPrice: 10000, defaultCurrency: 'GD Coins' }));
+        (licRes.data || []).forEach((l: any) => catalog.push({ id: l.id, name: l.name || 'Licencia', category: 'Licencias', rarity: l.rarity || 'Common', defaultPrice: 6000, defaultCurrency: 'GD Coins' }));
+        (toolsRes.data || []).forEach((tl: any) => catalog.push({ id: tl.id, name: tl.name || 'Tool', category: 'Tools', rarity: tl.rarity || 'Common', defaultPrice: 3500, defaultCurrency: 'Phantom Coins' }));
         (consRes.data || []).forEach((c: any) => catalog.push({ id: c.id, name: c.name || 'Consumible', category: 'Consumibles', rarity: c.rarity || 'Common', defaultPrice: 1500, defaultCurrency: 'Phantom Coins' }));
         (astroRes.data || []).forEach((a: any) => catalog.push({ id: a.id, name: a.name || 'Astrobot', category: 'Astrobots', rarity: a.rarity || 'Rare', defaultPrice: 7500, defaultCurrency: 'Quantum Tokens' }));
 
         setDbAssetsCatalog(catalog);
       } catch (err) {
-        console.error("Error cargando catálogos semilla:", err);
+        console.error("Error al cargar catálogo semilla:", err);
       } finally {
         setLoadingDbAssets(false);
       }
     };
-
     fetchRealDbCatalog();
   }, []);
 
-  // Formulario de Nueva Lista
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
   const [newListSlots, setNewListSlots] = useState<number>(8);
   const [newListSelectionMode, setNewListSelectionMode] = useState<'sequential' | 'random'>('sequential');
 
-  // Buscador Predictivo Autocomplete
   const [assetSearchQuery, setAssetSearchQuery] = useState<string>('');
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState<boolean>(false);
   const autocompleteRef = useRef<HTMLDivElement>(null);
@@ -273,7 +236,6 @@ export default function AdminPhantomStationModule({
   const [customPrice, setCustomPrice] = useState<number>(1000);
   const [customCurrency, setCustomCurrency] = useState('GD Coins');
   const [customStock, setCustomStock] = useState<number>(10);
-  const [customDiscount, setCustomDiscount] = useState<number>(0);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -306,23 +268,25 @@ export default function AdminPhantomStationModule({
     setIsAutocompleteOpen(false);
   };
 
-  useEffect(() => {
-    if (gameHud.phantomStation) {
-      setPhantomStation(prev => ({ ...prev, ...gameHud.phantomStation }));
+  const saveRotationListToDB = async (list: PhantomRotationList) => {
+    try {
+      const payload = {
+        id: list.id,
+        name: list.name,
+        description: list.description,
+        is_active: list.isActive,
+        display_slots: list.displaySlots,
+        selection_mode: list.selectionMode,
+        items: list.items,
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('phantom_rotation_config').upsert(payload);
+    } catch (err: any) {
+      console.error("Error guardando colección en Supabase:", err.message);
     }
-  }, [gameHud]);
-
-  const saveToGlobalAndHUD = (updatedPhantom: typeof phantomStation) => {
-    setPhantomStation(updatedPhantom);
-    onSaveGameHud({ ...gameHud, phantomStation: updatedPhantom });
   };
 
-  const alertTrigger = (status: 'success' | 'error' | 'warning', message: string) => {
-    setIsAlertToShow({ show: true, status, message });
-  };
-
-  // ── 1. CREAR NUEVA COLECCIÓN ──
-  const handleCreateRotationList = (e: React.FormEvent) => {
+  const handleCreateRotationList = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newListName.trim()) return;
 
@@ -338,24 +302,22 @@ export default function AdminPhantomStationModule({
 
     const updated = [...rotationLists, newList];
     setRotationLists(updated);
-    syncLocalToStorage(updated);
-    saveRotationListToDB(newList);
+    syncLocal(updated);
+    await saveRotationListToDB(newList);
 
-    if (rotationLists.length === 0) setActiveListId(newList.id);
+    if (rotationLists.length === 0) {
+      handleSetActiveRotationList(newList.id);
+    }
 
     setNewListName('');
     setNewListDesc('');
-    alertTrigger('success', `✅ Colección [${newList.name}] creada con éxito.`);
+    setIsAlertToShow({ show: true, status: 'success', message: `✅ Colección [${newList.name}] creada.` });
   };
 
-  // ── 2. AGREGAR ÍTEM A COLECCIÓN ──
-  const handleAddCustomItemToList = (e: React.FormEvent) => {
+  const handleAddCustomItemToList = async (e: React.FormEvent) => {
     e.preventDefault();
     const destId = targetListId || activeListId || rotationLists[0]?.id;
-    if (!destId || !customItemName.trim()) {
-      alertTrigger('error', 'Selecciona una colección y escribe o selecciona un activo.');
-      return;
-    }
+    if (!destId || !customItemName.trim()) return;
 
     const newItem: PhantomCustomItem = {
       id: selectedDbAssetId || `asset-${Date.now().toString(36)}`,
@@ -365,111 +327,104 @@ export default function AdminPhantomStationModule({
       priceValue: Number(customPrice) || 1000,
       currencyType: customCurrency,
       storageLeft: Number(customStock) || 10,
-      discountPercent: Number(customDiscount) || 0
+      discountPercent: 0
     };
 
+    let updatedTargetList: PhantomRotationList | null = null;
     const updatedLists = rotationLists.map(list => {
       if (list.id === destId) {
-        const updatedList = { ...list, items: [...list.items, newItem] };
-        saveRotationListToDB(updatedList);
-        return updatedList;
+        updatedTargetList = { ...list, items: [...list.items, newItem] };
+        return updatedTargetList;
       }
       return list;
     });
 
     setRotationLists(updatedLists);
-    syncLocalToStorage(updatedLists);
+    syncLocal(updatedLists);
+    if (updatedTargetList) await saveRotationListToDB(updatedTargetList);
 
-    if (destId === activeListId) {
-      applyListToStationOffers(destId, updatedLists);
+    if (destId === activeListId && updatedTargetList) {
+      await applyListToStationOffers(updatedTargetList);
     }
 
     setCustomItemName('');
     setSelectedDbAssetId('');
     setAssetSearchQuery('');
-    alertTrigger('success', `➕ Activo [${newItem.name}] agregado a la colección.`);
+    setIsAlertToShow({ show: true, status: 'success', message: `➕ Activo [${newItem.name}] añadido.` });
   };
 
-  // ── 3. ELIMINAR ÍTEM DE COLECCIÓN ──
-  const handleDeleteItemFromList = (listId: string, itemId: string) => {
+  const handleDeleteItemFromList = async (listId: string, itemId: string) => {
+    let updatedTargetList: PhantomRotationList | null = null;
     const updatedLists = rotationLists.map(list => {
       if (list.id === listId) {
-        const updatedList = { ...list, items: list.items.filter(i => i.id !== itemId) };
-        saveRotationListToDB(updatedList);
-        return updatedList;
+        updatedTargetList = { ...list, items: list.items.filter(i => i.id !== itemId) };
+        return updatedTargetList;
       }
       return list;
     });
 
     setRotationLists(updatedLists);
-    syncLocalToStorage(updatedLists);
+    syncLocal(updatedLists);
+    if (updatedTargetList) await saveRotationListToDB(updatedTargetList);
 
-    if (listId === activeListId) {
-      applyListToStationOffers(listId, updatedLists);
+    if (listId === activeListId && updatedTargetList) {
+      await applyListToStationOffers(updatedTargetList);
     }
   };
 
-  // ── 4. ELIMINAR COLECCIÓN ──
-  const handleDeleteRotationList = (listId: string) => {
+  const handleDeleteRotationList = async (listId: string) => {
     const updatedLists = rotationLists.filter(l => l.id !== listId);
     setRotationLists(updatedLists);
-    syncLocalToStorage(updatedLists);
-    deleteRotationListFromDB(listId);
+    syncLocal(updatedLists);
+    await supabase.from('phantom_rotation_config').delete().eq('id', listId);
 
     if (activeListId === listId && updatedLists.length > 0) {
       handleSetActiveRotationList(updatedLists[0].id);
     }
   };
 
-  // ── 5. ACTUALIZAR CONFIGURACIÓN DE COLECCIÓN ──
-  const handleUpdateCollectionSettings = (listId: string, slots: number, mode: 'sequential' | 'random') => {
+  const handleSetActiveRotationList = async (listId: string) => {
+    setActiveListId(listId);
+    const updatedLists = rotationLists.map(l => ({ ...l, isActive: l.id === listId }));
+    setRotationLists(updatedLists);
+    syncLocal(updatedLists);
+
+    for (const l of updatedLists) {
+      await saveRotationListToDB(l);
+    }
+
+    const activeList = updatedLists.find(l => l.id === listId);
+    if (activeList) await applyListToStationOffers(activeList);
+
+    setIsAlertToShow({ show: true, status: 'success', message: `🔄 Colección activa publicada.` });
+  };
+
+  const handleUpdateCollectionSettings = async (listId: string, slots: number, mode: 'sequential' | 'random') => {
+    let updatedTargetList: PhantomRotationList | null = null;
     const updatedLists = rotationLists.map(list => {
       if (list.id === listId) {
-        const updated = { ...list, displaySlots: slots, selectionMode: mode };
-        saveRotationListToDB(updated);
-        return updated;
+        updatedTargetList = { ...list, displaySlots: slots, selectionMode: mode };
+        return updatedTargetList;
       }
       return list;
     });
 
     setRotationLists(updatedLists);
-    syncLocalToStorage(updatedLists);
+    syncLocal(updatedLists);
+    if (updatedTargetList) await saveRotationListToDB(updatedTargetList);
 
-    if (listId === activeListId) {
-      applyListToStationOffers(listId, updatedLists);
+    if (listId === activeListId && updatedTargetList) {
+      await applyListToStationOffers(updatedTargetList);
     }
-    alertTrigger('success', `⚙️ Colección actualizada (${slots} Tarjetas | Modo: ${mode.toUpperCase()}).`);
+    setIsAlertToShow({ show: true, status: 'success', message: `⚙️ Configuración de slots actualizada.` });
   };
 
-  // ── 6. ACTIVAR COLECCIÓN EN TIENDA ──
-  const handleSetActiveRotationList = (listId: string) => {
-    setActiveListId(listId);
-    const updatedLists = rotationLists.map(l => {
-      const updated = { ...l, isActive: l.id === listId };
-      saveRotationListToDB(updated);
-      return updated;
-    });
-
-    setRotationLists(updatedLists);
-    syncLocalToStorage(updatedLists);
-
-    applyListToStationOffers(listId, updatedLists);
-    alertTrigger('success', `🔄 Colección activa cambiada a [${rotationLists.find(l => l.id === listId)?.name}].`);
-  };
-
-  const applyListToStationOffers = (listId: string, currentLists = rotationLists) => {
-    const activeList = currentLists.find(l => l.id === listId);
-    if (!activeList || activeList.items.length === 0) {
-      saveToGlobalAndHUD({ ...phantomStation, suppliesCatalog: [] });
-      return;
-    }
-
+  const applyListToStationOffers = async (activeList: PhantomRotationList) => {
     const slotCount = Math.min(8, Math.max(1, activeList.displaySlots || 8));
     let selectedItems: PhantomCustomItem[] = [];
 
     if (activeList.selectionMode === 'random') {
-      const shuffled = [...activeList.items].sort(() => Math.random() - 0.5);
-      selectedItems = shuffled.slice(0, slotCount);
+      selectedItems = [...activeList.items].sort(() => Math.random() - 0.5).slice(0, slotCount);
     } else {
       selectedItems = activeList.items.slice(0, slotCount);
     }
@@ -477,7 +432,7 @@ export default function AdminPhantomStationModule({
     const mappedOffers = selectedItems.map(i => ({
       id: i.id,
       name: i.name,
-      discountPercent: i.discountPercent,
+      discountPercent: i.discountPercent || 0,
       timeReductionSeconds: 1800,
       currencyType: i.currencyType,
       priceValue: i.priceValue,
@@ -486,7 +441,39 @@ export default function AdminPhantomStationModule({
       rank: i.rarity
     }));
 
-    saveToGlobalAndHUD({ ...phantomStation, suppliesCatalog: mappedOffers as any });
+    const updatedHud = {
+      ...phantomStation,
+      suppliesCatalog: mappedOffers as any
+    };
+
+    setPhantomStation(updatedHud);
+    onSaveGameHud({ ...gameHud, phantomStation: updatedHud });
+
+    try {
+      await supabase.from('sasori_game_hud').upsert({
+        id: 'global_hud_config',
+        config: { ...gameHud, phantomStation: updatedHud },
+        updated_at: new Date().toISOString()
+      });
+    } catch (e) {}
+  };
+
+  const saveRefreshTimerToDB = async (timerSeconds: number) => {
+    const updatedHud = {
+      ...phantomStation,
+      autoRefreshStockTimerSeconds: timerSeconds
+    };
+    setPhantomStation(updatedHud);
+    onSaveGameHud({ ...gameHud, phantomStation: updatedHud });
+
+    try {
+      await supabase.from('sasori_game_hud').upsert({
+        id: 'global_hud_config',
+        config: { ...gameHud, phantomStation: updatedHud },
+        updated_at: new Date().toISOString()
+      });
+      setIsAlertToShow({ show: true, status: 'success', message: `⏱️ Frecuencia de rotación guardada (${timerSeconds}s).` });
+    } catch (e) {}
   };
 
   const handleRotateToNextList = () => {
@@ -510,7 +497,7 @@ export default function AdminPhantomStationModule({
 
   return (
     <div className="space-y-6 font-mono text-xs text-left text-white select-none p-2 md:p-6">
-
+      
       {/* CABECERA RESUMEN */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-5 bg-zinc-950 border border-zinc-900 rounded-xl gap-4 shadow-xl">
         <div className="space-y-1">
@@ -531,7 +518,7 @@ export default function AdminPhantomStationModule({
         </button>
       </div>
 
-      {/* METRIC CARD STATS */}
+      {/* TARJETAS DE MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 flex flex-col justify-between h-24">
           <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Colecciones Registradas</span>
@@ -598,14 +585,13 @@ export default function AdminPhantomStationModule({
       {/* PANEL PRINCIPAL */}
       <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-6">
 
-        {/* ── 🎯 PESTAÑA 1: COLECCIONES, SLOTS Y BUSCADOR PREDICTIVO ── */}
+        {/* ── PESTAÑA 1: COLECCIONES, SLOTS Y BUSCADOR PREDICTIVO ── */}
         {activeTab === 'rotation_lists' && (
           <div className="space-y-6 animate-fadeIn">
 
-            {/* FORMULARIO DE AGREGAR ITEM + CREAR LISTA */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-              {/* A. Crear Nueva Colección */}
+              {/* Formulario Crear Colección */}
               <form onSubmit={handleCreateRotationList} className="bg-zinc-900/40 border border-zinc-850 p-4 rounded-xl space-y-3">
                 <span className="text-cyan-400 font-bold text-[10px] uppercase tracking-widest block border-b border-zinc-800 pb-2 flex items-center gap-1.5">
                   <FolderPlus size={14} /> CREAR NUEVA COLECCIÓN DE ROTACIÓN
@@ -669,7 +655,7 @@ export default function AdminPhantomStationModule({
                 </button>
               </form>
 
-              {/* B. Agregar Activo con Buscador Predictivo */}
+              {/* Formulario Agregar Activo */}
               <form onSubmit={handleAddCustomItemToList} className="bg-zinc-900/40 border border-zinc-850 p-4 rounded-xl space-y-3">
                 <span className="text-emerald-400 font-bold text-[10px] uppercase tracking-widest block border-b border-zinc-800 pb-2 flex items-center gap-1.5">
                   <Plus size={14} /> AGREGAR ACTIVO (BUSCADOR PREDICTIVO AUTOCOMPLETE)
@@ -829,9 +815,9 @@ export default function AdminPhantomStationModule({
                       type="number"
                       min={0}
                       max={95}
-                      value={customDiscount}
-                      onChange={e => setCustomDiscount(Number(e.target.value))}
-                      className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-red-400 text-[10px] outline-none"
+                      value={0}
+                      disabled
+                      className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-zinc-600 text-[10px] outline-none"
                     />
                   </div>
                 </div>
@@ -846,7 +832,7 @@ export default function AdminPhantomStationModule({
 
             </div>
 
-            {/* LISTADO DE COLECCIONES */}
+            {/* DIRECTORIO DE COLECCIONES */}
             <div className="space-y-4 pt-2">
               <span className="text-[10px] font-mono text-zinc-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-2 flex justify-between items-center">
                 <span>📂 DIRECTORIO DE COLECCIONES DE ROTACIÓN DISPONIBLES ({rotationLists.length})</span>
@@ -1059,14 +1045,7 @@ export default function AdminPhantomStationModule({
                   min="60"
                   max="86400"
                   value={phantomStation.autoRefreshStockTimerSeconds}
-                  onChange={e => {
-                    const val = Number(e.target.value);
-                    setPhantomStation(prev => ({ ...prev, autoRefreshStockTimerSeconds: val }));
-                    onSaveGameHud({
-                      ...gameHud,
-                      phantomStation: { ...phantomStation, autoRefreshStockTimerSeconds: val }
-                    });
-                  }}
+                  onChange={e => saveRefreshTimerToDB(Number(e.target.value))}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold outline-none"
                 />
                 <span className="text-[9px] text-zinc-500 block">Cada {phantomStation.autoRefreshStockTimerSeconds / 60} minutos el motor cambiará automáticamente de colección.</span>
