@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Ghost, RefreshCw, Hammer, Trash2, Plus, Sliders, Database,
-  Shield, TrendingUp, DollarSign, Calendar, FileText, CheckCircle,
+  Ghost, RefreshCw, Trash2, Plus, Sliders, Database,
+  TrendingUp, DollarSign, Calendar, FileText, CheckCircle,
   Flame, ToggleLeft, ToggleRight, Sparkles, AlertTriangle, ShieldCheck,
-  Settings, Info, Power, RefreshCcw, HelpCircle, Layers, FolderPlus,
-  ArrowRightLeft, Eye, Tag, X
+  Settings, Info, Power, Layers, FolderPlus, ArrowRightLeft,
+  Search, Shuffle, ListOrdered, LayoutGrid, Check, X
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip
@@ -37,6 +37,8 @@ export interface PhantomRotationList {
   description?: string;
   isActive: boolean;
   items: PhantomCustomItem[];
+  displaySlots: number;
+  selectionMode: 'sequential' | 'random';
 }
 
 export interface RealDbAsset {
@@ -103,11 +105,11 @@ export default function AdminPhantomStationModule({
 }: AdminPhantomStationModuleProps) {
   const [activeTab, setActiveTab] = useState<'rotation_lists' | 'store_manager' | 'refresh_engine' | 'events_ops' | 'economy_audit'>('rotation_lists');
 
-  // Catálogo de assets reales consultados desde Supabase
+  // Catálogo completo de las 10 categorías de assets
   const [dbAssetsCatalog, setDbAssetsCatalog] = useState<RealDbAsset[]>([]);
   const [loadingDbAssets, setLoadingDbAssets] = useState<boolean>(true);
 
-  // Cargar estado base de la estación
+  // Estado base de la estación
   const [phantomStation, setPhantomStation] = useState<PhantomStationConfig>(() => {
     const base = gameHud.phantomStation || {} as PhantomStationConfig;
     return {
@@ -134,67 +136,49 @@ export default function AdminPhantomStationModule({
     };
   });
 
-  // 📦 COLECCIONES DESDE SUPABASE phantom_rotation_config
-  const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>([]);
+  // Colecciones con lectura híbrida (LocalStorage + Supabase)
+  const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>(() => {
+    const local = localStorage.getItem('sasori_phantom_rotation_lists');
+    if (local) {
+      try { return JSON.parse(local); } catch (e) {}
+    }
+    return [];
+  });
   const [loadingRotationLists, setLoadingRotationLists] = useState<boolean>(true);
+
+  const syncLocalToStorage = (lists: PhantomRotationList[]) => {
+    localStorage.setItem('sasori_phantom_rotation_lists', JSON.stringify(lists));
+  };
 
   useEffect(() => {
     const fetchRotationLists = async () => {
       setLoadingRotationLists(true);
       try {
         const { data, error } = await supabase.from('phantom_rotation_config').select('*').order('created_at', { ascending: true });
-        if (!error && data) {
-          const parsed = data.map((row: any) => ({
-            id: row.id,
-            name: row.name,
-            description: row.description || '',
-            isActive: row.is_active || false,
-            items: row.items || []
-          }));
+        if (!error && data && data.length > 0) {
+          const parsed = data
+            .filter((row: any) => row.id !== 'global_store_settings')
+            .map((row: any) => ({
+              id: row.id,
+              name: row.name,
+              description: row.description || '',
+              isActive: row.is_active || false,
+              items: row.items || [],
+              displaySlots: row.display_slots || row.displaySlots || 8,
+              selectionMode: row.selection_mode || row.selectionMode || 'sequential'
+            }));
           setRotationLists(parsed);
+          syncLocalToStorage(parsed);
         }
       } catch (err) {
-        console.error("Error al cargar rotation lists", err);
+        console.warn("Utilizando respaldo LocalStorage para Colecciones de Rotación.");
       } finally {
         setLoadingRotationLists(false);
       }
     };
 
-    const fetchStoreSettings = async () => {
-      try {
-        const { data, error } = await supabase.from('phantom_rotation_config').select('items').eq('id', 'global_store_settings').single();
-        if (!error && data && data.items && data.items.length > 0) {
-          const settings = data.items[0];
-          setPhantomStation(prev => ({
-            ...prev,
-            autoRefreshStockTimerSeconds: settings.autoRefreshStockTimerSeconds || 680,
-            refreshCostVoidCrystals: settings.refreshCostVoidCrystals || 10
-          }));
-        }
-      } catch (err) {
-        // Ignorar si no existe
-      }
-    };
-
     fetchRotationLists();
-    fetchStoreSettings();
   }, []);
-
-  const saveStoreSettingsToDB = async (timer: number, cost: number) => {
-    try {
-      const payload = {
-        id: 'global_store_settings',
-        name: 'Store Global Settings',
-        description: 'Configuraciones de la tienda (Timer y Peaje)',
-        is_active: false,
-        items: [{ autoRefreshStockTimerSeconds: timer, refreshCostVoidCrystals: cost }] as any[],
-        updated_at: new Date().toISOString()
-      };
-      await supabase.from('phantom_rotation_config').upsert(payload, { onConflict: 'id' });
-    } catch (err) {
-      console.error("Error al persistir configuraciones globales", err);
-    }
-  };
 
   const saveRotationListToDB = async (list: PhantomRotationList) => {
     try {
@@ -204,91 +188,64 @@ export default function AdminPhantomStationModule({
         description: list.description,
         is_active: list.isActive,
         items: list.items,
+        display_slots: list.displaySlots,
+        selection_mode: list.selectionMode,
         updated_at: new Date().toISOString()
       };
       await supabase.from('phantom_rotation_config').upsert(payload, { onConflict: 'id' });
     } catch (err) {
-      console.error("Error al persistir lista de rotación", err);
+      console.warn("No se pudo conectar con la tabla de Supabase, guardado en LocalStorage.");
     }
   };
 
   const deleteRotationListFromDB = async (listId: string) => {
     try {
       await supabase.from('phantom_rotation_config').delete().eq('id', listId);
-    } catch (err) {
-      console.error("Error eliminando lista", err);
-    }
+    } catch (err) {}
   };
-
-  /* Datos de prueba locales eliminados */
-
 
   const [activeListId, setActiveListId] = useState<string>(() => {
     const active = rotationLists.find(l => l.isActive);
     return active ? active.id : (rotationLists[0]?.id || '');
   });
 
-  // Cargar catálogo de assets reales desde Supabase (seed_ships, seed_structures, seed_technologies, seed_tools)
+  // Carga total de catálogos semilla
   useEffect(() => {
     const fetchRealDbCatalog = async () => {
       setLoadingDbAssets(true);
       try {
-        const [shipsRes, structsRes, techsRes, toolsRes] = await Promise.all([
+        const [
+          shipsRes, structsRes, defRes, techsRes, badgesRes,
+          bpRes, licRes, toolsRes, consRes, astroRes
+        ] = await Promise.all([
           supabase.from('seed_ships').select('ship_id, ship_name, rarity'),
           supabase.from('seed_structures').select('id, name, rarity'),
+          supabase.from('seed_defenses').select('defense_id, defense_name, rarity'),
           supabase.from('seed_technologies').select('id, name, rarity'),
-          supabase.from('seed_tools').select('id, name, rarity')
+          supabase.from('seed_badges').select('id, name, rarity'),
+          supabase.from('seed_blueprints').select('id, name, rarity'),
+          supabase.from('seed_licenses').select('id, name, rarity'),
+          supabase.from('seed_tools').select('id, name, rarity'),
+          supabase.from('seed_consumables').select('id, name, rarity'),
+          supabase.from('seed_astrobots').select('id, name, rarity')
         ]);
 
         const catalog: RealDbAsset[] = [];
 
-        (shipsRes.data || []).forEach((s: any) => {
-          catalog.push({
-            id: s.ship_id,
-            name: s.ship_name || 'Nave Estelar',
-            category: 'Naves',
-            rarity: s.rarity || 'Common',
-            defaultPrice: 15000,
-            defaultCurrency: 'GD Coins'
-          });
-        });
-
-        (structsRes.data || []).forEach((s: any) => {
-          catalog.push({
-            id: s.id,
-            name: s.name || 'Estructura',
-            category: 'Estructuras',
-            rarity: s.rarity || 'Common',
-            defaultPrice: 12000,
-            defaultCurrency: 'GD Coins'
-          });
-        });
-
-        (techsRes.data || []).forEach((t: any) => {
-          catalog.push({
-            id: t.id,
-            name: t.name || 'Tecnología',
-            category: 'Tecnologías',
-            rarity: t.rarity || 'Common',
-            defaultPrice: 8000,
-            defaultCurrency: 'Quantum Tokens'
-          });
-        });
-
-        (toolsRes.data || []).forEach((tl: any) => {
-          catalog.push({
-            id: tl.id,
-            name: tl.name || 'Herramienta',
-            category: 'Herramientas',
-            rarity: tl.rarity || 'Common',
-            defaultPrice: 3500,
-            defaultCurrency: 'Phantom Coins'
-          });
-        });
+        (shipsRes.data || []).forEach((s: any) => catalog.push({ id: s.ship_id || s.id, name: s.ship_name || s.name || 'Nave Estelar', category: 'Naves', rarity: s.rarity || 'Common', defaultPrice: 15000, defaultCurrency: 'GD Coins' }));
+        (structsRes.data || []).forEach((s: any) => catalog.push({ id: s.id, name: s.name || 'Estructura', category: 'Estructuras', rarity: s.rarity || 'Common', defaultPrice: 12000, defaultCurrency: 'GD Coins' }));
+        (defRes.data || []).forEach((d: any) => catalog.push({ id: d.defense_id || d.id, name: d.defense_name || d.name || 'Sistema Defensivo', category: 'Defensas', rarity: d.rarity || 'Common', defaultPrice: 9000, defaultCurrency: 'GD Coins' }));
+        (techsRes.data || []).forEach((t: any) => catalog.push({ id: t.id, name: t.name || 'Tecnología', category: 'Tecnologías', rarity: t.rarity || 'Common', defaultPrice: 8000, defaultCurrency: 'Quantum Tokens' }));
+        (badgesRes.data || []).forEach((b: any) => catalog.push({ id: b.id, name: b.name || 'Insignia / Badge', category: 'Insignias', rarity: b.rarity || 'Epic', defaultPrice: 5000, defaultCurrency: 'Phantom Coins' }));
+        (bpRes.data || []).forEach((bp: any) => catalog.push({ id: bp.id, name: bp.name || 'Blueprint / Plano', category: 'Blueprints', rarity: bp.rarity || 'Rare', defaultPrice: 10000, defaultCurrency: 'GD Coins' }));
+        (licRes.data || []).forEach((l: any) => catalog.push({ id: l.id, name: l.name || 'Licencia Estelar', category: 'Licencias', rarity: l.rarity || 'Common', defaultPrice: 6000, defaultCurrency: 'GD Coins' }));
+        (toolsRes.data || []).forEach((tl: any) => catalog.push({ id: tl.id, name: tl.name || 'Herramienta de Minería', category: 'Tools', rarity: tl.rarity || 'Common', defaultPrice: 3500, defaultCurrency: 'Phantom Coins' }));
+        (consRes.data || []).forEach((c: any) => catalog.push({ id: c.id, name: c.name || 'Consumible', category: 'Consumibles', rarity: c.rarity || 'Common', defaultPrice: 1500, defaultCurrency: 'Phantom Coins' }));
+        (astroRes.data || []).forEach((a: any) => catalog.push({ id: a.id, name: a.name || 'Astrobot', category: 'Astrobots', rarity: a.rarity || 'Rare', defaultPrice: 7500, defaultCurrency: 'Quantum Tokens' }));
 
         setDbAssetsCatalog(catalog);
       } catch (err) {
-        console.error("Error al cargar catálogo semilla para Phantom Station:", err);
+        console.error("Error cargando catálogos semilla:", err);
       } finally {
         setLoadingDbAssets(false);
       }
@@ -300,8 +257,14 @@ export default function AdminPhantomStationModule({
   // Formulario de Nueva Lista
   const [newListName, setNewListName] = useState('');
   const [newListDesc, setNewListDesc] = useState('');
+  const [newListSlots, setNewListSlots] = useState<number>(8);
+  const [newListSelectionMode, setNewListSelectionMode] = useState<'sequential' | 'random'>('sequential');
 
-  // Formulario de Agregar Asset Manual
+  // Buscador Predictivo Autocomplete
+  const [assetSearchQuery, setAssetSearchQuery] = useState<string>('');
+  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState<boolean>(false);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
   const [selectedDbAssetId, setSelectedDbAssetId] = useState<string>('');
   const [targetListId, setTargetListId] = useState<string>('');
   const [customItemName, setCustomItemName] = useState('');
@@ -312,44 +275,53 @@ export default function AdminPhantomStationModule({
   const [customStock, setCustomStock] = useState<number>(10);
   const [customDiscount, setCustomDiscount] = useState<number>(0);
 
-  // Auto-completar desde el catálogo DB cuando cambia la selección
   useEffect(() => {
-    if (selectedDbAssetId && dbAssetsCatalog.length > 0) {
-      const asset = dbAssetsCatalog.find(a => a.id === selectedDbAssetId);
-      if (asset) {
-        setCustomItemName(asset.name);
-        setCustomCategory(asset.category);
-        setCustomRarity(asset.rarity);
-        setCustomPrice(asset.defaultPrice);
-        setCustomCurrency(asset.defaultCurrency);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+        setIsAutocompleteOpen(false);
       }
-    }
-  }, [selectedDbAssetId, dbAssetsCatalog]);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  // Sincronización con gameHud
+  const filteredAutocompleteAssets = useMemo(() => {
+    if (!assetSearchQuery.trim()) return dbAssetsCatalog.slice(0, 10);
+    const query = assetSearchQuery.toLowerCase();
+    return dbAssetsCatalog.filter(a =>
+      a.name.toLowerCase().includes(query) ||
+      a.id.toLowerCase().includes(query) ||
+      a.category.toLowerCase().includes(query)
+    ).slice(0, 15);
+  }, [dbAssetsCatalog, assetSearchQuery]);
+
+  const handleSelectAutocompleteAsset = (asset: RealDbAsset) => {
+    setSelectedDbAssetId(asset.id);
+    setCustomItemName(asset.name);
+    setCustomCategory(asset.category);
+    setCustomRarity(asset.rarity);
+    setCustomPrice(asset.defaultPrice);
+    setCustomCurrency(asset.defaultCurrency);
+    setAssetSearchQuery(`[${asset.category}] ${asset.name}`);
+    setIsAutocompleteOpen(false);
+  };
+
   useEffect(() => {
     if (gameHud.phantomStation) {
-      setPhantomStation(prev => ({
-        ...prev,
-        ...gameHud.phantomStation
-      }));
+      setPhantomStation(prev => ({ ...prev, ...gameHud.phantomStation }));
     }
   }, [gameHud]);
 
-
   const saveToGlobalAndHUD = (updatedPhantom: typeof phantomStation) => {
     setPhantomStation(updatedPhantom);
-    onSaveGameHud({
-      ...gameHud,
-      phantomStation: updatedPhantom
-    });
+    onSaveGameHud({ ...gameHud, phantomStation: updatedPhantom });
   };
 
   const alertTrigger = (status: 'success' | 'error' | 'warning', message: string) => {
     setIsAlertToShow({ show: true, status, message });
   };
 
-  // ── 1. CREAR NUEVA COLECCIÓN/LISTA ──
+  // ── 1. CREAR NUEVA COLECCIÓN ──
   const handleCreateRotationList = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newListName.trim()) return;
@@ -359,19 +331,24 @@ export default function AdminPhantomStationModule({
       name: newListName.trim(),
       description: newListDesc.trim() || 'Colección de rotación de activos reales.',
       isActive: rotationLists.length === 0,
-      items: []
+      items: [],
+      displaySlots: newListSlots,
+      selectionMode: newListSelectionMode
     };
 
-    setRotationLists(prev => [...prev, newList]);
+    const updated = [...rotationLists, newList];
+    setRotationLists(updated);
+    syncLocalToStorage(updated);
     saveRotationListToDB(newList);
+
     if (rotationLists.length === 0) setActiveListId(newList.id);
 
     setNewListName('');
     setNewListDesc('');
-    alertTrigger('success', `✅ Colección [${newList.name}] creada correctamente.`);
+    alertTrigger('success', `✅ Colección [${newList.name}] creada con éxito.`);
   };
 
-  // ── 2. AGREGAR ÍTEM MANUALMENTE A UNA COLECCIÓN ──
+  // ── 2. AGREGAR ÍTEM A COLECCIÓN ──
   const handleAddCustomItemToList = (e: React.FormEvent) => {
     e.preventDefault();
     const destId = targetListId || activeListId || rotationLists[0]?.id;
@@ -391,93 +368,113 @@ export default function AdminPhantomStationModule({
       discountPercent: Number(customDiscount) || 0
     };
 
-    setRotationLists(prev => {
-      const newList = prev.map(list => {
-        if (list.id === destId) {
-          const updated = {
-            ...list,
-            items: [...list.items, newItem]
-          };
-          saveRotationListToDB(updated);
-          return updated;
-        }
-        return list;
-      });
-      return newList;
+    const updatedLists = rotationLists.map(list => {
+      if (list.id === destId) {
+        const updatedList = { ...list, items: [...list.items, newItem] };
+        saveRotationListToDB(updatedList);
+        return updatedList;
+      }
+      return list;
     });
 
+    setRotationLists(updatedLists);
+    syncLocalToStorage(updatedLists);
+
     if (destId === activeListId) {
-      applyListToStationOffers(destId);
+      applyListToStationOffers(destId, updatedLists);
     }
 
     setCustomItemName('');
     setSelectedDbAssetId('');
-    alertTrigger('success', `➕ Activo real [${newItem.name}] agregado a la colección.`);
+    setAssetSearchQuery('');
+    alertTrigger('success', `➕ Activo [${newItem.name}] agregado a la colección.`);
   };
 
-  // ── 3. ELIMINAR ÍTEM DE UNA COLECCIÓN ──
+  // ── 3. ELIMINAR ÍTEM DE COLECCIÓN ──
   const handleDeleteItemFromList = (listId: string, itemId: string) => {
-    setRotationLists(prev => {
-      const newList = prev.map(list => {
-        if (list.id === listId) {
-          const updated = {
-            ...list,
-            items: list.items.filter(i => i.id !== itemId)
-          };
-          saveRotationListToDB(updated);
-          return updated;
-        }
-        return list;
-      });
-      return newList;
+    const updatedLists = rotationLists.map(list => {
+      if (list.id === listId) {
+        const updatedList = { ...list, items: list.items.filter(i => i.id !== itemId) };
+        saveRotationListToDB(updatedList);
+        return updatedList;
+      }
+      return list;
     });
+
+    setRotationLists(updatedLists);
+    syncLocalToStorage(updatedLists);
 
     if (listId === activeListId) {
-      applyListToStationOffers(listId);
+      applyListToStationOffers(listId, updatedLists);
     }
   };
 
-  // ── 4. ELIMINAR COLECCIÓN COMPLETA ──
+  // ── 4. ELIMINAR COLECCIÓN ──
   const handleDeleteRotationList = (listId: string) => {
-    if (rotationLists.length <= 1) {
-      alertTrigger('error', 'Debe existir al menos una colección en el sistema.');
-      return;
-    }
-
-    setRotationLists(prev => prev.filter(l => l.id !== listId));
+    const updatedLists = rotationLists.filter(l => l.id !== listId);
+    setRotationLists(updatedLists);
+    syncLocalToStorage(updatedLists);
     deleteRotationListFromDB(listId);
-    if (activeListId === listId) {
-      const remaining = rotationLists.filter(l => l.id !== listId);
-      if (remaining.length > 0) {
-        handleSetActiveRotationList(remaining[0].id);
-      }
+
+    if (activeListId === listId && updatedLists.length > 0) {
+      handleSetActiveRotationList(updatedLists[0].id);
     }
   };
 
-  // ── 5. ACTIVAR UNA LISTA ESPECÍFICA EN LA PHANTOM STATION ──
-  const handleSetActiveRotationList = (listId: string) => {
-    setActiveListId(listId);
-    setRotationLists(prev => {
-      const newList = prev.map(l => {
-        const updated = {
-          ...l,
-          isActive: l.id === listId
-        };
+  // ── 5. ACTUALIZAR CONFIGURACIÓN DE COLECCIÓN ──
+  const handleUpdateCollectionSettings = (listId: string, slots: number, mode: 'sequential' | 'random') => {
+    const updatedLists = rotationLists.map(list => {
+      if (list.id === listId) {
+        const updated = { ...list, displaySlots: slots, selectionMode: mode };
         saveRotationListToDB(updated);
         return updated;
-      });
-      return newList;
+      }
+      return list;
     });
 
-    applyListToStationOffers(listId);
+    setRotationLists(updatedLists);
+    syncLocalToStorage(updatedLists);
+
+    if (listId === activeListId) {
+      applyListToStationOffers(listId, updatedLists);
+    }
+    alertTrigger('success', `⚙️ Colección actualizada (${slots} Tarjetas | Modo: ${mode.toUpperCase()}).`);
+  };
+
+  // ── 6. ACTIVAR COLECCIÓN EN TIENDA ──
+  const handleSetActiveRotationList = (listId: string) => {
+    setActiveListId(listId);
+    const updatedLists = rotationLists.map(l => {
+      const updated = { ...l, isActive: l.id === listId };
+      saveRotationListToDB(updated);
+      return updated;
+    });
+
+    setRotationLists(updatedLists);
+    syncLocalToStorage(updatedLists);
+
+    applyListToStationOffers(listId, updatedLists);
     alertTrigger('success', `🔄 Colección activa cambiada a [${rotationLists.find(l => l.id === listId)?.name}].`);
   };
 
-  const applyListToStationOffers = (listId: string) => {
-    const activeList = rotationLists.find(l => l.id === listId);
-    if (!activeList) return;
+  const applyListToStationOffers = (listId: string, currentLists = rotationLists) => {
+    const activeList = currentLists.find(l => l.id === listId);
+    if (!activeList || activeList.items.length === 0) {
+      saveToGlobalAndHUD({ ...phantomStation, suppliesCatalog: [] });
+      return;
+    }
 
-    const mappedOffers = activeList.items.map(i => ({
+    const slotCount = Math.min(8, Math.max(1, activeList.displaySlots || 8));
+    let selectedItems: PhantomCustomItem[] = [];
+
+    if (activeList.selectionMode === 'random') {
+      const shuffled = [...activeList.items].sort(() => Math.random() - 0.5);
+      selectedItems = shuffled.slice(0, slotCount);
+    } else {
+      selectedItems = activeList.items.slice(0, slotCount);
+    }
+
+    const mappedOffers = selectedItems.map(i => ({
       id: i.id,
       name: i.name,
       discountPercent: i.discountPercent,
@@ -489,23 +486,14 @@ export default function AdminPhantomStationModule({
       rank: i.rarity
     }));
 
-    const updatedCatalog = {
-      ...phantomStation,
-      suppliesCatalog: mappedOffers as any
-    };
-
-    saveToGlobalAndHUD(updatedCatalog);
+    saveToGlobalAndHUD({ ...phantomStation, suppliesCatalog: mappedOffers as any });
   };
 
-  // ── 6. ROTAR AUTOMÁTICAMENTE A LA SIGUIENTE COLECCIÓN ──
   const handleRotateToNextList = () => {
     if (rotationLists.length === 0) return;
-
     const currentIndex = rotationLists.findIndex(l => l.id === activeListId);
     const nextIndex = (currentIndex + 1) % rotationLists.length;
-    const nextList = rotationLists[nextIndex];
-
-    handleSetActiveRotationList(nextList.id);
+    handleSetActiveRotationList(rotationLists[nextIndex].id);
   };
 
   const [burntLogs] = useState([
@@ -518,66 +506,68 @@ export default function AdminPhantomStationModule({
   ]);
 
   const [eventStoreActive, setEventStoreActive] = useState<boolean>(() => localStorage.getItem('phantom_event_store_active') === 'true');
+  const activeCollectionObj = rotationLists.find(l => l.id === activeListId);
 
   return (
-    <div className="space-y-6 font-mono text-xs text-left text-white select-none">
+    <div className="space-y-6 font-mono text-xs text-left text-white select-none p-2 md:p-6">
 
       {/* CABECERA RESUMEN */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-5 bg-zinc-950 border border-zinc-900 rounded-xl gap-4 shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Ghost className="text-[#ff1e1e] h-5 w-5 animate-pulse shrink-0" />
-            <span className="font-bold text-white text-md tracking-wider uppercase">PHANTOM STATION // CONTROL DE ROTACIÓN Y COLECCIONES</span>
+            <span className="font-bold text-white text-md tracking-wider uppercase">PHANTOM STATION // CONTROL DE ROTACIÓN & CATALOGACIÓN</span>
           </div>
           <p className="text-[11px] text-zinc-500 font-sans leading-relaxed">
-            Consola central para agregar activos reales manualmente, crear colecciones de rotación y calibrar el motor de refrescos.
+            Administración completa de colecciones, asignación de tarjetas de la tienda (1 a 8 slots) y buscador predictivo de assets.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRotateToNextList}
-            className="px-3.5 py-2 bg-red-650 hover:bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-red-950/40 active:scale-95 font-mono"
-          >
-            <ArrowRightLeft size={13} />
-            ROTAR A SIGUIENTE COLECCIÓN
-          </button>
-        </div>
+        <button
+          onClick={handleRotateToNextList}
+          className="px-3.5 py-2 bg-red-650 hover:bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-lg shadow-red-950/40 font-mono"
+        >
+          <ArrowRightLeft size={13} /> ROTAR A SIGUIENTE COLECCIÓN
+        </button>
       </div>
 
       {/* METRIC CARD STATS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 flex flex-col justify-between h-24">
-          <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Colecciones de Rotación</span>
+          <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Colecciones Registradas</span>
           <div>
             <span className="text-lg font-black text-white block">{rotationLists.length} Listas</span>
-            <p className="text-[9.5px] text-zinc-500 mt-0.5">Listas configuradas con assets reales</p>
+            <p className="text-[9.5px] text-zinc-500 mt-0.5">Persistencia garantizada</p>
           </div>
         </div>
 
         <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 flex flex-col justify-between h-24 border-l-2 border-l-[#ff1e1e]">
-          <span className="text-[9.5px] text-[#ff1e1e] font-bold uppercase tracking-wider">Colección Activa en Pantalla</span>
+          <span className="text-[9.5px] text-[#ff1e1e] font-bold uppercase tracking-wider">Colección Activa en Tienda</span>
           <div>
-            <span className="text-sm font-black text-amber-400 block truncate">{rotationLists.find(l => l.id === activeListId)?.name || 'Sin Selección'}</span>
-            <p className="text-[9.5px] text-zinc-500 mt-0.5">{phantomStation.suppliesCatalog.length} activos mostrándose</p>
+            <span className="text-sm font-black text-amber-400 block truncate">{activeCollectionObj?.name || 'Sin Selección'}</span>
+            <p className="text-[9.5px] text-zinc-500 mt-0.5">
+              {phantomStation.suppliesCatalog.length} de {activeCollectionObj?.displaySlots || 8} slots ocupados
+            </p>
           </div>
         </div>
 
         <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 flex flex-col justify-between h-24">
-          <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Temporizador de Rotación</span>
+          <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Modo de Rotación</span>
           <div>
-            <span className="text-lg font-black text-yellow-500 block">{(phantomStation.autoRefreshStockTimerSeconds / 60).toFixed(1)} min</span>
-            <p className="text-[9.5px] text-zinc-500 mt-0.5">Frecuencia de cambio automático</p>
-          </div>
-        </div>
-
-        <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 flex flex-col justify-between h-24">
-          <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Estado de Terminal</span>
-          <div>
-            <span className={`text-sm font-black block ${phantomStation.terminalStateOnline ? 'text-emerald-400' : 'text-red-500'}`}>
-              {phantomStation.terminalStateOnline ? 'ONLINE' : 'OFFLINE'}
+            <span className="text-sm font-black text-cyan-400 block uppercase">
+              {activeCollectionObj?.selectionMode === 'random' ? '🔀 Aleatorio' : '📋 Secuencial'}
             </span>
-            <p className="text-[9.5px] text-zinc-500 mt-0.5">Disponibilidad en cliente</p>
+            <p className="text-[9.5px] text-zinc-500 mt-0.5">Estrategia de selección de ítems</p>
+          </div>
+        </div>
+
+        <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 flex flex-col justify-between h-24">
+          <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Catálogo Semilla Cargado</span>
+          <div>
+            <span className="text-sm font-black text-emerald-400 block">
+              {loadingDbAssets ? 'Cargando...' : `${dbAssetsCatalog.length} Assets (10 Tablas)`}
+            </span>
+            <p className="text-[9.5px] text-zinc-500 mt-0.5">Listos para autocompletado</p>
           </div>
         </div>
       </div>
@@ -585,8 +575,8 @@ export default function AdminPhantomStationModule({
       {/* PESTAÑAS DE NAVEGACIÓN */}
       <div className="flex border-b border-zinc-900 overflow-x-auto gap-1">
         {[
-          { id: 'rotation_lists', label: '📂 1) Listas & Colecciones de Rotación' },
-          { id: 'store_manager', label: '🛒 2) Visualización de Tienda Activa' },
+          { id: 'rotation_lists', label: '📂 1) Colecciones & Slots en Tienda' },
+          { id: 'store_manager', label: '🛒 2) Vista de Cuadrícula (Grid 2x4)' },
           { id: 'refresh_engine', label: '⚙️ 3) Motor de Refrescos & Peajes' },
           { id: 'events_ops', label: '⚡ 4) Eventos & LiveOps' },
           { id: 'economy_audit', label: '📊 5) Auditoría Económica' }
@@ -608,11 +598,11 @@ export default function AdminPhantomStationModule({
       {/* PANEL PRINCIPAL */}
       <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-6">
 
-        {/* ── 🎯 PESTAÑA 1: LISTAS Y COLECCIONES DE ROTACIÓN ── */}
+        {/* ── 🎯 PESTAÑA 1: COLECCIONES, SLOTS Y BUSCADOR PREDICTIVO ── */}
         {activeTab === 'rotation_lists' && (
           <div className="space-y-6 animate-fadeIn">
 
-            {/* FORMULARIO DE AGREGAR ITEM MANUAL + CREAR LISTA */}
+            {/* FORMULARIO DE AGREGAR ITEM + CREAR LISTA */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
               {/* A. Crear Nueva Colección */}
@@ -644,6 +634,33 @@ export default function AdminPhantomStationModule({
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-3 bg-black/40 p-2.5 rounded-lg border border-zinc-850">
+                  <div>
+                    <label className="text-zinc-400 text-[8.5px] uppercase font-bold block mb-1">Slots en Grid (Tarjetas):</label>
+                    <select
+                      value={newListSlots}
+                      onChange={e => setNewListSlots(Number(e.target.value))}
+                      className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-amber-400 font-bold text-[10px] outline-none cursor-pointer"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                        <option key={num} value={num}>{num} {num === 1 ? 'Tarjeta' : 'Tarjetas'}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-zinc-400 text-[8.5px] uppercase font-bold block mb-1">Modo de Selección:</label>
+                    <select
+                      value={newListSelectionMode}
+                      onChange={e => setNewListSelectionMode(e.target.value as any)}
+                      className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold text-[10px] outline-none cursor-pointer"
+                    >
+                      <option value="sequential">📋 Secuencial (Orden Fijo)</option>
+                      <option value="random">🔀 Aleatorio (Random)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black py-2 rounded text-[10px] uppercase tracking-wider transition-all cursor-pointer"
@@ -652,10 +669,10 @@ export default function AdminPhantomStationModule({
                 </button>
               </form>
 
-              {/* B. Agregar Activo Manualmente a una Colección (Seleccionando Assets Reales de Supabase) */}
+              {/* B. Agregar Activo con Buscador Predictivo */}
               <form onSubmit={handleAddCustomItemToList} className="bg-zinc-900/40 border border-zinc-850 p-4 rounded-xl space-y-3">
                 <span className="text-emerald-400 font-bold text-[10px] uppercase tracking-widest block border-b border-zinc-800 pb-2 flex items-center gap-1.5">
-                  <Plus size={14} /> AGREGAR ACTIVO MANUAL O DESDE BD A COLECCIÓN
+                  <Plus size={14} /> AGREGAR ACTIVO (BUSCADOR PREDICTIVO AUTOCOMPLETE)
                 </span>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -672,18 +689,51 @@ export default function AdminPhantomStationModule({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="text-zinc-500 text-[8.5px] uppercase font-bold block mb-0.5">Seleccionar de Base de Datos:</label>
-                    <select
-                      value={selectedDbAssetId}
-                      onChange={e => setSelectedDbAssetId(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-cyan-300 font-bold text-[10px] outline-none cursor-pointer uppercase"
-                    >
-                      <option value="">-- Autocompletar desde BD --</option>
-                      {dbAssetsCatalog.map(asset => (
-                        <option key={asset.id} value={asset.id}>[{asset.category}] {asset.name}</option>
-                      ))}
-                    </select>
+                  <div className="relative" ref={autocompleteRef}>
+                    <label className="text-zinc-500 text-[8.5px] uppercase font-bold block mb-0.5">Buscador de Assets:</label>
+                    <div className="relative">
+                      <Search size={12} className="absolute left-2.5 top-2 text-zinc-500" />
+                      <input
+                        type="text"
+                        placeholder="Escribe para autocompletar..."
+                        value={assetSearchQuery}
+                        onFocus={() => setIsAutocompleteOpen(true)}
+                        onChange={e => {
+                          setAssetSearchQuery(e.target.value);
+                          setIsAutocompleteOpen(true);
+                        }}
+                        className="w-full bg-zinc-950 border border-zinc-800 pl-8 pr-2 py-1.5 rounded text-cyan-300 font-bold text-[10px] outline-none uppercase"
+                      />
+                    </div>
+
+                    <AnimatePresence>
+                      {isAutocompleteOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -5 }}
+                          className="absolute left-0 right-0 top-full mt-1 bg-black border border-cyan-500/40 rounded-lg shadow-2xl z-[150] max-h-56 overflow-y-auto divide-y divide-zinc-900 text-[10px]"
+                        >
+                          {filteredAutocompleteAssets.length === 0 ? (
+                            <div className="p-3 text-zinc-500 italic text-center">No se encontraron assets.</div>
+                          ) : (
+                            filteredAutocompleteAssets.map((asset) => (
+                              <div
+                                key={`${asset.category}-${asset.id}`}
+                                onClick={() => handleSelectAutocompleteAsset(asset)}
+                                className="p-2 hover:bg-cyan-950/80 hover:text-cyan-300 cursor-pointer flex justify-between items-center transition-colors"
+                              >
+                                <div>
+                                  <span className="font-bold text-white block uppercase">[{asset.category}] {asset.name}</span>
+                                  <span className="text-[8.5px] text-zinc-500 font-mono">ID: {asset.id}</span>
+                                </div>
+                                <RarityBadge rank={asset.rarity} />
+                              </div>
+                            ))
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
 
@@ -709,11 +759,14 @@ export default function AdminPhantomStationModule({
                     >
                       <option value="Naves">Naves</option>
                       <option value="Estructuras">Estructuras</option>
+                      <option value="Defensas">Defensas</option>
                       <option value="Tecnologías">Tecnologías</option>
-                      <option value="Herramientas">Herramientas</option>
+                      <option value="Insignias">Insignias</option>
                       <option value="Blueprints">Blueprints</option>
+                      <option value="Licencias">Licencias</option>
+                      <option value="Tools">Tools</option>
                       <option value="Consumibles">Consumibles</option>
-                      <option value="Eventos">Eventos</option>
+                      <option value="Astrobots">Astrobots</option>
                     </select>
                   </div>
 
@@ -793,11 +846,11 @@ export default function AdminPhantomStationModule({
 
             </div>
 
-            {/* LISTADO Y ADMINISTRADOR DE COLECCIONES EXISTENTES */}
+            {/* LISTADO DE COLECCIONES */}
             <div className="space-y-4 pt-2">
               <span className="text-[10px] font-mono text-zinc-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-2 flex justify-between items-center">
                 <span>📂 DIRECTORIO DE COLECCIONES DE ROTACIÓN DISPONIBLES ({rotationLists.length})</span>
-                {loadingRotationLists && <span className="text-cyan-400 text-[8px] animate-pulse">Sincronizando con BD...</span>}
+                {loadingRotationLists && <span className="text-cyan-400 text-[8px] animate-pulse">Sincronizando...</span>}
               </span>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -807,13 +860,13 @@ export default function AdminPhantomStationModule({
                   return (
                     <div
                       key={list.id}
-                      className={`p-4 rounded-xl border transition-all ${
+                      className={`p-4 rounded-xl border transition-all space-y-3 ${
                         isCurrentActive
                           ? 'bg-red-950/20 border-red-500/60 shadow-lg shadow-red-950/30'
                           : 'bg-zinc-900/40 border-zinc-850 hover:border-zinc-800'
                       }`}
                     >
-                      <div className="flex justify-between items-start border-b border-zinc-850 pb-2.5 mb-3">
+                      <div className="flex justify-between items-start border-b border-zinc-850 pb-2.5">
                         <div>
                           <div className="flex items-center gap-2">
                             <h4 className="font-bold text-white text-xs uppercase">{list.name}</h4>
@@ -845,7 +898,38 @@ export default function AdminPhantomStationModule({
                         </div>
                       </div>
 
-                      {/* ÍTEMS DENTRO DE LA LISTA */}
+                      <div className="p-2.5 bg-black/60 border border-zinc-850 rounded-lg flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                        <div className="flex items-center gap-2">
+                          <LayoutGrid size={13} className="text-amber-400" />
+                          <span className="text-zinc-400 font-bold uppercase">Slots Asignados:</span>
+                          <select
+                            value={list.displaySlots || 8}
+                            onChange={e => handleUpdateCollectionSettings(list.id, Number(e.target.value), list.selectionMode || 'sequential')}
+                            className="bg-zinc-950 border border-zinc-800 text-amber-400 font-bold px-2 py-0.5 rounded outline-none cursor-pointer"
+                          >
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+                              <option key={n} value={n}>{n} {n === 1 ? 'Tarjeta' : 'Tarjetas'}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-400 font-bold uppercase">Modo:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateCollectionSettings(list.id, list.displaySlots || 8, list.selectionMode === 'random' ? 'sequential' : 'random')}
+                            className={`px-2 py-0.5 rounded border text-[9px] font-bold uppercase cursor-pointer flex items-center gap-1 ${
+                              list.selectionMode === 'random'
+                                ? 'bg-purple-950 text-purple-300 border-purple-800'
+                                : 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                            }`}
+                          >
+                            {list.selectionMode === 'random' ? <Shuffle size={10} /> : <ListOrdered size={10} />}
+                            {list.selectionMode === 'random' ? 'Aleatorio' : 'Secuencial'}
+                          </button>
+                        </div>
+                      </div>
+
                       <div className="space-y-2">
                         <span className="text-[8.5px] text-zinc-500 uppercase font-bold block">
                           Contenido ({list.items.length} activos inscritos):
@@ -857,8 +941,8 @@ export default function AdminPhantomStationModule({
                           </div>
                         ) : (
                           <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                            {list.items.map(item => (
-                              <div key={item.id} className="p-2 bg-black/60 border border-zinc-900 rounded flex justify-between items-center text-[10px]">
+                            {list.items.map((item, idx) => (
+                              <div key={item.id || idx} className="p-2 bg-black/60 border border-zinc-900 rounded flex justify-between items-center text-[10px]">
                                 <div>
                                   <div className="flex items-center gap-1.5">
                                     <span className="font-bold text-white uppercase">{item.name}</span>
@@ -893,50 +977,74 @@ export default function AdminPhantomStationModule({
           </div>
         )}
 
-        {/* ── 🛒 PESTAÑA 2: VISUALIZACIÓN DE TIENDA ACTIVA ── */}
+        {/* ── 🛒 PESTAÑA 2: VISTA PREVIA GRID 2x4 ── */}
         {activeTab === 'store_manager' && (
           <div className="space-y-4 animate-fadeIn">
             <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
               <div>
                 <span className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider block">
-                  CÁTALOGO ACTUALIZADO EN LA PHANTOM STATION (MOSTRANDO COLECCIÓN ACTIVA)
+                  VISTA PREVIA DEL GRID EN TIENDA (2 FILAS X 4 COLUMNAS - 8 CARDS)
                 </span>
                 <p className="text-[10px] text-zinc-500 mt-0.5">
-                  Esta lista es la que ven los comandantes en el juego actualmente.
+                  Visualización exacta de la Phantom Station según la colección activa.
                 </p>
               </div>
 
               <span className="text-amber-400 font-bold bg-amber-950/40 border border-amber-800/60 px-3 py-1 rounded uppercase text-[10px]">
-                Listado: {rotationLists.find(l => l.id === activeListId)?.name}
+                Listado: {activeCollectionObj?.name || 'Sin Selección'} ({phantomStation.suppliesCatalog.length} Tarjetas en Exhibición)
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {phantomStation.suppliesCatalog.length === 0 ? (
-                <div className="col-span-3 p-12 text-center text-zinc-600 italic border border-dashed border-zinc-900 rounded-xl">
-                  Sin activos en exhibición. Selecciona o inyecta ítems en la pestaña de Colecciones.
-                </div>
-              ) : (
-                phantomStation.suppliesCatalog.map((offer: any) => (
-                  <div key={offer.id} className="p-4 bg-black/60 border border-zinc-900 rounded-xl space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-black/80 border border-cyan-500/20 rounded-2xl">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((slotIndex) => {
+                const offer: any = phantomStation.suppliesCatalog[slotIndex];
+                const isAssignedSlot = slotIndex < (activeCollectionObj?.displaySlots || 8);
+
+                return (
+                  <div
+                    key={slotIndex}
+                    className={`p-3.5 rounded-xl border flex flex-col justify-between h-40 transition-all ${
+                      offer
+                        ? 'bg-zinc-950/90 border-cyan-500/50 shadow-lg shadow-cyan-950/20'
+                        : isAssignedSlot
+                        ? 'bg-zinc-900/30 border-dashed border-zinc-800 text-zinc-600'
+                        : 'bg-black/40 border-zinc-900 opacity-40'
+                    }`}
+                  >
                     <div className="flex justify-between items-start">
-                      <span className="font-bold text-white block uppercase text-xs">{offer.name}</span>
-                      <RarityBadge rank={offer.rank || 'Common'} />
+                      <span className="text-[8.5px] font-black text-zinc-500 uppercase">
+                        SLOT #{slotIndex + 1}
+                      </span>
+                      {offer && <RarityBadge rank={offer.rank || 'Common'} />}
                     </div>
-                    <div className="text-[10px] text-zinc-400 font-mono">
-                      Precio: <strong className="text-yellow-400">{offer.priceValue || 1000} {offer.currencyType || 'GD Coins'}</strong>
-                    </div>
-                    <div className="text-[9.5px] text-zinc-500">
-                      Stock Restante: <strong className="text-emerald-400">{offer.storageLeft || 10} unidades</strong>
+
+                    {offer ? (
+                      <div className="space-y-1.5 my-auto">
+                        <span className="font-bold text-white text-xs block uppercase truncate">{offer.name}</span>
+                        <span className="text-[9px] text-cyan-400 font-bold uppercase block">{offer.category || 'Módulo'}</span>
+                        <span className="text-yellow-400 font-extrabold text-xs block">
+                          {offer.priceValue || 1000} {offer.currencyType || 'GD Coins'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="my-auto text-center">
+                        <span className="text-[9.5px] text-zinc-600 italic block">
+                          {isAssignedSlot ? 'Sin ítem asignado' : 'Slot Desactivado por Configuración'}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="text-[8px] text-zinc-500 text-right">
+                      {offer ? `Stock: ${offer.storageLeft || 10} u` : `Slot ${isAssignedSlot ? 'Libre' : 'Inactivo'}`}
                     </div>
                   </div>
-                ))
-              )}
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* ── ⚙️ PESTAÑA 3: MOTOR DE REFRESCOS & PEAJES ── */}
+        {/* ── ⚙️ PESTAÑA 3: MOTOR DE REFRESCOS ── */}
         {activeTab === 'refresh_engine' && (
           <div className="space-y-5 animate-fadeIn">
             <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-widest border-b border-zinc-900 pb-2">
@@ -954,7 +1062,6 @@ export default function AdminPhantomStationModule({
                   onChange={e => {
                     const val = Number(e.target.value);
                     saveToGlobalAndHUD({ ...phantomStation, autoRefreshStockTimerSeconds: val });
-                    saveStoreSettingsToDB(val, phantomStation.refreshCostVoidCrystals);
                   }}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold outline-none"
                 />
@@ -970,7 +1077,6 @@ export default function AdminPhantomStationModule({
                   onChange={e => {
                     const val = Number(e.target.value);
                     saveToGlobalAndHUD({ ...phantomStation, refreshCostVoidCrystals: val });
-                    saveStoreSettingsToDB(phantomStation.autoRefreshStockTimerSeconds, val);
                   }}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-purple-400 font-bold outline-none"
                 />
@@ -980,7 +1086,7 @@ export default function AdminPhantomStationModule({
           </div>
         )}
 
-        {/* ── ⚡ PESTAÑA 4: EVENTOS & LIVEOPS ── */}
+        {/* ── ⚡ PESTAÑA 4: LIVEOPS ── */}
         {activeTab === 'events_ops' && (
           <div className="space-y-4 animate-fadeIn">
             <h3 className="text-xs font-bold text-red-400 uppercase tracking-widest border-b border-zinc-900 pb-2">
@@ -999,7 +1105,7 @@ export default function AdminPhantomStationModule({
           </div>
         )}
 
-        {/* ── 📊 PESTAÑA 5: AUDITORÍA ECONÓMICA ── */}
+        {/* ── 📊 PESTAÑA 5: AUDITORÍA ── */}
         {activeTab === 'economy_audit' && (
           <div className="space-y-4 animate-fadeIn">
             <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest border-b border-zinc-900 pb-2">

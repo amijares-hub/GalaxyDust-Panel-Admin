@@ -72,10 +72,26 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
   };
 
   const deleteMessage = async (msgId: string) => {
-    if (!supabase || !window.confirm("¿Borrar este mensaje por violar las normas?")) return;
-    const { error } = await supabase.from('direct_messages').delete().eq('id', msgId);
-    if (!error) {
-      setMessagesLog(prev => prev.filter(m => m.id !== msgId));
+    if (!supabase || !window.confirm("¿Borrar este mensaje por violar las normas de la comunidad?")) return;
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const adminId = userData?.user?.id;
+
+      // Registro de Auditoría previo a la purga
+      await supabase.from('maintenance_logs').insert([{
+        action_type: 'MODERACION_BORRADO_DM',
+        records_affected: 1,
+        executed_by: adminId || null,
+        created_at: new Date().toISOString()
+      }]);
+
+      const { error } = await supabase.from('direct_messages').delete().eq('id', msgId);
+      if (!error) {
+        setMessagesLog(prev => prev.filter(m => m.id !== msgId));
+      }
+    } catch (e: any) {
+      alert(`Error al moderar mensaje: ${e.message}`);
     }
   };
 
@@ -89,7 +105,7 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
             <Users className="text-cyan-500" size={20} /> CRM Social y Auditoría de Redes
           </h2>
           <p className="text-zinc-500 mt-1 font-sans">
-            Inspecciona conexiones de amigos, audita chats privados y gestiona bloqueos por toxicidad o multicuentas.
+            Inspecciona conexiones de amigos, audita chats privados y gestiona moderación por toxicidad o multicuentas.
           </p>
         </div>
         <div className="relative w-full md:w-64">
@@ -157,14 +173,13 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
                   </div>
                 ) : (
                   friendships.map(f => {
-                    // Identificar quién es el amigo en esta relación
-                    const isRequester = f.requester.id === selectedUser.id;
+                    const isRequester = f.requester?.id === selectedUser.id;
                     const friend = isRequester ? f.receiver : f.requester;
                     
                     return (
                       <div key={f.id} className="p-2.5 bg-zinc-900/30 border border-zinc-850 rounded-lg flex items-center justify-between">
                         <div>
-                          <span className="font-bold text-zinc-200 text-xs block">{friend.username}</span>
+                          <span className="font-bold text-zinc-200 text-xs block">{friend?.username || 'Comandante'}</span>
                           <span className="text-[9px] text-zinc-500 flex items-center gap-1">
                             {isRequester ? 'Solicitó' : 'Recibió'} el {new Date(f.created_at).toLocaleDateString()}
                           </span>
@@ -204,12 +219,12 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
                   </div>
                 ) : (
                   messagesLog.map(msg => {
-                    const isSender = msg.sender.id === selectedUser.id;
+                    const isSender = msg.sender?.id === selectedUser.id;
                     return (
                       <div key={msg.id} className={`flex flex-col max-w-[90%] ${isSender ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
                         <div className="flex items-center gap-1.5 mb-1 opacity-60">
                           <span className="text-[9px] font-bold uppercase text-zinc-400">{isSender ? 'Envió a:' : 'Recibió de:'}</span>
-                          <span className="text-[9px] text-zinc-300">{isSender ? msg.receiver.username : msg.sender.username}</span>
+                          <span className="text-[9px] text-zinc-300">{isSender ? msg.receiver?.username : msg.sender?.username}</span>
                         </div>
                         <div className="group relative">
                           <div className={`p-2.5 rounded-lg text-xs leading-relaxed font-sans border shadow-md ${
@@ -220,7 +235,7 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
                             {msg.message_text}
                           </div>
                           
-                          {/* Botón Admin para borrar mensaje tóxico (solo hover) */}
+                          {/* Botón Admin para borrar mensaje tóxico */}
                           <button 
                             onClick={() => deleteMessage(msg.id)}
                             className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg cursor-pointer z-10"
@@ -250,7 +265,7 @@ export const AdminSocialCRM: React.FC<AdminSocialCRMProps> = ({ users }) => {
         )}
       </div>
 
-      {/* POP-UP: TARJETA DE PERFIL PÚBLICA (Como lo verán los jugadores) */}
+      {/* POP-UP: TARJETA DE PERFIL PÚBLICA */}
       {showProfileCard && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-cyan-900/50 rounded-xl shadow-[0_0_40px_rgba(6,182,212,0.1)] w-full max-w-sm overflow-hidden relative font-sans">

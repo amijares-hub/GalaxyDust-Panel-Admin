@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
 import { 
   Shield, Search, Users, Coins, Database, ShieldAlert, Zap, Layers, 
-  CheckSquare, Square, Eye, Trash2, RefreshCw, Ban, VolumeX, RotateCcw
+  CheckSquare, Square, Eye, Trash2, RefreshCw, Ban
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -56,9 +56,6 @@ export const UserCRM: React.FC = () => {
   const [allSeeds, setAllSeeds] = useState<{ id: string; name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
 
-  const [bulkLevel, setBulkLevel] = useState<number>(1);
-  const [bulkRole, setBulkRole] = useState<string>('no_change');
-
   const parseNum = (row: any, ...keys: string[]) => {
     for (const k of keys) {
       if (row && row[k] !== undefined && row[k] !== null) {
@@ -85,7 +82,7 @@ export const UserCRM: React.FC = () => {
       can_level: parseNum(row, 'can_level', 'level') || 1,
       xp: parseNum(row, 'xp', 'can_xp', 'exp_points'),
       
-      // 🎯 BILLETERA REAL: Lectura unificada desde gd_coin y phantom_coin (singular)
+      // BILLETERA REAL: Lectura unificada desde gd_coin y phantom_coin (singular)
       metal: parseNum(row, 'metal', 'metal_balance'),
       crystal: parseNum(row, 'crystal', 'crystal_balance'),
       deuterium: parseNum(row, 'deuterium', 'deuterium_balance'),
@@ -135,7 +132,6 @@ export const UserCRM: React.FC = () => {
         setSelectedPlayer(mapProfileRow(freshProfile));
       }
 
-      // 🎯 BÚSQUEDA LIMPIA DE ASSETS EVITANDO MEZCLAR TIPOS UUID CON INTEGERS (HTTP 400 FIX)
       const fetchAssetTable = async (tableName: string) => {
         try {
           const { data } = await supabase.from(tableName).select('*').eq('user_id', userId);
@@ -205,7 +201,7 @@ export const UserCRM: React.FC = () => {
     fetchActiveSeedCatalog();
   }, [entityGroup, supabase]);
 
-  // 🎯 INYECTOR MONETARIO DE BILLETERA REAL MEDIANTE RPC SEGURA (SOPORTA VALORES NEGATIVOS PARA RESTAR)
+  // INYECTOR MONETARIO DE BILLETERA REAL MEDIANTE RPC SEGURA (SOPORTA VALORES NEGATIVOS PARA RESTAR)
   const handleLiveAssetInjection = async () => {
     if (!selectedPlayer || injectAmount === 0 || !supabase) return;
 
@@ -221,35 +217,17 @@ export const UserCRM: React.FC = () => {
         crystal: 'crystal'
       };
 
-      const targetCurrency = currencyMap[injectType as string];
+      const targetCurrency = currencyMap[injectType as string] || (injectType as string);
 
-      if (targetCurrency) {
-        // Ejecución por RPC segura de Administración con Audit Log
-        const { data, error } = await supabase.rpc('admin_inject_currency_secure', {
-          p_target_user_id: selectedPlayer.id,
-          p_currency: targetCurrency,
-          p_amount: Number(injectAmount),
-          p_reason: `Ajuste manual desde UserCRM por Administrador`
-        });
+      // Ejecución por RPC segura de Administración con Audit Log
+      const { error } = await supabase.rpc('admin_inject_currency_secure', {
+        p_target_user_id: selectedPlayer.id,
+        p_currency: targetCurrency,
+        p_amount: Number(injectAmount),
+        p_reason: `Ajuste manual desde UserCRM por Administrador`
+      });
 
-        if (error) throw error;
-      } else {
-        // Materiales secundarios no monetarios
-        const currentVal = Number((selectedPlayer as any)[injectType]) || 0;
-        const newVal = Math.max(0, currentVal + Number(injectAmount));
-        const updatePayload: any = { [injectType]: newVal };
-
-        const { data, error } = await supabase
-          .from('user_profiles')
-          .update(updatePayload)
-          .eq('id', selectedPlayer.id)
-          .select();
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
-          throw new Error(`No se encontró registro para el usuario [${selectedPlayer.id}].`);
-        }
-      }
+      if (error) throw error;
 
       alert(`⚡ Ajuste de Billetera Exitoso: ${injectAmount > 0 ? '+' : ''}${injectAmount} en ${String(injectType)}`);
       
@@ -370,14 +348,14 @@ export const UserCRM: React.FC = () => {
 
     if (assetList.length === 0) {
       return (
-        <div className="p-4 text-center text-zinc-600 text-[10px] uppercase italic">
+        <div className="p-4 text-center text-zinc-600 text-[10px] uppercase italic font-mono">
           Sin registros en [{activeAssetTab.toUpperCase()}] para este piloto.
         </div>
       );
     }
 
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
         {assetList.map((item: any) => (
           <div key={item.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center">
             <span className="font-bold text-white block truncate max-w-[180px]">
@@ -635,7 +613,7 @@ export const UserCRM: React.FC = () => {
               ) : (
                 <div className="h-full border border-zinc-900 border-dashed rounded-xl flex flex-col items-center justify-center p-12 text-center bg-zinc-950/20">
                   <Shield size={24} className="text-zinc-800 mb-3 animate-pulse" />
-                  <p className="text-zinc-600 max-w-xs text-xs">Selecciona un comandante de la lista izquierda para expandir su matriz completa de assets y desplegar la consola de inyección.</p>
+                  <p className="text-zinc-600 max-w-xs text-xs font-mono">Selecciona un comandante de la lista izquierda para expandir su matriz completa de assets y desplegar la consola de inyección.</p>
                 </div>
               )}
             </div>

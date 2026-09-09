@@ -645,7 +645,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
     if (!editingItem) return;
 
     const pkCol = currentTabConfig.pk;
-    // Resolver ID dinámico (Soporte dual id / blueprint_id / ship_id / defense_id)
+    // Resolver ID dinámico
     const currentId = editingItem[pkCol] || editingItem.id || editingItem.blueprint_id || editingItem.ship_id || editingItem.defense_id;
 
     if (editorMode === 'CREATE' && (!currentId || !currentId.trim())) {
@@ -657,7 +657,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
       const table = currentTabConfig.table;
       const payload = { ...editingItem };
 
-      // --- MEJORA 1: Auto-equipar skill pendiente en newSkillInput ---
       if (newSkillInput.trim()) {
         const currentSkills = Array.isArray(payload.skills) ? [...payload.skills] : [];
         const MAX_SKILLS = 4;
@@ -669,26 +668,21 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         }
       }
 
-      // Limpieza de campos volátiles o no soportados
       delete payload.skill_requirements;
       delete payload.effect;
 
       if (activeTab === 'BLUEPRINTS') {
         payload.required_materials = bpMaterials;
         payload.required_currencies = bpCurrencies;
-        // Normalizar ID único en ambas columnas por compatibilidad
         payload.id = currentId;
         payload.blueprint_id = currentId;
       }
 
-      // --- MEJORA 2: Dual sync de clave primaria para TOOLS (y otros con pk != 'id') ---
-      // Asigna currentId a 'id' y al pkCol específico para evitar conflictos en seed_tools y similares
       payload.id = currentId;
       if (pkCol !== 'id') {
         payload[pkCol] = currentId;
       }
 
-      // Limpiar propiedades nulas o no numéricas según corresponda
       Object.keys(payload).forEach(f => {
         if (payload[f] === null || payload[f] === undefined) {
           delete payload[f];
@@ -707,13 +701,11 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         }
       });
 
-      // Asegurar el formato adecuado para columnas JSONB
       if (Array.isArray(payload.skills)) {
         payload.skills = payload.skills;
       }
 
       if (editorMode === 'EDIT') {
-        // --- MEJORA 3: Validación de UPDATE estricta con fallback a upsert ---
         const { data: updatedData, error } = await supabase
           .from(table)
           .update(payload)
@@ -723,7 +715,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
         if (error) throw error;
 
         if (!updatedData || updatedData.length === 0) {
-          // Fallback a Upsert si el registro fue creado con una columna primaria alternativa
           const { error: upsertErr } = await supabase
             .from(table)
             .upsert([payload]);
@@ -1169,10 +1160,9 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                   {activeTab === 'BLUEPRINTS' && (
                     <div className="col-span-2 space-y-4 bg-zinc-950 p-3.5 rounded-xl border border-zinc-900">
                       <span className="text-[10.5px] text-cyan-400 font-bold uppercase block border-b border-zinc-900 pb-1">
-                        🗺️ CONFIGURACIÓN DEL BLUEPRINT (PLANOS DE CRAFTEO)
+                        MAPEO Y CRAFTEO DE BLUEPRINT
                       </span>
 
-                      {/* TIPO Y SELECCIÓN DE ACTIVO RESULTANTE */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">
@@ -1203,7 +1193,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                             )}
                           </div>
 
-                          {/* BUSCADOR RÁPIDO DENTRO DE LOS ACTIVOS DE LA CATEGORÍA */}
                           <input
                             type="text"
                             placeholder="🔍 Filtrar activos por nombre o ID..."
@@ -1230,7 +1219,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
 
                           <div className="mt-1.5">
                             <label className="text-[8.5px] text-zinc-500 uppercase font-mono block mb-0.5">
-                              ID de Activo Vinculado (O Ingrese ID Manual):
+                              ID de Activo Vinculado:
                             </label>
                             <input
                               type="text"
@@ -1243,12 +1232,10 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                         </div>
                       </div>
 
-                      {/* USOS POR DEFECTO */}
                       <div>
                         {renderStatInput('Usos por Defecto (Max Uses)', 'default_max_uses')}
                       </div>
 
-                      {/* MATERIALES REQUERIDOS */}
                       <div className="space-y-2 border-t border-zinc-900 pt-3">
                         <div className="flex justify-between items-center">
                           <label className="text-[9px] text-amber-400 font-bold uppercase tracking-wider block">
@@ -1264,7 +1251,7 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                         </div>
 
                         {Object.keys(bpMaterials).length === 0 ? (
-                          <p className="text-[10px] text-zinc-600 italic py-1">Sin costo de materiales registrado (Crafteo gratuito en recursos).</p>
+                          <p className="text-[10px] text-zinc-600 italic py-1">Sin costo de materiales registrado.</p>
                         ) : (
                           <div className="space-y-2">
                             {Object.entries(bpMaterials).map(([matKey, matQty]) => (
@@ -1298,7 +1285,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                         )}
                       </div>
 
-                      {/* MONEDAS REQUERIDAS */}
                       <div className="space-y-2 border-t border-zinc-900 pt-3">
                         <div className="flex justify-between items-center">
                           <label className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider block">
@@ -1350,7 +1336,6 @@ export const ComponentMatrix: React.FC<ComponentMatrixProps> = ({
                     </div>
                   )}
 
-                  {/* MÓDULOS DE HABILIDAD (OCULTO EN BLUEPRINTS) */}
                   {activeTab !== 'BLUEPRINTS' ? (
                     <div className="col-span-2 border-t border-zinc-900 pt-3">
                       <label className="block text-[10px] text-zinc-500 uppercase font-bold mb-1">Módulos de Habilidad (Skills)</label>

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase, uploadAssetImage } from '../lib/supabase';
 import {
   Rocket, Building, Shield, Cpu, Award, FileText, Wrench, Package, Bot,
-  Search, RefreshCw, UserCheck, Plus, Trash2, Layers, Zap, Info, X, Check,
-  Database, Sparkles, Filter, ChevronRight, Layers3, AlertTriangle, UploadCloud
+  Search, RefreshCw, UserCheck, Plus, Trash2, Layers, AlertTriangle, UploadCloud,
+  Database, Info, X
 } from 'lucide-react';
 
 export type AssetCategory = 
@@ -18,69 +18,29 @@ export type AssetCategory =
   | 'Consumibles' 
   | 'Astrobots';
 
-// Mapeo canónico — 'Consumibles' agrupa seed_consumables, seed_bags y seed_packs
 const SEED_TABLE_MAPPING: Record<AssetCategory, { seedTables: string[]; userTable: string; icon: any }> = {
-  'Naves': {
-    seedTables: ['seed_ships'],
-    userTable: 'user_ships',
-    icon: Rocket
-  },
-  'Estructuras': {
-    seedTables: ['seed_structures'],
-    userTable: 'user_structures',
-    icon: Building
-  },
-  'Defensas': {
-    seedTables: ['seed_defenses'],
-    userTable: 'user_defenses',
-    icon: Shield
-  },
-  'Tecnologías': {
-    seedTables: ['seed_technologies'],
-    userTable: 'user_technologies',
-    icon: Cpu
-  },
-  'Insignias': {
-    seedTables: ['seed_badges'],
-    userTable: 'user_badges',
-    icon: Award
-  },
-  'Blueprints': {
-    seedTables: ['seed_blueprints'],
-    userTable: 'user_blueprints',
-    icon: Layers3
-  },
-  'Licencias': {
-    seedTables: ['seed_licenses'],
-    userTable: 'user_licenses',
-    icon: FileText
-  },
-  'Tools': {
-    seedTables: ['seed_tools'],
-    userTable: 'user_tools',
-    icon: Wrench
-  },
-  'Consumibles': {
-    seedTables: ['seed_consumables', 'seed_bags', 'seed_packs'], // <--- Agrupa consumibles, bolsas y packs
-    userTable: 'user_consumibles',
-    icon: Package
-  },
-  'Astrobots': {
-    seedTables: ['seed_astrobots'],
-    userTable: 'user_astrobots',
-    icon: Bot
-  }
+  'Naves': { seedTables: ['seed_ships'], userTable: 'user_ships', icon: Rocket },
+  'Estructuras': { seedTables: ['seed_structures'], userTable: 'user_structures', icon: Building },
+  'Defensas': { seedTables: ['seed_defenses'], userTable: 'user_defenses', icon: Shield },
+  'Tecnologías': { seedTables: ['seed_technologies'], userTable: 'user_technologies', icon: Cpu },
+  'Insignias': { seedTables: ['seed_badges'], userTable: 'user_badges', icon: Award },
+  'Blueprints': { seedTables: ['seed_blueprints'], userTable: 'user_blueprints', icon: Layers },
+  'Licencias': { seedTables: ['seed_licenses'], userTable: 'user_licenses', icon: FileText },
+  'Tools': { seedTables: ['seed_tools'], userTable: 'user_tools', icon: Wrench },
+  'Consumibles': { seedTables: ['seed_consumables', 'seed_bags', 'seed_packs'], userTable: 'user_consumibles', icon: Package },
+  'Astrobots': { seedTables: ['seed_astrobots'], userTable: 'user_astrobots', icon: Bot }
 };
 
 const resolveImageUrl = (rawUrl?: string, fallbackKey?: string, fileExt?: string) => {
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qldjeysusithpblfrmtq.supabase.co';
   if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim() !== '') {
     const clean = rawUrl.trim();
     if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
-    return `https://qldjeysusithpblfrmtq.supabase.co/storage/v1/object/public/galaxy-assets/${clean.replace(/^\//, '')}`;
+    return `${baseUrl}/storage/v1/object/public/galaxy-assets/${clean.replace(/^\//, '')}`;
   }
   const ext = fileExt || 'png';
   if (fallbackKey) {
-    return `https://qldjeysusithpblfrmtq.supabase.co/storage/v1/object/public/galaxy-assets/${fallbackKey}.${ext}`;
+    return `${baseUrl}/storage/v1/object/public/galaxy-assets/${fallbackKey}.${ext}`;
   }
   return 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=300';
 };
@@ -226,7 +186,6 @@ export const AdminAssetMatrixModule: React.FC = () => {
   const fetchPilotInventory = async (userId: string, category: AssetCategory) => {
     const { userTable } = SEED_TABLE_MAPPING[category];
     try {
-      // 1. Obtener legacy_id desde user_profiles
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('legacy_id')
@@ -236,7 +195,6 @@ export const AdminAssetMatrixModule: React.FC = () => {
       const queryColumn = profile?.legacy_id ? 'id_user' : 'user_id';
       const queryValue = profile?.legacy_id || userId;
 
-      // 2. Consultar la tabla usando el fallback dinámico
       const { data } = await supabase
         .from(userTable)
         .select('*')
@@ -265,7 +223,6 @@ export const AdminAssetMatrixModule: React.FC = () => {
     const assetId = asset.ship_id || asset.id;
 
     try {
-      // 1. Obtener el id_user (legacy_id)
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('legacy_id')
@@ -340,7 +297,6 @@ export const AdminAssetMatrixModule: React.FC = () => {
     }
 
     try {
-      // Intentamos con la PK típica que podría ser id o ship_id
       const primaryKeyColumn = asset.ship_id ? 'ship_id' : 'id';
       const { error } = await supabase.from(tableName).delete().eq(primaryKeyColumn, assetId);
       

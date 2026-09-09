@@ -1,26 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
-import { Coins, Database, Zap, Cpu, RefreshCw, Save, Activity, Sliders, Shield, Award, Layers } from 'lucide-react';
+import { 
+  Cpu, RefreshCw, Save, Sliders, Shield, Award, 
+  Trash2, Plus, UserCheck, Wrench, Building
+} from 'lucide-react';
 
-// 1. Tipado estricto de las Bóvedas de Recursos y Nivelación C.A.N.
-interface VaultResources {
+interface VaultUserSummary {
   player_id: string;
   username?: string;
   can_level: number;
   can_xp: number;
-  gd_coins: number;
-  phantom_coins: number;
-  metal: number;
-  crystal: number;
-  deuterium: number;
-  antimatter: number;
-  dark_matter: number;
-  quantum_chips: number;
-  plasma: number;
-  uranium: number;
-  titanium: number;
-  credits: number;
   neural_slots: number;
+}
+
+interface EquippedItem {
+  id: string;
+  user_id: string;
+  item_type: 'badge' | 'technology' | 'structure';
+  item_id: string;
+  item_name: string;
+  sub_type: string;
+  equipped_at: string;
+}
+
+interface SeedCatalogItem {
+  id: string;
+  name: string;
+  type: string;
+  sub_type: string;
 }
 
 interface CANProductionFormula {
@@ -31,238 +38,323 @@ interface CANProductionFormula {
   skillCooldownMultiplier: number;
 }
 
-type CANSubTab = 'vaults' | 'can_config' | 'formulas';
+type CANSubTab = 'equipment' | 'can_config' | 'formulas';
 
 export const CANManager: React.FC = () => {
   const supabase = getSupabaseClient();
-  const [activeTab, setActiveTab] = useState<CANSubTab>('vaults');
-  const [vaults, setVaults] = useState<VaultResources[]>([]);
+  const [activeTab, setActiveTab] = useState<CANSubTab>('equipment');
+  const [users, setUsers] = useState<VaultUserSummary[]>([]);
+  const [selectedUser, setSelectedUser] = useState<VaultUserSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [editingVault, setEditingVault] = useState<VaultResources | null>(null);
 
-  // Fórmulas Globales de Producción de la Estación C.A.N.
+  // Equipamiento C.A.N.
+  const [equippedItems, setEquippedItems] = useState<EquippedItem[]>([]);
+  const [catalogBadges, setCatalogBadges] = useState<SeedCatalogItem[]>([]);
+  const [catalogTechs, setCatalogTechs] = useState<SeedCatalogItem[]>([]);
+  const [catalogStructures, setCatalogStructures] = useState<SeedCatalogItem[]>([]);
+
+  // Selección para equipar
+  const [selectedBadgeToEquip, setSelectedBadgeToEquip] = useState<string>('');
+  const [selectedTechToEquip, setSelectedTechToEquip] = useState<string>('');
+  const [selectedStructureToEquip, setSelectedStructureToEquip] = useState<string>('');
+
+  // Fórmulas Globales de Producción
   const [formulas, setFormulas] = useState<CANProductionFormula>({
     metalRatePerHour: 4500,
     crystalRatePerHour: 2200,
     deuteriumRatePerHour: 900,
-    boostCapHours: 24, // Límite estricto de 1 día
+    boostCapHours: 24,
     skillCooldownMultiplier: 1.0
   });
 
-  useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
+  // Cargar fórmulas iniciales con estrategia Multi-Fallback
+  const fetchFormulas = async () => {
+    // 1. Intentar desde localStorage como lectura rápida
+    const local = localStorage.getItem('sasori_can_formulas');
+    if (local) {
+      try {
+        setFormulas(JSON.parse(local));
+      } catch (e) {}
     }
 
-    fetchVaults();
-
-    // Sincronización en tiempo real con Supabase
-    const vaultsChannel = supabase
-      .channel('public:vaults_and_profiles')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'vaults' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const newVault = payload.new as VaultResources;
-            setVaults((prev) => {
-              if (prev.some((v) => v.player_id === newVault.player_id)) return prev;
-              return [...prev, { ...newVault, username: 'Piloto Reconectando...' }];
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedVault = payload.new as VaultResources;
-            setVaults((prev) =>
-              prev.map((v) => (v.player_id === updatedVault.player_id ? { ...v, ...updatedVault } : v))
-            );
-            setEditingVault((currentEditing) => 
-              currentEditing?.player_id === updatedVault.player_id 
-                ? { ...currentEditing, ...updatedVault } 
-                : currentEditing
-            );
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = payload.old.player_id;
-            setVaults((prev) => prev.filter((v) => v.player_id !== deletedId));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(vaultsChannel);
-    };
-  }, []);
-
-  // Descarga combinada de recursos y niveles C.A.N.
-  const fetchVaults = async () => {
     if (!supabase) return;
-    
+
+    // 2. Intentar desde sasori_game_hud
+    try {
+      const { data } = await supabase
+        .from('sasori_game_hud')
+        .select('config')
+        .eq('id', 'can_formulas')
+        .maybeSingle();
+
+      if (data?.config) {
+        setFormulas(data.config as CANProductionFormula);
+        localStorage.setItem('sasori_can_formulas', JSON.stringify(data.config));
+        return;
+      }
+    } catch (e) {}
+
+    // 3. Respaldo desde game_hud
+    try {
+      const { data } = await supabase
+        .from('game_hud')
+        .select('config')
+        .eq('id', 'can_formulas')
+        .maybeSingle();
+
+      if (data?.config) {
+        setFormulas(data.config as CANProductionFormula);
+        localStorage.setItem('sasori_can_formulas', JSON.stringify(data.config));
+      }
+    } catch (e) {}
+  };
+
+  const fetchUsers = async () => {
+    if (!supabase) return;
     try {
       setLoading(true);
-
-      // Consulta combinada de Vaults y Profiles para obtener nivel C.A.N. y username
-      const { data: profilesData } = await supabase
-        .from('user_profiles')
-        .select('*');
-
-      const profilesMap = new Map();
-      (profilesData || []).forEach((p: any) => {
-        profilesMap.set(p.id || p.user_id, p);
-      });
-
       const { data, error } = await supabase
-        .from('vaults')
-        .select('*');
+        .from('vw_user_vaults_summary')
+        .select('player_id, username, can_level, can_xp, neural_slots');
 
-      if (error && (!profilesData || profilesData.length === 0)) throw error;
+      if (error) throw error;
 
-      const sourceList = (data && data.length > 0) ? data : (profilesData || []);
-
-      const formattedVaults: VaultResources[] = sourceList.map((v: any) => {
-        const uid = v.player_id || v.user_id || v.id;
-        const prof = profilesMap.get(uid);
-
-        return {
-          player_id: uid,
-          username: prof?.username || prof?.display_name || v.username || 'Piloto Desconocido',
-          can_level: prof?.can_level || prof?.level || v.can_level || 1,
-          can_xp: prof?.can_xp || prof?.exp_points || v.can_xp || 0,
-          gd_coins: Number(v.gd_coins || prof?.gd_balance || prof?.gd_coin) || 0,
-          phantom_coins: Number(v.phantom_coins || prof?.phantom_coins_balance || prof?.phantom_coin) || 0,
-          metal: Number(v.metal || prof?.metal || prof?.metal_balance) || 0,
-          crystal: Number(v.crystal || prof?.crystal || prof?.crystal_balance) || 0,
-          deuterium: Number(v.deuterium || prof?.deuterium || prof?.deuterium_balance) || 0,
-          antimatter: Number(v.antimatter) || 0,
-          dark_matter: Number(v.dark_matter || prof?.dark_matter || prof?.dark_matter_balance) || 0,
-          quantum_chips: Number(v.quantum_chips) || 0,
-          plasma: Number(v.plasma) || 0,
-          uranium: Number(v.uranium) || 0,
-          titanium: Number(v.titanium) || 0,
-          credits: Number(v.credits || prof?.quantum_credit) || 0,
-          neural_slots: Number(v.neural_slots || prof?.neural_slots) || 3,
-        };
-      });
-
-      setVaults(formattedVaults);
+      if (data && data.length > 0) {
+        setUsers(data as VaultUserSummary[]);
+        if (!selectedUser) {
+          setSelectedUser(data[0] as VaultUserSummary);
+        }
+      }
     } catch (error: any) {
-      console.error('Error en el radar de la C.A.N.:', error.message);
+      console.error('Error al cargar comandantes:', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Guardar alteraciones en Supabase (dual Vaults + User Profiles)
-  const handleSaveChanges = async () => {
-    if (!editingVault || !supabase) return;
-
+  const fetchEquippedAndCatalogs = async (userId: string) => {
+    if (!supabase || !userId) return;
     try {
-      const { player_id, username, can_level, can_xp, ...resourceData } = editingVault;
+      const { data: eqData } = await supabase
+        .from('can_equipped_items')
+        .select('*')
+        .eq('user_id', userId);
 
-      // Actualización optimista local
-      setVaults(prev => prev.map(v => v.player_id === player_id ? editingVault : v));
+      if (eqData) setEquippedItems(eqData as EquippedItem[]);
 
-      // 1. Actualización en tabla vaults
-      await supabase
-        .from('vaults')
-        .update(resourceData)
-        .eq('player_id', player_id);
+      const [badgesRes, techsRes, structsRes] = await Promise.all([
+        supabase.from('seed_badges').select('id, name, type'),
+        supabase.from('seed_technologies').select('id, name, type'),
+        supabase.from('seed_structures').select('id, name, type')
+      ]);
 
-      // 2. Sincronización en tabla user_profiles (recursos + can_level)
-      await supabase
-        .from('user_profiles')
-        .update({
-          can_level: Number(can_level),
-          can_xp: Number(can_xp),
-          metal: Number(editingVault.metal),
-          crystal: Number(editingVault.crystal),
-          deuterium: Number(editingVault.deuterium),
-          dark_matter: Number(editingVault.dark_matter),
-          gd_balance: Number(editingVault.gd_coins),
-          phantom_coins_balance: Number(editingVault.phantom_coins),
-          updated_at: new Date().toISOString()
-        })
-        .or(`id.eq.${player_id},user_id.eq.${player_id}`);
-
-      alert("✅ RECRISTALIZACIÓN COMPLETADA: Bóveda y C.A.N. Station sincronizados.");
-      setEditingVault(null);
-      fetchVaults();
-    } catch (error: any) {
-      alert(`Error al inyectar suministros: ${error.message}`);
-    }
-  };
-
-  const handleSaveFormulas = async () => {
-    if (!supabase) return;
-    try {
-      const { error } = await supabase
-        .from('sasori_game_hud')
-        .upsert({ id: 'can_formulas', config: formulas });
-      if (error) throw error;
-      alert("⚙️ FÓRMULAS DE PRODUCCIÓN Y ACTIVE SKILLS GUARDADAS EN EL NÚCLEO C.A.N.");
-    } catch (err: any) {
-      alert(`Error guardando fórmulas: ${err.message}`);
-    }
-  };
-
-  const loadFormulas = async () => {
-    if (!supabase) return;
-    try {
-      const { data } = await supabase.from('sasori_game_hud').select('config').eq('id', 'can_formulas').single();
-      if (data && data.config) {
-        setFormulas(data.config);
+      if (badgesRes.data) {
+        setCatalogBadges(badgesRes.data.map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          type: 'badge',
+          sub_type: b.type || 'war_badge'
+        })));
       }
-    } catch (e) {
-      // Si no existe, usamos los valores por defecto
+
+      if (techsRes.data) {
+        setCatalogTechs(techsRes.data.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          type: 'technology',
+          sub_type: t.type || t.id
+        })));
+      }
+
+      if (structsRes.data) {
+        setCatalogStructures(structsRes.data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          type: 'structure',
+          sub_type: s.type || s.id
+        })));
+      }
+    } catch (err: any) {
+      console.error('Error cargando catálogos C.A.N.:', err.message);
     }
   };
 
   useEffect(() => {
-    loadFormulas();
-  }, [supabase]);
+    fetchUsers();
+    fetchFormulas();
+  }, []);
 
-  if (loading && vaults.length === 0) {
+  useEffect(() => {
+    if (selectedUser) {
+      fetchEquippedAndCatalogs(selectedUser.player_id);
+    }
+  }, [selectedUser?.player_id]);
+
+  const handleEquipItem = async (itemType: 'badge' | 'technology' | 'structure', itemId: string) => {
+    if (!selectedUser || !itemId || !supabase) return;
+
+    let targetCatalog: SeedCatalogItem[] = [];
+    if (itemType === 'badge') targetCatalog = catalogBadges;
+    else if (itemType === 'technology') targetCatalog = catalogTechs;
+    else if (itemType === 'structure') targetCatalog = catalogStructures;
+
+    const itemObj = targetCatalog.find(i => i.id === itemId);
+    if (!itemObj) return;
+
+    try {
+      const { error } = await supabase.rpc('equip_can_item', {
+        p_user_id: selectedUser.player_id,
+        p_item_type: itemType,
+        p_item_id: itemObj.id,
+        p_item_name: itemObj.name,
+        p_sub_type: itemObj.sub_type
+      });
+
+      if (error) throw error;
+
+      alert(`✅ MÓDULO EQUIPADO: [${itemObj.name}] sincronizado en la C.A.N.`);
+      fetchEquippedAndCatalogs(selectedUser.player_id);
+
+      if (itemType === 'badge') setSelectedBadgeToEquip('');
+      if (itemType === 'technology') setSelectedTechToEquip('');
+      if (itemType === 'structure') setSelectedStructureToEquip('');
+    } catch (err: any) {
+      alert(`🚨 RESTRICCIÓN DE C.A.N.: ${err.message}`);
+    }
+  };
+
+  const handleUnequipItem = async (equippedId: string, itemName: string) => {
+    if (!selectedUser || !supabase) return;
+    try {
+      const { error } = await supabase.rpc('unequip_can_item', {
+        p_user_id: selectedUser.player_id,
+        p_equipped_id: equippedId
+      });
+
+      if (error) throw error;
+
+      alert(`🗑️ [${itemName}] desequipado de la Estación C.A.N.`);
+      fetchEquippedAndCatalogs(selectedUser.player_id);
+    } catch (err: any) {
+      alert(`Error al desequipar: ${err.message}`);
+    }
+  };
+
+  const handleSaveUserCANConfig = async () => {
+    if (!selectedUser || !supabase) return;
+
+    try {
+      await supabase
+        .from('user_profiles')
+        .update({
+          can_level: Number(selectedUser.can_level),
+          can_xp: Number(selectedUser.can_xp),
+          updated_at: new Date().toISOString()
+        })
+        .or(`id.eq.${selectedUser.player_id},user_id.eq.${selectedUser.player_id}`);
+
+      await supabase
+        .from('vaults')
+        .upsert({
+          player_id: selectedUser.player_id,
+          neural_slots: Number(selectedUser.neural_slots)
+        });
+
+      alert("⚙️ CONFIGURACIÓN C.A.N. Y RANURAS NEURONALES ACTUALIZADAS.");
+      fetchUsers();
+    } catch (error: any) {
+      alert(`Error al guardar configuración: ${error.message}`);
+    }
+  };
+
+  // Guardado indestructible con Fallback en cadena
+  const handleSaveFormulas = async () => {
+    // 1. Guardar siempre en LocalStorage (Respaldo Inmediato)
+    localStorage.setItem('sasori_can_formulas', JSON.stringify(formulas));
+
+    if (!supabase) {
+      alert("⚙️ FÓRMULAS GUARDADAS LOCALMENTE (Sin conexión a Supabase).");
+      return;
+    }
+
+    let savedInDb = false;
+
+    // 2. Intentar guardar en sasori_game_hud
+    try {
+      const { error } = await supabase
+        .from('sasori_game_hud')
+        .upsert({ 
+          id: 'can_formulas', 
+          config: formulas,
+          updated_at: new Date().toISOString()
+        });
+
+      if (!error) savedInDb = true;
+    } catch (err) {}
+
+    // 3. Si falló la primera tabla, intentar en game_hud
+    if (!savedInDb) {
+      try {
+        const { error } = await supabase
+          .from('game_hud')
+          .upsert({ 
+            id: 'can_formulas', 
+            config: formulas,
+            updated_at: new Date().toISOString()
+          });
+
+        if (!error) savedInDb = true;
+      } catch (err) {}
+    }
+
+    if (savedInDb) {
+      alert("⚙️ FÓRMULAS DE PRODUCCIÓN Y BOOSTS GUARDADAS EN SUPABASE.");
+    } else {
+      alert("⚠️ FÓRMULAS GUARDADAS LOCALMENTE.\n\nRecuerda ejecutar el script SQL en Supabase para habilitar la sincronización en la nube.");
+    }
+  };
+
+  const equippedBadges = equippedItems.filter(i => i.item_type === 'badge');
+  const equippedTechs = equippedItems.filter(i => i.item_type === 'technology');
+  const equippedStructures = equippedItems.filter(i => i.item_type === 'structure');
+
+  if (loading && users.length === 0) {
     return (
-      <div className="flex h-full min-h-[400px] items-center justify-center">
-        <div className="p-6 text-center text-amber-500 animate-pulse font-mono tracking-wider">
-          Escanear compartimentos de carga y núcleos C.A.N...
+      <div className="flex h-full min-h-[400px] items-center justify-center font-mono">
+        <div className="p-6 text-center text-amber-500 animate-pulse tracking-wider">
+          Sincronizando Estación C.A.N. y ranuras de equipamiento...
         </div>
-      </div>
-    );
-  }
-
-  if (!supabase) {
-    return (
-      <div className="p-6 text-center text-rose-400">
-        Error de Conexión: Cliente Supabase no configurado.
       </div>
     );
   }
 
   return (
-    <div className="p-6 bg-slate-900 min-h-full text-slate-100 rounded-xl border border-slate-800 text-left font-mono">
+    <div className="p-6 bg-slate-900 min-h-full text-slate-100 rounded-xl border border-slate-800 text-left font-mono select-none">
       
       {/* HEADER PRINCIPAL */}
       <div className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-wider text-amber-400 flex items-center gap-2">
-            <Cpu className="w-6 h-6 text-amber-500 animate-pulse" /> ADMINISTRADOR C.A.N. STATION & BÓVEDAS
+            <Cpu className="w-6 h-6 text-amber-500 animate-pulse" /> ADMINISTRADOR C.A.N. STATION & MÓDULOS
           </h2>
-          <p className="text-sm text-slate-400">Modificación directa de suministros, nivelación de C.A.N., ranuras neuronales y fórmulas.</p>
+          <p className="text-sm text-slate-400 font-sans">
+            Control de nivelación, equipamiento de Badges (Max 5), Tecnologías/Estructuras y ranuras neuronales.
+          </p>
         </div>
-        <button onClick={fetchVaults} className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-amber-400 transition-colors flex items-center gap-2 cursor-pointer">
-          <RefreshCw className="w-4 h-4" /> <span className="text-sm font-medium">Radar</span>
+        <button onClick={fetchUsers} className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-amber-400 transition-colors flex items-center gap-2 cursor-pointer">
+          <RefreshCw className="w-4 h-4" /> <span className="text-sm font-medium">Refrescar</span>
         </button>
       </div>
 
-      {/* PESTAÑAS DE NAVEGACIÓN SUB-MÓDULO */}
-      <div className="flex border-b border-slate-800 gap-2 mb-6 select-none">
+      {/* PESTAÑAS DE NAVEGACIÓN */}
+      <div className="flex border-b border-slate-800 gap-2 mb-6">
         <button 
-          onClick={() => setActiveTab('vaults')} 
+          onClick={() => setActiveTab('equipment')} 
           className={`px-4 py-2.5 font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-2 ${
-            activeTab === 'vaults' ? 'border-amber-500 text-amber-400 bg-amber-950/10' : 'border-transparent text-slate-500 hover:text-slate-300'
+            activeTab === 'equipment' ? 'border-amber-500 text-amber-400 bg-amber-950/10' : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
-          <Database className="w-4 h-4" /> Bóvedas & Suministros
+          <Award className="w-4 h-4" /> Equipamiento C.A.N. (Badges / Tech / Estructuras)
         </button>
 
         <button 
@@ -271,7 +363,7 @@ export const CANManager: React.FC = () => {
             activeTab === 'can_config' ? 'border-cyan-500 text-cyan-400 bg-cyan-950/10' : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
-          <Cpu className="w-4 h-4" /> Configuración C.A.N. & Nivelación
+          <Cpu className="w-4 h-4" /> Nivel C.A.N. & Ranuras Neuronales
         </button>
 
         <button 
@@ -280,214 +372,278 @@ export const CANManager: React.FC = () => {
             activeTab === 'formulas' ? 'border-purple-500 text-purple-400 bg-purple-950/10' : 'border-transparent text-slate-500 hover:text-slate-300'
           }`}
         >
-          <Sliders className="w-4 h-4" /> Fórmulas & Active Skills
+          <Sliders className="w-4 h-4" /> Fórmulas & Boosts
         </button>
       </div>
 
-      {/* TAB 1: BÓVEDAS & SUMINISTROS */}
-      {activeTab === 'vaults' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Lista de Bóvedas */}
-          <div className="lg:col-span-2 space-y-4">
-            {vaults.map((vault) => (
-              <div key={vault.player_id} className="p-4 bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-all">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-semibold text-slate-300 tracking-wide flex items-center gap-2">
-                    <Database className="w-4 h-4 text-slate-500" />
-                    {vault.username}
-                    <span className="text-[9px] bg-cyan-950 text-cyan-400 border border-cyan-800 px-2 py-0.5 rounded font-black uppercase">
-                      C.A.N. LVL {vault.can_level}
-                    </span>
-                  </span>
-                  <button
-                    onClick={() => setEditingVault({ ...vault })}
-                    className={`text-xs px-3 py-1.5 rounded font-medium transition-all cursor-pointer ${
-                      editingVault?.player_id === vault.player_id 
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
-                    }`}
-                  >
-                    {editingVault?.player_id === vault.player_id ? 'Modificando...' : 'Alterar Suministros'}
-                  </button>
-                </div>
-                
-                {/* Grid de recursos rápido */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-400">
-                  <div className="bg-slate-900/60 p-2 rounded flex justify-between border border-slate-800/50">
-                    <span className="flex items-center gap-1"><Coins className="w-3 h-3 text-amber-500/70" /> GD:</span> 
-                    <span className="text-amber-300 font-mono">{vault.gd_coins.toLocaleString()}</span>
-                  </div>
-                  <div className="bg-slate-900/60 p-2 rounded flex justify-between border border-slate-800/50">
-                    <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-purple-500/70" /> PH:</span> 
-                    <span className="text-purple-400 font-mono">{vault.phantom_coins.toLocaleString()}</span>
-                  </div>
-                  <div className="bg-slate-900/60 p-2 rounded flex justify-between border border-slate-800/50">
-                    <span>MET:</span> <span className="text-slate-300 font-mono">{vault.metal.toLocaleString()}</span>
-                  </div>
-                  <div className="bg-slate-900/60 p-2 rounded flex justify-between border border-slate-800/50">
-                    <span>CRY:</span> <span className="text-cyan-400 font-mono">{vault.crystal.toLocaleString()}</span>
-                  </div>
-                </div>
-                <div className="mt-3 text-right text-slate-500 text-[11px] flex items-center justify-end gap-1">
-                  <Cpu className="w-3 h-3 text-emerald-500" />
-                  Ranuras Neuronales Activas: <span className="text-emerald-400 font-mono font-bold text-xs ml-1">{vault.neural_slots}</span>
-                </div>
-              </div>
-            ))}
-            {vaults.length === 0 && !loading && (
-              <div className="p-8 text-center text-slate-500 border border-dashed border-slate-700 rounded-lg">
-                No hay bóvedas detectadas en la base de datos.
-              </div>
-            )}
-          </div>
+      {/* SELECCIÓN DE COMANDANTE */}
+      <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+          <UserCheck className="w-4 h-4 text-cyan-400" /> Comandante Objetivo:
+        </span>
+        <select
+          value={selectedUser?.player_id || ''}
+          onChange={e => {
+            const u = users.find(usr => usr.player_id === e.target.value);
+            if (u) setSelectedUser(u);
+          }}
+          className="bg-slate-900 border border-slate-700 text-amber-300 font-bold px-3 py-1.5 rounded text-xs outline-none cursor-pointer uppercase"
+        >
+          {users.map(u => (
+            <option key={u.player_id} value={u.player_id}>
+              {u.username || 'Comandante'} (C.A.N. LVL {u.can_level}) - ID: {u.player_id}
+            </option>
+          ))}
+        </select>
+      </div>
 
-          {/* Panel de Edición/Inyección Forzada */}
-          <div className="bg-slate-950 p-5 rounded-lg border border-slate-800 h-fit sticky top-6">
-            <h3 className="text-md font-bold text-slate-200 mb-4 flex items-center gap-2 border-b border-slate-800 pb-3">
-              <Database className="w-4 h-4 text-amber-400" /> CONSOLA DE INYECCIÓN C.A.N.
-            </h3>
-
-            {editingVault ? (
-              <div className="space-y-4 text-sm animate-in fade-in duration-200">
-                <p className="text-xs text-slate-400 mb-2">
-                  Editando la cuenta de: <strong className="text-amber-400">{editingVault.username}</strong>
+      {/* TAB 1: EQUIPAMIENTO DE C.A.N. */}
+      {activeTab === 'equipment' && selectedUser && (
+        <div className="space-y-6 animate-fadeIn">
+          
+          {/* SECCIÓN A: BADGES (MÁXIMO 5) */}
+          <div className="p-5 bg-slate-950 border border-slate-800 rounded-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                  <Award className="w-4 h-4" /> BADGES EQUIPADAS EN C.A.N. ({equippedBadges.length} / 5)
+                </span>
+                <p className="text-[10px] text-slate-500 font-sans mt-0.5">
+                  Límite estricto: Máximo 5 Badges activas a la vez. No se permiten 2 Badges del mismo tipo.
                 </p>
+              </div>
 
-                <div className="grid grid-cols-2 gap-3 pb-2 border-b border-slate-800">
-                  <div>
-                    <label htmlFor="can_level" className="block text-[11px] uppercase tracking-wider text-cyan-400 mb-1">Nivel C.A.N.</label>
-                    <input
-                      id="can_level"
-                      type="number"
-                      min="1"
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-cyan-300 font-mono focus:border-cyan-500 focus:outline-none"
-                      value={editingVault.can_level}
-                      onChange={e => setEditingVault({ ...editingVault, can_level: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="can_xp" className="block text-[11px] uppercase tracking-wider text-cyan-400 mb-1">Experiencia C.A.N.</label>
-                    <input
-                      id="can_xp"
-                      type="number"
-                      min="0"
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-cyan-300 font-mono focus:border-cyan-500 focus:outline-none"
-                      value={editingVault.can_xp}
-                      onChange={e => setEditingVault({ ...editingVault, can_xp: Number(e.target.value) })}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="gd_coins" className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">GalaxyDust Coins (gd_coins)</label>
-                  <input
-                    id="gd_coins"
-                    type="number"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-amber-300 font-mono focus:border-amber-500 focus:outline-none"
-                    value={editingVault.gd_coins}
-                    onChange={e => setEditingVault({ ...editingVault, gd_coins: Number(e.target.value) })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="phantom_coins" className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">Phantom Coins (phantom_coins)</label>
-                  <input
-                    id="phantom_coins"
-                    type="number"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-purple-400 font-mono focus:border-purple-500 focus:outline-none"
-                    value={editingVault.phantom_coins}
-                    onChange={e => setEditingVault({ ...editingVault, phantom_coins: Number(e.target.value) })}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
-                  <div>
-                    <label htmlFor="metal" className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">Metal</label>
-                    <input
-                      id="metal"
-                      type="number"
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-300 font-mono focus:border-cyan-500 focus:outline-none"
-                      value={editingVault.metal}
-                      onChange={e => setEditingVault({ ...editingVault, metal: Number(e.target.value) })}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="crystal" className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">Crystal</label>
-                    <input
-                      id="crystal"
-                      type="number"
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-cyan-400 font-mono focus:border-cyan-500 focus:outline-none"
-                      value={editingVault.crystal}
-                      onChange={e => setEditingVault({ ...editingVault, crystal: Number(e.target.value) })}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label htmlFor="deuterium" className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">Deuterio (Deuterium)</label>
-                  <input
-                    id="deuterium"
-                    type="number"
-                    className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-blue-400 font-mono focus:border-blue-500 focus:outline-none"
-                    value={editingVault.deuterium}
-                    onChange={e => setEditingVault({ ...editingVault, deuterium: Number(e.target.value) })}
-                  />
-                </div>
-                
-                <div className="pt-2 border-t border-slate-800">
-                  <label htmlFor="neural_slots" className="block text-[11px] uppercase tracking-wider text-emerald-500/70 mb-1">Ranuras Neuronales (neural_slots)</label>
-                  <input
-                    id="neural_slots"
-                    type="number"
-                    className="w-full bg-slate-900 border border-emerald-900/50 rounded p-2 text-emerald-400 font-mono focus:border-emerald-500 focus:outline-none"
-                    value={editingVault.neural_slots}
-                    onChange={e => setEditingVault({ ...editingVault, neural_slots: Number(e.target.value) })}
-                  />
-                </div>
-
-                <button
-                  onClick={handleSaveChanges}
-                  className="w-full mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 px-4 rounded flex items-center justify-center gap-2 transition-colors text-xs tracking-wider cursor-pointer"
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedBadgeToEquip}
+                  onChange={e => setSelectedBadgeToEquip(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 text-slate-200 text-xs p-2 rounded outline-none cursor-pointer"
                 >
-                  <Save className="w-4 h-4" /> REESCRIBIR BÓVEDA & C.A.N.
+                  <option value="">-- Seleccionar Badge del Catálogo --</option>
+                  {catalogBadges.map(b => (
+                    <option key={b.id} value={b.id}>[{b.sub_type}] {b.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => handleEquipItem('badge', selectedBadgeToEquip)}
+                  disabled={!selectedBadgeToEquip || equippedBadges.length >= 5}
+                  className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase rounded cursor-pointer disabled:opacity-40 flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Equipar
                 </button>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 px-4 text-center border-2 border-dashed border-slate-800 rounded-lg">
-                <Database className="w-8 h-8 text-slate-700 mb-3" />
-                <p className="text-xs text-slate-500">Selecciona una bóveda de la tripulación para abrir las compuertas de modificación.</p>
-              </div>
-            )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {[0, 1, 2, 3, 4].map(slotIndex => {
+                const item = equippedBadges[slotIndex];
+                return (
+                  <div 
+                    key={slotIndex} 
+                    className={`p-3 rounded-lg border text-center flex flex-col justify-between h-28 ${
+                      item 
+                        ? 'bg-amber-950/20 border-amber-500/50 text-amber-300' 
+                        : 'bg-slate-900/40 border-dashed border-slate-800 text-slate-600'
+                    }`}
+                  >
+                    <span className="text-[9px] font-bold uppercase text-slate-500 block">
+                      RANURA {slotIndex + 1}
+                    </span>
+
+                    {item ? (
+                      <div className="space-y-1 my-auto">
+                        <span className="font-bold text-xs block text-amber-200 truncate">{item.item_name}</span>
+                        <span className="text-[8.5px] bg-amber-950 text-amber-400 border border-amber-800/60 px-1.5 py-0.5 rounded uppercase font-bold block w-fit mx-auto">
+                          {item.sub_type}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] italic my-auto block">Vacío</span>
+                    )}
+
+                    {item && (
+                      <button
+                        onClick={() => handleUnequipItem(item.id, item.item_name)}
+                        className="text-[9px] text-red-400 hover:text-red-300 font-bold uppercase cursor-pointer flex items-center justify-center gap-1 border border-red-900/40 bg-red-950/30 py-0.5 rounded mt-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Desequipar
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          {/* SECCIÓN B: TECNOLOGÍAS EQUIPADAS (1 POR TIPO) */}
+          <div className="p-5 bg-slate-950 border border-slate-800 rounded-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
+                  <Wrench className="w-4 h-4" /> TECNOLOGÍAS EQUIPADAS EN C.A.N. ({equippedTechs.length})
+                </span>
+                <p className="text-[10px] text-slate-500 font-sans mt-0.5">
+                  Regla de Unicidad: Máximo 1 Tecnología de cada tipo activa a la vez.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedTechToEquip}
+                  onChange={e => setSelectedTechToEquip(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 text-slate-200 text-xs p-2 rounded outline-none cursor-pointer"
+                >
+                  <option value="">-- Seleccionar Tecnología --</option>
+                  {catalogTechs.map(t => (
+                    <option key={t.id} value={t.id}>[{t.sub_type}] {t.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => handleEquipItem('technology', selectedTechToEquip)}
+                  disabled={!selectedTechToEquip}
+                  className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase rounded cursor-pointer disabled:opacity-40 flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Equipar
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {equippedTechs.length === 0 ? (
+                <div className="col-span-3 p-6 text-center text-slate-600 italic border border-dashed border-slate-800 rounded-lg">
+                  Sin tecnologías equipadas en C.A.N.
+                </div>
+              ) : (
+                equippedTechs.map(tech => (
+                  <div key={tech.id} className="p-3 bg-cyan-950/20 border border-cyan-800/40 rounded-lg flex justify-between items-center">
+                    <div>
+                      <strong className="text-cyan-200 text-xs block">{tech.item_name}</strong>
+                      <span className="text-[9px] text-cyan-500 uppercase font-bold">Tipo: {tech.sub_type}</span>
+                    </div>
+                    <button
+                      onClick={() => handleUnequipItem(tech.id, tech.item_name)}
+                      className="p-1.5 text-red-400 hover:text-red-300 bg-red-950/30 border border-red-900/40 rounded cursor-pointer"
+                      title="Desequipar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* SECCIÓN C: ESTRUCTURAS EQUIPADAS (1 POR TIPO) */}
+          <div className="p-5 bg-slate-950 border border-slate-800 rounded-xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-xs font-bold text-purple-400 uppercase tracking-widest flex items-center gap-2">
+                  <Building className="w-4 h-4" /> ESTRUCTURAS EQUIPADAS EN C.A.N. ({equippedStructures.length})
+                </span>
+                <p className="text-[10px] text-slate-500 font-sans mt-0.5">
+                  Regla de Unicidad: Máximo 1 Estructura de cada tipo activa a la vez.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedStructureToEquip}
+                  onChange={e => setSelectedStructureToEquip(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 text-slate-200 text-xs p-2 rounded outline-none cursor-pointer"
+                >
+                  <option value="">-- Seleccionar Estructura --</option>
+                  {catalogStructures.map(s => (
+                    <option key={s.id} value={s.id}>[{s.sub_type}] {s.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => handleEquipItem('structure', selectedStructureToEquip)}
+                  disabled={!selectedStructureToEquip}
+                  className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase rounded cursor-pointer disabled:opacity-40 flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Equipar
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {equippedStructures.length === 0 ? (
+                <div className="col-span-3 p-6 text-center text-slate-600 italic border border-dashed border-slate-800 rounded-lg">
+                  Sin estructuras equipadas en C.A.N.
+                </div>
+              ) : (
+                equippedStructures.map(struct => (
+                  <div key={struct.id} className="p-3 bg-purple-950/20 border border-purple-800/40 rounded-lg flex justify-between items-center">
+                    <div>
+                      <strong className="text-purple-200 text-xs block">{struct.item_name}</strong>
+                      <span className="text-[9px] text-purple-500 uppercase font-bold">Tipo: {struct.sub_type}</span>
+                    </div>
+                    <button
+                      onClick={() => handleUnequipItem(struct.id, struct.item_name)}
+                      className="p-1.5 text-red-400 hover:text-red-300 bg-red-950/30 border border-red-900/40 rounded cursor-pointer"
+                      title="Desequipar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
         </div>
       )}
 
       {/* TAB 2: CONFIGURACIÓN C.A.N. & NIVELACIÓN */}
-      {activeTab === 'can_config' && (
-        <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-5 animate-fadeIn">
+      {activeTab === 'can_config' && selectedUser && (
+        <div className="bg-slate-950 p-6 rounded-xl border border-slate-800 space-y-5 animate-fadeIn">
           <h3 className="text-sm font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-800 pb-2">
-            ⚙️ PARAMETRIZACIÓN DEL NÚCLEO C.A.N. EN EL SERVIDOR
+            ⚙️ NIVELACIÓN Y RANURAS NEURONALES: {selectedUser.username}
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">C.A.N. Nivel Máximo Permitido</span>
-              <div className="text-2xl font-bold text-cyan-300 font-mono">100 LVL</div>
-              <p className="text-[9px] text-slate-500">Tope de expansión de la estación C.A.N. en el cliente.</p>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-cyan-400 block mb-1">Nivel C.A.N.</label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-cyan-300 font-mono focus:border-cyan-500 outline-none"
+                value={selectedUser.can_level}
+                onChange={e => setSelectedUser({ ...selectedUser, can_level: Number(e.target.value) })}
+              />
             </div>
 
-            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">Factor de Consumo de Deuterio</span>
-              <div className="text-2xl font-bold text-amber-400 font-mono">1.0x Base</div>
-              <p className="text-[9px] text-slate-500">Gasto de combustible por hora activa de la estación.</p>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-cyan-400 block mb-1">Experiencia (XP C.A.N.)</label>
+              <input
+                type="number"
+                min="0"
+                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-cyan-300 font-mono focus:border-cyan-500 outline-none"
+                value={selectedUser.can_xp}
+                onChange={e => setSelectedUser({ ...selectedUser, can_xp: Number(e.target.value) })}
+              />
             </div>
 
-            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase block">A.M.I. Cartografía Estelar</span>
-              <div className="text-2xl font-bold text-emerald-400 font-mono">ONLINE</div>
-              <p className="text-[9px] text-slate-500">Conexión con el mapa de estrellas descubiertas en tiempo real.</p>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-emerald-400 block mb-1">Ranuras Neuronales Activas</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                className="w-full bg-slate-900 border border-emerald-900/60 rounded p-2 text-emerald-300 font-mono focus:border-emerald-500 outline-none"
+                value={selectedUser.neural_slots}
+                onChange={e => setSelectedUser({ ...selectedUser, neural_slots: Number(e.target.value) })}
+              />
             </div>
           </div>
+
+          <button
+            onClick={handleSaveUserCANConfig}
+            className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 px-4 rounded flex items-center justify-center gap-2 cursor-pointer transition-colors text-xs"
+          >
+            <Save className="w-4 h-4" /> GUARDAR PARÁMETROS EN EL SERVIDOR
+          </button>
         </div>
       )}
 
@@ -536,7 +692,7 @@ export const CANManager: React.FC = () => {
 
             <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3">
               <span className="text-amber-400 font-bold uppercase block border-b border-slate-800 pb-1">
-                Reglas de Boost Acumulable (Documento Minería - Pág. 1)
+                Reglas de Boost Acumulable
               </span>
               <div>
                 <label className="text-[9.5px] text-slate-400 block mb-0.5">Tope Máximo de Boost Acumulable (Horas):</label>
@@ -546,9 +702,6 @@ export const CANManager: React.FC = () => {
                   value={formulas.boostCapHours}
                   onChange={e => setFormulas({ ...formulas, boostCapHours: Number(e.target.value) })}
                 />
-                <span className="text-[8.5px] text-slate-500 mt-1 block">
-                  Regla fija: "Acumulable hasta un máximo de 1 día (24 horas)".
-                </span>
               </div>
 
               <div>

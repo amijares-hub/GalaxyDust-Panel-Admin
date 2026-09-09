@@ -445,6 +445,9 @@ export interface GalaxyDustConfig {
   phantomStation: PhantomStationConfig;
   allianceOperations: AllianceOperationsConfig;
   serverSettings: ServerSettingsConfig;
+  metalMultiplier?: number;
+  crystalMultiplier?: number;
+  deuteriumMultiplier?: number;
 }
 
 // ==========================================

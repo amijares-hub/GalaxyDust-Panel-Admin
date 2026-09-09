@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  ShieldAlert, Eye, Ban, RefreshCw, AlertTriangle, 
-  Users, CheckCircle2, Search, Cpu, Activity 
+  ShieldAlert, RefreshCw, Users, Activity 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -31,7 +30,7 @@ export const AdminSecurityModule: React.FC = () => {
   const fetchSecurityData = async () => {
     setLoading(true);
     try {
-      // 1. Cargar Alertas de Seguridad Registradas
+      // 1. Cargar Alertas de Seguridad
       const { data: alertData } = await supabase
         .from('security_alerts')
         .select(`
@@ -42,27 +41,13 @@ export const AdminSecurityModule: React.FC = () => {
 
       if (alertData) setAlerts(alertData as any);
 
-      // 2. Cargar Solapamientos de IPs
+      // 2. Consulta optimizada a la vista SQL vw_ip_overlaps
       const { data: ipData } = await supabase
-        .from('player_ip_logs')
-        .select('ip_address, user_id');
+        .from('vw_ip_overlaps')
+        .select('*');
 
       if (ipData) {
-        const ipMap: Record<string, Set<string>> = {};
-        ipData.forEach(row => {
-          if (!ipMap[row.ip_address]) ipMap[row.ip_address] = new Set();
-          ipMap[row.ip_address].add(row.user_id);
-        });
-
-        const overlaps: IPOverlap[] = Object.entries(ipMap)
-          .filter(([_, set]) => set.size > 1)
-          .map(([ip, set]) => ({
-            ip_address: ip,
-            user_count: set.size,
-            users: Array.from(set)
-          }));
-
-        setIpOverlaps(overlaps);
+        setIpOverlaps(ipData as IPOverlap[]);
       }
     } catch (err) {
       console.error("Error al cargar radar anti-cheat:", err);
@@ -87,7 +72,7 @@ export const AdminSecurityModule: React.FC = () => {
   };
 
   const handleBanUser = async (userId: string, username: string) => {
-    if (!window.confirm(`⚠️ ¿Bloquear/Baneal al piloto ${username} por infracción?`)) return;
+    if (!window.confirm(`⚠️ ¿Bloquear/Banquear al piloto ${username} por infracción?`)) return;
 
     const { error } = await supabase
       .from('user_profiles')
@@ -106,7 +91,6 @@ export const AdminSecurityModule: React.FC = () => {
 
   return (
     <div className="space-y-6 font-mono text-xs text-white p-6 animate-fadeIn">
-      {/* HEADER */}
       <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2 uppercase text-red-500">
@@ -126,13 +110,12 @@ export const AdminSecurityModule: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* PANEL DERECHO: MULTICUENTAS POR IP */}
         <div className="bg-zinc-950 border border-red-900/30 rounded-xl p-5 space-y-4">
           <span className="text-xs font-bold uppercase tracking-widest text-red-400 flex items-center gap-2">
             <Users size={14} /> IPs Compartidas ({ipOverlaps.length})
           </span>
 
-          <div className="space-y-3 pt-1">
+          <div className="space-y-3 pt-1 max-h-[500px] overflow-y-auto custom-scrollbar pr-1">
             {ipOverlaps.length === 0 ? (
               <div className="text-center py-8 text-zinc-600 border border-dashed border-zinc-850 rounded-lg">
                 No se detectan direcciones IP vinculadas a múltiples cuentas.
@@ -158,7 +141,6 @@ export const AdminSecurityModule: React.FC = () => {
           </div>
         </div>
 
-        {/* PANEL IZQUIERDO: AUDITORÍA DE ALERTAS */}
         <div className="lg:col-span-2 bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-4">
           <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
             <span className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">

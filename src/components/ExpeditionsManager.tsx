@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
 import {
-  Compass, ShieldAlert, Map as MapIcon, Plus, Trash2, Zap, Play, Search,
-  TrendingUp, Award, Clock, RefreshCw, Eye, Trophy, Skull, Users, Layers,
-  Gift, Flame, Info, Crosshair, Edit3, Save, Layers3, LayoutGrid, Activity, X, AlertTriangle, Check,
-  Radio, MapPin, Box, Wrench, Bot, FileText, Package, Rocket, Cpu, Building, ChevronLeft, ChevronRight, Sliders, Database, Sparkles, PackageOpen, RotateCcw, AlertOctagon, Network, Loader, ShieldCheck
+  Compass, ShieldAlert, Map as MapIcon, Plus, Trash2, Zap, Play,
+  Clock, RefreshCw, Trophy, Skull, Layers,
+  X, RotateCcw, Flame, ShieldCheck, Network, Loader, Rocket,
+  PackageOpen, ChevronLeft, ChevronRight, MapPin
 } from 'lucide-react';
 
 type TabId = 'exploration' | 'events' | 'generator';
@@ -351,7 +351,7 @@ export const ExpeditionsManager: React.FC = () => {
 
       let safeLogs: any[] = [];
       try {
-        const { data: logsData } = await supabase.from('expedition_logs').select('*').order('created_at', { ascending: false });
+        const { data: logsData } = await supabase.from('expedition_logs').select('*').order('created_at', { ascending: false }).limit(50);
         safeLogs = logsData || [];
       } catch (lErr) {}
       setHistoricalLogs(safeLogs);
@@ -380,7 +380,7 @@ export const ExpeditionsManager: React.FC = () => {
       setDetailedLosses(losses);
 
       try {
-        const { data: discData } = await supabase.from('user_discovered_stars').select('*').order('discovered_at', { ascending: false });
+        const { data: discData } = await supabase.from('user_discovered_stars').select('*').order('discovered_at', { ascending: false }).limit(30);
         if (discData) setDiscoveries(discData);
       } catch (e) {}
 
@@ -1557,7 +1557,11 @@ export const ExpeditionsManager: React.FC = () => {
                       const launchMs = new Date(exp.launch_time).getTime();
                       const returnMs = new Date(exp.estimated_return_time).getTime();
                       const totalDurationMs = Math.max(1000, returnMs - launchMs);
-                      const elapsedMs = Math.max(0, now - launchMs);
+                      
+                      // BLINDAJE ANTI-EXPLOIT: Se limita el tiempo transcurrido exacto al tiempo total del viaje
+                      const rawElapsedMs = Math.max(0, now - launchMs);
+                      const elapsedMs = Math.min(rawElapsedMs, totalDurationMs);
+                      
                       const remainingMs = Math.max(0, returnMs - now);
                       const progressPct = Math.min(100, Math.max(0, (elapsedMs / totalDurationMs) * 100));
 
@@ -1596,12 +1600,32 @@ export const ExpeditionsManager: React.FC = () => {
                             const deutRate = getRate('deuterium', 'deuterium_multiplier');
                             
                             const totalCargoCapacity = snap.total_cargo_capacity || 0;
-                            const totalGathered = (metalRate + crystalRate + deutRate) * (elapsedMs / 1000);
+                            
+                            // BLINDAJE DE EXTRACCIÓN: Se usa elapsedMs topeado para congelar la producción al terminar la expedición
+                            const calculatedGathered = (metalRate + crystalRate + deutRate) * (elapsedMs / 1000);
+                            const totalGathered = totalCargoCapacity > 0 ? Math.min(calculatedGathered, totalCargoCapacity) : calculatedGathered;
+                            
                             const cargoPct = totalCargoCapacity > 0 ? Math.min(100, Math.max(0, (totalGathered / totalCargoCapacity) * 100)) : 0;
                             const activeBuffs = snap.active_buffs || [];
 
                             return (
                               <div className="space-y-3 pt-2 border-t border-slate-850">
+                                {/* Timer Head Status */}
+                                <div className="grid grid-cols-2 gap-2 bg-black/60 p-2 rounded-lg border border-slate-800 text-[10px]">
+                                  <div>
+                                    <span className="text-slate-500 font-bold uppercase block text-[8px]">⏱️ Tiempo Transcurrido</span>
+                                    <span className={`font-mono font-bold ${remainingMs === 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                      {formatDuration(elapsedMs)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-500 font-bold uppercase block text-[8px]">⏳ Cuenta Regresiva</span>
+                                    <span className={`font-mono font-bold ${remainingMs === 0 ? 'text-amber-400 animate-pulse' : 'text-cyan-400'}`}>
+                                      {remainingMs === 0 ? '00h 00m 00s (FINALIZADA)' : formatDuration(remainingMs)}
+                                    </span>
+                                  </div>
+                                </div>
+
                                 {/* Resources */}
                                 <div className="grid grid-cols-3 gap-2">
                                   {[
@@ -1634,7 +1658,7 @@ export const ExpeditionsManager: React.FC = () => {
                                 {/* Flight Progress */}
                                 <div className="space-y-1">
                                   <div className="flex justify-between text-[8.5px] text-zinc-400 font-bold">
-                                    <span>PROGRESO DE VUELO ({formatDuration(remainingMs)} RESTANTE)</span>
+                                    <span>PROGRESO DE VUELO ({remainingMs === 0 ? 'COMPLETADO' : `${formatDuration(remainingMs)} RESTANTE`})</span>
                                     <span className="text-cyan-400">{progressPct.toFixed(1)}%</span>
                                   </div>
                                   <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800">

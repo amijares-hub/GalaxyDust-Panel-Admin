@@ -1,20 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Plus, Edit, Trash2, Search, Sliders, Shield, Zap, RefreshCw, 
-  Settings, Save, Copy, Power, AlertTriangle, User, Compass, HelpCircle, HardDrive,
-  TrendingUp, Star, Filter, Heart, ChevronLeft, ChevronRight, X, Clock, Navigation,
-  Download, Building, Award, Cpu, BookOpen
+  Plus, Trash2, Shield, Settings, AlertTriangle, User, Compass, Clock, Navigation,
+  Download
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
-import { 
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer,
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend
-} from 'recharts';
-import CombatSandboxTester, { CombatSandboxOverlay } from './CombatSandboxTester';
+import CombatSandboxTester from './CombatSandboxTester';
 
-// ─── INTERFACES DE MODELO ───
 interface ShipSeed {
   ship_id: string;
   ship_name: string;
@@ -28,11 +21,11 @@ interface ShipSeed {
   defense: number;
   speed_boost: number;
   combat_speed: number;
-  engine: 'Combustión' | 'Impulso' | 'Hiperespacio' | 'Phantom' | 'Exclusive' | 'Xmas';
-  damage_type: 'Kinetic' | 'Laser' | 'Plasma' | 'Ionic' | 'Graviton';
+  engine: string;
+  damage_type: string;
   collection: string;
-  ship_role: 'Attack' | 'Hybrid' | 'Transport' | 'Explorer' | 'Miner' | 'Defense' | 'Spy' | 'Racing' | 'Carrier' | string;
-  ship_size: 'Fighter' | 'Mighty' | 'Massive' | 'Commander' | 'Mini';
+  ship_role: string;
+  ship_size: string;
   attack_standard: number;
   attack_ionic: number;
   attack_plasma: number;
@@ -44,11 +37,6 @@ interface ShipSeed {
   series: string;
   skills: string[];
   skill_requirements: string;
-  blockchain_asset_id?: string;
-  user_asset_id?: string;
-  required_metal?: number;
-  required_crystal?: number;
-  damage_factor?: number;
 }
 
 interface StructureAsset {
@@ -59,7 +47,7 @@ interface StructureAsset {
   company: string;
   collection: string;
   rarity: 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Exclusive';
-  type: 'Producción' | 'Instalaciones/Facilities' | 'Híbridas' | 'Misceláneas';
+  type: string;
   production_rate: number;
   capacity: number;
   efficiency: number;
@@ -76,7 +64,7 @@ interface TechnologyAsset {
   company: string;
   collection: string;
   rarity: 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Exclusive';
-  type: 'Transporte' | 'Tecnología Militar/MiliTech' | 'Producción' | 'Espionaje' | 'Otros';
+  type: string;
   effectiveness: number;
   scope: string;
   resource_efficiency: number;
@@ -90,24 +78,12 @@ interface BadgeAsset {
   description: string;
   collection: string;
   rarity: 'Common' | 'Uncommon' | 'Rare' | 'Epic' | 'Legendary' | 'Exclusive';
-  type: 'Producción' | 'Guerra/War' | 'Expedición' | 'Flota/Fleet' | 'Híbrido';
+  type: string;
   effect: string;
-  stack: 'No Stackeable' | 'Stackeable' | 'Stack x2' | 'Stack x5';
-  duration: 'Permanent' | '1 Semana' | '1 Mes' | '3 Meses' | '1 Año';
+  stack: string;
+  duration: string;
   badge_slot: string;
   power_score: number;
-}
-
-interface UserHangarShip {
-  userShipId: string;
-  shipId: string;
-  name: string;
-  stars: number;
-  level: number;
-  blueprintsOwned: number;
-  blueprintsRequired: number;
-  flightState: 'SAFE' | 'TRANSITING' | 'INFINITE_LOCK';
-  lastLog: string;
 }
 
 interface AdminShipsModuleProps {
@@ -116,13 +92,12 @@ interface AdminShipsModuleProps {
   onRefreshData?: () => void;
 }
 
-// ─── INITIAL SEED MOCKS (FALLBACK) ───
 const INITIAL_SEED_STRUCTURES: StructureAsset[] = [
   {
     id: "str_01",
     name: "Mina de Orichaltron Hassac-X",
-    avatar_url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=200&auto=format&fit=crop",
-    description: "Unidad minera pesada automatizada diseñada por Hassac para fracturar los filones polimétlicos profundos.",
+    avatar_url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=200",
+    description: "Unidad minera pesada automatizada diseñada por Hassac.",
     company: "Hassac",
     collection: "Sasori Core",
     rarity: "Epic",
@@ -132,23 +107,7 @@ const INITIAL_SEED_STRUCTURES: StructureAsset[] = [
     efficiency: 94,
     durability: 8500,
     power_score: 1200,
-    skills: ["Extracción Alfa: +10% metal base", "Compresión de Sólidos: +15% producción diaria"]
-  },
-  {
-    id: "str_02",
-    name: "Laboratorio Cuántico Dramco",
-    avatar_url: "https://images.unsplash.com/photo-1507668077129-56e32842fceb?q=80&w=200&auto=format&fit=crop",
-    description: "Complejo de investigación avanzada centrado en simular interacciones de deuterio inestable.",
-    company: "Dramco",
-    collection: "Nova Division",
-    rarity: "Legendary",
-    type: "Instalaciones/Facilities",
-    production_rate: 0,
-    capacity: 0,
-    efficiency: 98,
-    durability: 12000,
-    power_score: 2500,
-    skills: ["Investigación Base: Reduce tiempo en 10%", "Simulación de Partículas: +10% efectividad militar"]
+    skills: ["Extracción Alfa: +10% metal base"]
   }
 ];
 
@@ -156,8 +115,8 @@ const INITIAL_SEED_TECHNOLOGIES: TechnologyAsset[] = [
   {
     id: "tech_01",
     name: "Propulsor de Hiperespacio Cuántico",
-    avatar_url: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=200&auto=format&fit=crop",
-    description: "Fórmula de empuje sub-molecular que minimiza la distorsión del campo magnético galáctico.",
+    avatar_url: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=200",
+    description: "Fórmula de empuje sub-molecular que minimiza la distorsión del campo magnético.",
     company: "Monsur",
     collection: "Sasori Core",
     rarity: "Legendary",
@@ -166,7 +125,7 @@ const INITIAL_SEED_TECHNOLOGIES: TechnologyAsset[] = [
     scope: "Toda la flota",
     resource_efficiency: 92,
     power_score: 1800,
-    skills: ["Velocidad Warp I: +15% Travel Speed", "Consumo Integrado: -5% deuterio"]
+    skills: ["Velocidad Warp I: +15% Travel Speed"]
   }
 ];
 
@@ -174,11 +133,11 @@ const INITIAL_SEED_BADGES: BadgeAsset[] = [
   {
     id: "badge_01",
     name: "Insignia Nova Guardian 2026",
-    description: "Insignia conmemorativa forjada para los comandantes sobrevivientes al asedio del Núcleo Alfa.",
+    description: "Insignia conmemorativa forjada para los comandantes sobrevivientes.",
     collection: "Nova Series",
     rarity: "Legendary",
     type: "Guerra/War",
-    effect: "+8% de escudo a toda la armada, +12% de ataque iónico.",
+    effect: "+8% de escudo a toda la armada.",
     stack: "No Stackeable",
     duration: "Permanent",
     badge_slot: "Consume 1 ranura en C.A.N.",
@@ -188,24 +147,50 @@ const INITIAL_SEED_BADGES: BadgeAsset[] = [
 
 export default function AdminShipsModule({ 
   users, 
-  setIsAlertToShow,
-  onRefreshData 
+  setIsAlertToShow
 }: AdminShipsModuleProps) {
 
-  // Pestaña Principal
   const [activeTab, setActiveTab] = useState<'atelier' | 'hangar' | 'fabricacion' | 'bitacora' | 'sandbox'>('atelier');
-  // Subpestaña de Assets en el Taller Estelar
   const [activeAssetSubTab, setActiveAssetSubTab] = useState<'ships' | 'structures' | 'technologies' | 'badges'>('ships');
 
-  // Estados de Selección en Lote y Fabricación
-  const [bulkSelectedShipIds, setBulkSelectedShipIds] = useState<string[]>([]);
   const [globalMetalMultiplier, setGlobalMetalMultiplier] = useState<number>(1.2);
   const [globalCrystalMultiplier, setGlobalCrystalMultiplier] = useState<number>(1.15);
-  const [simulatedBlueprintCount, setSimulatedBlueprintCount] = useState<number>(50);
 
-  // ─── 🚀 ESTADOS Y MÉTODOS DE NAVES ───
   const [shipsList, setShipsList] = useState<ShipSeed[]>([]);
   const [loadingKernel, setLoadingKernel] = useState(true);
+
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  const fetchAuditLogs = async () => {
+    try {
+      const { data } = await supabase
+        .from('maintenance_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (data) setAuditLogs(data);
+    } catch (e) {
+      console.error("Error al cargar auditoría desde Supabase:", e);
+    }
+  };
+
+  const addAuditLog = async (action: string, entity_type: string, entity_id: string, details: string) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const adminId = userData?.user?.id;
+
+      await supabase.from('maintenance_logs').insert([{
+        action_type: `${action}_${entity_type}`,
+        records_affected: 1,
+        executed_by: adminId || null,
+        created_at: new Date().toISOString()
+      }]);
+      fetchAuditLogs();
+    } catch (e) {
+      console.error("Error al registrar auditoría en Postgres:", e);
+    }
+  };
 
   const fetchRealShipsCatalog = async () => {
     try {
@@ -254,9 +239,9 @@ export default function AdminShipsModule({
 
   useEffect(() => {
     fetchRealShipsCatalog();
+    fetchAuditLogs();
   }, []);
 
-  // ─── 🏢 ESTADOS DE ESTRUCTURAS, TECNOLOGÍAS E INSIGNIAS ───
   const [structuresList, setStructuresList] = useState<StructureAsset[]>(INITIAL_SEED_STRUCTURES);
   const [technologiesList, setTechnologiesList] = useState<TechnologyAsset[]>(INITIAL_SEED_TECHNOLOGIES);
   const [badgesList, setBadgesList] = useState<BadgeAsset[]>(INITIAL_SEED_BADGES);
@@ -273,58 +258,11 @@ export default function AdminShipsModule({
   const [isNewTechnology, setIsNewTechnology] = useState(false);
   const [isNewBadge, setIsNewBadge] = useState(false);
 
-  // ─── BUSCADORES Y FILTROS ───
   const [searchQuery, setSearchQuery] = useState('');
   const [filterEngine, setFilterEngine] = useState<string>('all');
   const [filterRarity, setFilterRarity] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('none');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [selectedShip, setSelectedShip] = useState<ShipSeed | null>(null);
-  const [showSandboxModal, setShowSandboxModal] = useState(false);
-  
-  const [bulkRarity, setBulkRarity] = useState<string>('no_change');
-  const [bulkEngine, setBulkEngine] = useState<string>('no_change');
-
-  // Audit Logs
-  const [auditLogs, setAuditLogs] = useState<any[]>(() => {
-    const saved = localStorage.getItem('saso_audit_logs');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return [{
-      id: "log-init-ship",
-      timestamp: new Date().toISOString(),
-      action: "INITIALIZE",
-      entity_type: "SYSTEM_DAPP",
-      entity_id: "SYSTEM",
-      details: "Servicio de auditoría integral de activos en dApp inicializado."
-    }];
-  });
-
-  const addAuditLog = (action: string, entity_type: string, entity_id: string, details: string) => {
-    const entry = { id: 'log-' + Math.random().toString(36).substring(2, 11), timestamp: new Date().toISOString(), action, entity_type, entity_id, details };
-    setAuditLogs(prev => {
-      const updated = [entry, ...prev];
-      localStorage.setItem('saso_audit_logs', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const downloadAuditLogsCSV = () => {
-    const headers = ["ID", "Timestamp", "Action", "Entity Type", "Entity ID", "Details"];
-    const rows = auditLogs.map(log => [log.id, log.timestamp, log.action, log.entity_type, log.entity_id, `"${(log.details || '').replace(/"/g, '""')}"`]);
-    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `historial_modificaciones_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   const [isNewShip, setIsNewShip] = useState(false);
   const [editedShipForm, setEditedShipForm] = useState<Partial<ShipSeed>>({});
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -334,40 +272,19 @@ export default function AdminShipsModule({
   const itemsPerPage = 8;
 
   const filteredShips = useMemo(() => {
-    let result = shipsList.filter(ship => {
+    return shipsList.filter(ship => {
       const matchSearch = ship.ship_name.toLowerCase().includes(searchQuery.toLowerCase()) || ship.ship_id.toLowerCase().includes(searchQuery.toLowerCase());
       const matchEngine = filterEngine === 'all' || ship.engine === filterEngine;
       const matchRarity = filterRarity === 'all' || ship.rarity.toLowerCase() === filterRarity.toLowerCase();
       return matchSearch && matchEngine && matchRarity;
     });
-
-    if (sortBy !== 'none') {
-      result.sort((a, b) => {
-        let valA: any = 0; let valB: any = 0;
-        if (sortBy === 'name') { valA = a.ship_name.toLowerCase(); valB = b.ship_name.toLowerCase(); }
-        else if (sortBy === 'rarity') {
-          const rarities: Record<string, number> = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5, phantom: 6, xmas: 7 };
-          valA = rarities[a.rarity.toLowerCase()] || 0; valB = rarities[b.rarity.toLowerCase()] || 0;
-        } else if (sortBy === 'power') {
-          valA = (a.resistance || 0) + (a.shield || 0) + (a.attack_standard || 0) * 5;
-          valB = (b.resistance || 0) + (b.shield || 0) + (b.attack_standard || 0) * 5;
-        }
-        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-    return result;
-  }, [shipsList, searchQuery, filterEngine, filterRarity, sortBy, sortOrder]);
+  }, [shipsList, searchQuery, filterEngine, filterRarity]);
 
   const paginatedShips = useMemo(() => {
     const startIdx = (currentPage - 1) * itemsPerPage;
     return filteredShips.slice(startIdx, startIdx + itemsPerPage);
   }, [filteredShips, currentPage]);
 
-  const totalPages = Math.ceil(filteredShips.length / itemsPerPage);
-
-  // ─── NAVES HANDLERS ───
   const handleOpenShipTaller = (ship: ShipSeed) => {
     setSelectedShip(ship); setIsNewShip(false); setEditedShipForm({ ...ship });
   };
@@ -377,7 +294,7 @@ export default function AdminShipsModule({
     setSelectedShip(null); setIsNewShip(true);
     setEditedShipForm({
       ship_id: randomUuid, ship_name: '', description: '', rarity: 'Common',
-      avatar_url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=200&auto=format&fit=crop',
+      avatar_url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=200',
       can_level_required: 1, blueprints_required: 10, resistance: 1000, shield: 500, defense: 25,
       speed_boost: 400, engine: 'Combustión', damage_type: 'Laser', collection: 'Sasori Core',
       ship_role: 'Attack', ship_size: 'Fighter', attack_standard: 500, attack_ionic: 100,
@@ -400,12 +317,12 @@ export default function AdminShipsModule({
       if (isNewShip) {
         const { error } = await supabase.from('seed_ships').insert([payload]);
         if (error) throw error;
-        addAuditLog("CREATE", "SHIP", payload.ship_id!, `Creado plano de nave "${payload.ship_name}".`);
+        await addAuditLog("CREATE", "SHIP", payload.ship_id!, `Creado plano de nave "${payload.ship_name}".`);
       } else {
         const id = payload.ship_id; delete payload.ship_id;
         const { error } = await supabase.from('seed_ships').update(payload).eq('ship_id', id);
         if (error) throw error;
-        addAuditLog("UPDATE", "SHIP", id!, `Actualizada nave "${payload.ship_name}".`);
+        await addAuditLog("UPDATE", "SHIP", id!, `Actualizada nave "${payload.ship_name}".`);
       }
 
       setIsAlertToShow({ show: true, status: 'success', message: '¡Nave guardada con éxito en Supabase!' });
@@ -418,13 +335,12 @@ export default function AdminShipsModule({
     try {
       const { error } = await supabase.from('seed_ships').delete().eq('ship_id', shipIdToDelete);
       if (error) throw error;
-      addAuditLog("DELETE", "SHIP", shipIdToDelete, "Nave eliminada.");
+      await addAuditLog("DELETE", "SHIP", shipIdToDelete, "Nave eliminada.");
       setIsDeleteConfirmOpen(false); setShipIdToDelete(null); setSelectedShip(null); fetchRealShipsCatalog();
       setIsAlertToShow({ show: true, status: 'error', message: 'Plano de nave borrado.' });
     } catch (err: any) { alert(`Error al purgar: ${err.message}`); }
   };
 
-  // ─── ESTRUCTURAS, TECNOLOGÍAS E INSIGNIAS HANDLERS ───
   const handleOpenBlankStructure = () => {
     setSelectedStructure(null); setIsNewStructure(true);
     setEditedStructureForm({
@@ -435,14 +351,14 @@ export default function AdminShipsModule({
     });
   };
 
-  const handleSaveStructure = () => {
+  const handleSaveStructure = async () => {
     if (!editedStructureForm.name?.trim()) return;
     if (isNewStructure) {
       setStructuresList(prev => [editedStructureForm as StructureAsset, ...prev]);
     } else {
       setStructuresList(prev => prev.map(s => s.id === editedStructureForm.id ? (editedStructureForm as StructureAsset) : s));
     }
-    addAuditLog(isNewStructure ? "CREATE" : "UPDATE", "STRUCTURE", editedStructureForm.id!, `Estructura "${editedStructureForm.name}".`);
+    await addAuditLog(isNewStructure ? "CREATE" : "UPDATE", "STRUCTURE", editedStructureForm.id!, `Estructura "${editedStructureForm.name}".`);
     setSelectedStructure(null);
     setIsAlertToShow({ show: true, status: 'success', message: 'Estructura guardada con éxito.' });
   };
@@ -457,14 +373,14 @@ export default function AdminShipsModule({
     });
   };
 
-  const handleSaveTechnology = () => {
+  const handleSaveTechnology = async () => {
     if (!editedTechnologyForm.name?.trim()) return;
     if (isNewTechnology) {
       setTechnologiesList(prev => [editedTechnologyForm as TechnologyAsset, ...prev]);
     } else {
       setTechnologiesList(prev => prev.map(t => t.id === editedTechnologyForm.id ? (editedTechnologyForm as TechnologyAsset) : t));
     }
-    addAuditLog(isNewTechnology ? "CREATE" : "UPDATE", "TECHNOLOGY", editedTechnologyForm.id!, `Tecnología "${editedTechnologyForm.name}".`);
+    await addAuditLog(isNewTechnology ? "CREATE" : "UPDATE", "TECHNOLOGY", editedTechnologyForm.id!, `Tecnología "${editedTechnologyForm.name}".`);
     setSelectedTechnology(null);
     setIsAlertToShow({ show: true, status: 'success', message: 'Tecnología guardada con éxito.' });
   };
@@ -478,26 +394,36 @@ export default function AdminShipsModule({
     });
   };
 
-  const handleSaveBadge = () => {
+  const handleSaveBadge = async () => {
     if (!editedBadgeForm.name?.trim()) return;
     if (isNewBadge) {
       setBadgesList(prev => [editedBadgeForm as BadgeAsset, ...prev]);
     } else {
       setBadgesList(prev => prev.map(b => b.id === editedBadgeForm.id ? (editedBadgeForm as BadgeAsset) : b));
     }
-    addAuditLog(isNewBadge ? "CREATE" : "UPDATE", "BADGE", editedBadgeForm.id!, `Insignia "${editedBadgeForm.name}".`);
+    await addAuditLog(isNewBadge ? "CREATE" : "UPDATE", "BADGE", editedBadgeForm.id!, `Insignia "${editedBadgeForm.name}".`);
     setSelectedBadge(null);
     setIsAlertToShow({ show: true, status: 'success', message: 'Insignia guardada con éxito.' });
   };
 
-  // AUDITORÍA DE HANGAR DE JUGADOR
-  const [auditedUser, setAuditedUser] = useState<UserProfile | null>(() => users[0] || null);
-  const [userHangarList, setUserHangarList] = useState<UserHangarShip[]>([]);
+  const downloadAuditLogsCSV = () => {
+    const headers = ["ID", "Accion/Fila", "Executed By", "Fecha"];
+    const rows = auditLogs.map(log => [log.id, log.action_type, log.executed_by || 'ADMIN', log.created_at]);
+    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `audit_logs_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const [auditedUser] = useState<UserProfile | null>(() => users[0] || null);
 
   return (
     <div className="space-y-6 font-mono text-xs text-left text-white select-none">
-      
-      {/* HEADER DE MÓDULO */}
       <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest font-mono block">
@@ -512,7 +438,6 @@ export default function AdminShipsModule({
           </p>
         </div>
 
-        {/* PESTAÑAS PRINCIPALES */}
         <div className="flex bg-black/60 border border-zinc-850 p-1 rounded font-mono text-[10.5px]">
           <button onClick={() => setActiveTab('atelier')} className={`px-3 py-1.5 font-bold uppercase transition-all rounded flex items-center gap-1.5 cursor-pointer ${activeTab === 'atelier' ? 'bg-red-650 text-white shadow-lg' : 'text-zinc-400 hover:text-white'}`}>
             <Compass size={13} /> Taller Estelar (SEED CRUD)
@@ -533,12 +458,8 @@ export default function AdminShipsModule({
       </div>
 
       <AnimatePresence mode="wait">
-        
-        {/* SUBPESTAÑA 1: TALLER ESTELAR (CON SUB-NAVEGACIÓN DE 4 CATEGORÍAS) */}
         {activeTab === 'atelier' && (
           <motion.div key="atelier_section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-            
-            {/* SUB-PESTAÑAS DE CATEGORÍAS */}
             <div className="flex gap-2 bg-zinc-950 p-2 rounded-lg border border-zinc-900 select-none">
               <button onClick={() => setActiveAssetSubTab('ships')} className={`px-3 py-1.5 font-bold uppercase text-[10px] rounded cursor-pointer ${activeAssetSubTab === 'ships' ? 'bg-red-650 text-white' : 'text-zinc-400 hover:text-white'}`}>
                 🚀 Naves ({shipsList.length})
@@ -550,11 +471,10 @@ export default function AdminShipsModule({
                 🔬 Tecnologías ({technologiesList.length})
               </button>
               <button onClick={() => setActiveAssetSubTab('badges')} className={`px-3 py-1.5 font-bold uppercase text-[10px] rounded cursor-pointer ${activeAssetSubTab === 'badges' ? 'bg-cyan-600 text-white' : 'text-zinc-400 hover:text-white'}`}>
-                🏅 Insignias ({badgesList.length})
+                🎖️ Insignias ({badgesList.length})
               </button>
             </div>
 
-            {/* VISTA 1: NAVES */}
             {activeAssetSubTab === 'ships' && (
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-4 p-4 bg-zinc-950 border border-zinc-900 rounded-lg">
@@ -578,7 +498,6 @@ export default function AdminShipsModule({
                   </div>
                 </div>
 
-                {/* FORMULARIO EDITOR DE NAVES */}
                 <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg space-y-3">
                   <span className="font-bold text-cyan-400 uppercase block border-b border-zinc-900 pb-2">Editor de Naves</span>
                   {(selectedShip || isNewShip) ? (
@@ -597,7 +516,6 @@ export default function AdminShipsModule({
               </div>
             )}
 
-            {/* VISTA 2: ESTRUCTURAS */}
             {activeAssetSubTab === 'structures' && (
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-4 p-4 bg-zinc-950 border border-zinc-900 rounded-lg">
@@ -636,7 +554,6 @@ export default function AdminShipsModule({
               </div>
             )}
 
-            {/* VISTA 3: TECNOLOGÍAS */}
             {activeAssetSubTab === 'technologies' && (
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-4 p-4 bg-zinc-950 border border-zinc-900 rounded-lg">
@@ -675,7 +592,6 @@ export default function AdminShipsModule({
               </div>
             )}
 
-            {/* VISTA 4: INSIGNIAS */}
             {activeAssetSubTab === 'badges' && (
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-4 p-4 bg-zinc-950 border border-zinc-900 rounded-lg">
@@ -710,11 +626,9 @@ export default function AdminShipsModule({
                 </div>
               </div>
             )}
-
           </motion.div>
         )}
 
-        {/* SUBPESTAÑA 2: HANGAR AUDITORÍA */}
         {activeTab === 'hangar' && (
           <motion.div key="hangar_section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
             <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg space-y-3">
@@ -727,7 +641,6 @@ export default function AdminShipsModule({
           </motion.div>
         )}
 
-        {/* SUBPESTAÑA 3: REGLAS DE FABRICACIÓN */}
         {activeTab === 'fabricacion' && (
           <motion.div key="fabricacion_section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg space-y-4 font-mono">
             <span className="text-[10px] font-bold text-zinc-400 uppercase block border-b border-zinc-900 pb-2">⚙️ MULTIPLICADORES DE MATERIALES EN FÁBRICA</span>
@@ -744,36 +657,32 @@ export default function AdminShipsModule({
           </motion.div>
         )}
 
-        {/* SUBPESTAÑA 4: BITÁCORA */}
         {activeTab === 'bitacora' && (
           <motion.div key="bitacora_section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-4 bg-zinc-950 border border-zinc-900 rounded-lg space-y-3 font-mono">
             <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
-              <span className="font-bold text-white uppercase">Bitácora de Auditoría</span>
+              <span className="font-bold text-white uppercase">Bitácora de Auditoría en Servidor (Postgres)</span>
               <button onClick={downloadAuditLogsCSV} className="px-3 py-1 bg-red-600 text-white font-bold text-[10px] uppercase rounded cursor-pointer"><Download size={11} /> CSV</button>
             </div>
-            <div className="bg-black p-3 rounded h-96 overflow-y-auto space-y-2">
+            <div className="bg-black p-3 rounded h-96 overflow-y-auto space-y-2 custom-scrollbar">
               {auditLogs.map(log => (
                 <div key={log.id} className="p-2 bg-zinc-950 border border-zinc-900 text-[10px] rounded flex justify-between">
                   <div>
-                    <span className="text-red-400 font-bold uppercase">{log.action}</span> • <span className="text-white">{log.entity_type}</span>: {log.details}
+                    <span className="text-red-400 font-bold uppercase">{log.action_type}</span> • Filas Afectadas: {log.records_affected}
                   </div>
-                  <span className="text-zinc-600">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                  <span className="text-zinc-600">{new Date(log.created_at).toLocaleTimeString()}</span>
                 </div>
               ))}
             </div>
           </motion.div>
         )}
 
-        {/* SUBPESTAÑA 5: COMBAT SANDBOX */}
         {activeTab === 'sandbox' && (
           <motion.div key="sandbox_section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <CombatSandboxTester />
           </motion.div>
         )}
-
       </AnimatePresence>
 
-      {/* CONFIRMACIÓN DE BORRADO DE NAVE */}
       <AnimatePresence>
         {isDeleteConfirmOpen && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -791,7 +700,6 @@ export default function AdminShipsModule({
           </div>
         )}
       </AnimatePresence>
-
     </div>
   );
 }

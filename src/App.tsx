@@ -300,52 +300,19 @@ export default function App() {
                 Desarrollo
               </span>
 
-              {/* FUNCTION C.A.N */}
+              {/* FUNCTION C.A.N - Pestaña directa sin Dropdown */}
               <div className="space-y-0.5">
                 <button
-                  onClick={() => toggleDropdown('can')}
-                  className={`w-full py-1.5 px-2 rounded flex items-center justify-between text-xs font-medium tracking-wide transition-all cursor-pointer ${nav.activeMain === 'can' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
-                    }`}
+                  onClick={() => navTo('can', 'can_global')}
+                  className={`w-full py-1.5 px-2 rounded flex items-center justify-between text-xs font-medium tracking-wide transition-all cursor-pointer ${
+                    nav.activeMain === 'can' ? 'bg-zinc-900 text-red-500 font-semibold' : 'text-zinc-400 hover:text-white hover:bg-zinc-900/20'
+                  }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <Database size={13} className="shrink-0 text-red-500" />
                     <span className="truncate">C.A.N (Mantenimiento)</span>
                   </div>
-                  {menuDropdowns.can ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                 </button>
-
-                <AnimatePresence initial={false}>
-                  {menuDropdowns.can && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden bg-zinc-950/40 flex flex-col gap-0.5 pl-3 border-l border-zinc-900 ml-3.5 mt-0.5"
-                    >
-                      <button
-                        onClick={() => navTo('can', 'can_commander')}
-                        className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'can' && nav.activeSub === 'can_commander' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
-                          }`}
-                      >
-                        Auditoría de Comandante
-                      </button>
-                      <button
-                        onClick={() => navTo('can', 'can_global')}
-                        className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'can' && nav.activeSub === 'can_global' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
-                          }`}
-                      >
-                        Configuración Global
-                      </button>
-                      <button
-                        onClick={() => navTo('can', 'can_alliances')}
-                        className={`py-1 text-left text-[10.5px] transition-colors cursor-pointer block border-l pl-3 ${nav.activeMain === 'can' && nav.activeSub === 'can_alliances' ? 'text-red-500 border-red-500 font-semibold' : 'text-zinc-550 hover:text-zinc-300 border-zinc-900'
-                          }`}
-                      >
-                        Monitoreo de Alianzas
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
 
               {/* FUNCTION: Conditions and Rules */}
@@ -581,7 +548,7 @@ export default function App() {
                   <span>Radar Anti-Cheat</span>
                 </button>
 
-                {/* DATA SANITIZER */}
+                {/* DATA SANITIZER CLEANER */}
                 <button
                   onClick={() => navTo('sanitizer', 'sanitizer_main')}
                   className={`w-full py-1.5 px-2 rounded flex items-center text-xs font-medium tracking-wide transition-all cursor-pointer ${

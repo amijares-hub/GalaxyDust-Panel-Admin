@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Shield, Users, Coins, RefreshCw, Trash2, UserX, 
-  Crown, Award, Search, ArrowUpRight, DollarSign, History 
+  Shield, Users, RefreshCw, Trash2, UserX, 
+  Crown, Search, History 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -15,7 +15,7 @@ interface Alliance {
   treasury_gd: number;
   treasury_metal: number;
   created_at: string;
-  leader?: { username: string };
+  leader_username?: string;
   member_count?: number;
 }
 
@@ -46,39 +46,25 @@ export const AdminAllianceCRM: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
 
-  // PAGINACIÓN
   const [page, setPage] = useState<number>(0);
   const pageSize = 20;
 
   const fetchAlliancesData = async () => {
     setLoading(true);
     try {
-      // 1. Obtener alianzas y datos del líder
-      const { data: allianceData } = await supabase
-        .from('alliances')
-        .select(`
-          *,
-          leader:leader_id (username)
-        `)
+      // Consulta optimizada a la vista SQL agregada
+      const { data: allianceData, error } = await supabase
+        .from('vw_alliance_summary')
+        .select('*')
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
+      if (error) throw error;
+
       if (allianceData) {
-        // Obtener conteo de miembros por alianza
-        const { data: memberCounts } = await supabase
-          .from('alliance_members')
-          .select('alliance_id');
-
-        const mapped = allianceData.map((a: any) => ({
-          ...a,
-          treasury_gd: Number(a.treasury_gd) || 0,
-          treasury_metal: Number(a.treasury_metal) || 0,
-          member_count: memberCounts?.filter(m => m.alliance_id === a.id).length || 0
-        }));
-
-        setAlliances(mapped);
-        if (mapped.length > 0 && !selectedAlliance) {
-          handleSelectAlliance(mapped[0]);
+        setAlliances(allianceData as Alliance[]);
+        if (allianceData.length > 0 && !selectedAlliance) {
+          handleSelectAlliance(allianceData[0] as Alliance);
         }
       }
     } catch (err) {
@@ -93,7 +79,6 @@ export const AdminAllianceCRM: React.FC = () => {
     setLoading(true);
 
     try {
-      // Cargar miembros
       const { data: memberData } = await supabase
         .from('alliance_members')
         .select(`
@@ -104,7 +89,6 @@ export const AdminAllianceCRM: React.FC = () => {
 
       if (memberData) setMembers(memberData as any);
 
-      // Cargar log de donaciones a tesorería
       const { data: logData } = await supabase
         .from('alliance_treasury_logs')
         .select(`
@@ -190,7 +174,7 @@ export const AdminAllianceCRM: React.FC = () => {
             </button>
           </div>
 
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
             {filteredAlliances.map(a => (
               <button
                 key={a.id}
@@ -208,7 +192,7 @@ export const AdminAllianceCRM: React.FC = () => {
                     </span>
                     <strong className="text-white text-xs">{a.name}</strong>
                   </div>
-                  <span className="text-[9px] text-zinc-500 block mt-1">Líder: {a.leader?.username || 'Sin Asignar'}</span>
+                  <span className="text-[9px] text-zinc-500 block mt-1">Líder: {a.leader_username || 'Sin Asignar'}</span>
                 </div>
 
                 <div className="text-right">

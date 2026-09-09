@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   RefreshCw, Database, Trash2, ShieldAlert, FileText, 
-  Terminal, Server, Activity, CheckCircle2 
+  Terminal, Server 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -53,12 +53,7 @@ export const AdminSanitizerModule: React.FC<AdminSanitizerModuleProps> = ({ aler
 
     setIsPurging(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error("No autenticado.");
-
-      const { data, error } = await supabase.rpc('execute_system_sanitization', {
-        p_admin_id: userData.user.id
-      });
+      const { data, error } = await supabase.rpc('execute_system_sanitization');
 
       if (error) throw error;
 
@@ -73,7 +68,6 @@ export const AdminSanitizerModule: React.FC<AdminSanitizerModuleProps> = ({ aler
 
   return (
     <div className="space-y-6 font-mono text-xs text-white p-6 animate-fadeIn">
-      {/* HEADER */}
       <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2 uppercase text-cyan-500">
@@ -86,7 +80,6 @@ export const AdminSanitizerModule: React.FC<AdminSanitizerModuleProps> = ({ aler
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* PANEL IZQUIERDO: CONTROLES DE PURGA */}
         <div className="space-y-6">
           <div className="bg-zinc-950 border border-red-900/30 rounded-xl p-6 relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-5">
@@ -98,7 +91,7 @@ export const AdminSanitizerModule: React.FC<AdminSanitizerModuleProps> = ({ aler
                 <ShieldAlert size={18} /> PROTOCOLO: DEEP PURGE
               </h3>
               <p className="text-zinc-400 font-sans leading-relaxed">
-                Este comando ejecutará una limpieza masiva a nivel de servidor (RPC) ignorando restricciones menores. 
+                Este comando ejecutará una limpieza masiva a nivel de servidor (RPC) verificando credenciales JWT. 
                 Eliminará definitivamente:
               </p>
               
@@ -132,7 +125,6 @@ export const AdminSanitizerModule: React.FC<AdminSanitizerModuleProps> = ({ aler
           </div>
         </div>
 
-        {/* PANEL DERECHO: CONSOLA DE REGISTROS DE MANTENIMIENTO */}
         <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 flex flex-col h-full min-h-[400px]">
           <div className="flex justify-between items-center border-b border-zinc-900 pb-3 mb-3">
             <span className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">

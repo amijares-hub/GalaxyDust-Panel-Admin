@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Building, Search, Shield, Zap, AlertTriangle, Play, RefreshCw, 
-  Trash2, Send, Clock, Radio, Power, Eye, Lock, Unlock, Sliders,
-  HelpCircle, Sparkles, Coins, DollarSign, Hammer, Mail, FileText,
-  CheckCircle, XCircle, ArrowRight, EyeOff, Clipboard, TrendingUp, AlertCircle, Download,
-  ShieldAlert, ShoppingBag, Filter
+  Search, RefreshCw, Trash2, DollarSign, Mail,
+  Coins, ArrowRight, Download, ShieldAlert, ShoppingBag, AlertTriangle
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { supabase } from '../lib/supabase';
@@ -114,8 +111,6 @@ export default function AdminMarketplaceModule({
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [editPriceValue, setEditPriceValue] = useState<number>(0);
   const [editCooldownHours, setEditCooldownHours] = useState<number>(4);
-  const [forceTakedownOnActiveExpedition, setForceTakedownOnActiveExpedition] = useState<boolean>(true);
-  const [quickViewAssetId, setQuickViewAssetId] = useState<string | null>(null);
 
   // FILTROS DE BÚSQUEDA
   const [rarityFilter, setRarityFilter] = useState<string>('ALL');
