@@ -1061,7 +1061,11 @@ export default function AdminPhantomStationModule({
                   value={phantomStation.autoRefreshStockTimerSeconds}
                   onChange={e => {
                     const val = Number(e.target.value);
-                    saveToGlobalAndHUD({ ...phantomStation, autoRefreshStockTimerSeconds: val });
+                    setPhantomStation(prev => ({ ...prev, autoRefreshStockTimerSeconds: val }));
+                    onSaveGameHud({
+                      ...gameHud,
+                      phantomStation: { ...phantomStation, autoRefreshStockTimerSeconds: val }
+                    });
                   }}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-emerald-400 font-bold outline-none"
                 />
@@ -1076,7 +1080,11 @@ export default function AdminPhantomStationModule({
                   value={phantomStation.refreshCostVoidCrystals}
                   onChange={e => {
                     const val = Number(e.target.value);
-                    saveToGlobalAndHUD({ ...phantomStation, refreshCostVoidCrystals: val });
+                    setPhantomStation(prev => ({ ...prev, refreshCostVoidCrystals: val }));
+                    onSaveGameHud({
+                      ...gameHud,
+                      phantomStation: { ...phantomStation, refreshCostVoidCrystals: val }
+                    });
                   }}
                   className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-purple-400 font-bold outline-none"
                 />
