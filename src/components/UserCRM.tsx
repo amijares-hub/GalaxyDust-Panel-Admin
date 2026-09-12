@@ -14,7 +14,7 @@ const categoryMap: Record<string, { targetTable: string, seedTable: string, idCo
   astrobots: { targetTable: 'user_astrobots', seedTable: 'seed_astrobots', idColumn: 'astrobot_id', label: '🤖 Nuevo Astrobot (user_astrobots)' },
   licenses: { targetTable: 'user_licenses', seedTable: 'seed_licenses', idColumn: 'license_id', label: '📜 Nueva Licencia (user_licenses)' },
   badges: { targetTable: 'user_badges', seedTable: 'seed_badges', idColumn: 'badge_id', label: '🏅 Nueva Insignia (user_badges)' },
-  consumibles: { targetTable: 'user_consumibles', seedTable: 'seed_consumibles', idColumn: 'consumable_id', label: '🧪 Nuevo Consumible (user_consumibles)' },
+  consumibles: { targetTable: 'user_consumibles', seedTable: 'seed_consumables', idColumn: 'consumable_id', label: '🧪 Nuevo Consumible (user_consumibles)' },
   blueprints: { targetTable: 'user_blueprints', seedTable: 'seed_blueprints', idColumn: 'blueprint_id', label: '🗺️ Nuevo Blueprint (user_blueprints)' },
   tools: { targetTable: 'user_tools', seedTable: 'seed_tools', idColumn: 'tool_id', label: '🔧 Nueva Herramienta (user_tools)' },
 };
@@ -30,22 +30,25 @@ export const UserCRM: React.FC = () => {
 
   const [selectedPlayer, setSelectedPlayer] = useState<UserProfile | null>(null);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
 
   const [playerAssets, setPlayerAssets] = useState<{ 
     ships: any[], 
     structures: any[], 
+    defenses: any[],
     technologies: any[], 
     astrobots: any[],
     tools: any[],
     licenses: any[],
-    consumibles: any[]
+    consumibles: any[],
+    blueprints: any[],
+    badges: any[]
   }>({
-    ships: [], structures: [], technologies: [], astrobots: [], tools: [], licenses: [], consumibles: []
+    ships: [], structures: [], defenses: [], technologies: [], astrobots: [], tools: [], licenses: [], consumibles: [], blueprints: [], badges: []
   });
   const [loadingAssets, setLoadingAssets] = useState<boolean>(false);
 
   const [activeAssetTab, setActiveAssetTab] = useState<string>('ships');
-  const [assetSearchTerm, setAssetSearchTerm] = useState<string>('');
 
   const [injectAmount, setInjectAmount] = useState<number>(0);
   const [injectType, setInjectType] = useState<keyof UserProfile>('gd_coins');
@@ -53,8 +56,9 @@ export const UserCRM: React.FC = () => {
   const [entityGroup, setEntityGroup] = useState<string>('ships');
   const [blueprintId, setBlueprintId] = useState<string>('');
   const [entityLevel, setEntityLevel] = useState<number>(1);
+
   const [allSeeds, setAllSeeds] = useState<{ id: string; name: string }[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  const [categorySeedMaps, setCategorySeedMaps] = useState<Record<string, Record<string, string>>>({});
 
   const parseNum = (row: any, ...keys: string[]) => {
     for (const k of keys) {
@@ -82,7 +86,6 @@ export const UserCRM: React.FC = () => {
       can_level: parseNum(row, 'can_level', 'level') || 1,
       xp: parseNum(row, 'xp', 'can_xp', 'exp_points'),
       
-      // BILLETERA REAL: Lectura unificada desde gd_coin y phantom_coin (singular)
       metal: parseNum(row, 'metal', 'metal_balance'),
       crystal: parseNum(row, 'crystal', 'crystal_balance'),
       deuterium: parseNum(row, 'deuterium', 'deuterium_balance'),
@@ -99,6 +102,76 @@ export const UserCRM: React.FC = () => {
       organium: parseNum(row, 'organium'),
       mana: parseNum(row, 'mana', 'energy'),
     };
+  };
+
+  // Carga mapa aislado por categoría para evitar que blueprints sobreescriban a astrobots
+  const fetchCategorySeedMaps = async () => {
+    if (!supabase) return;
+    const seedCategories = [
+      { cat: 'ships', tbl: 'seed_ships' },
+      { cat: 'structures', tbl: 'seed_structures' },
+      { cat: 'defenses', tbl: 'seed_defenses' },
+      { cat: 'technologies', tbl: 'seed_technologies' },
+      { cat: 'astrobots', tbl: 'seed_astrobots' },
+      { cat: 'tools', tbl: 'seed_tools' },
+      { cat: 'licenses', tbl: 'seed_licenses' },
+      { cat: 'consumibles', tbl: 'seed_consumables' },
+      { cat: 'blueprints', tbl: 'seed_blueprints' },
+      { cat: 'badges', tbl: 'seed_badges' }
+    ];
+
+    try {
+      const results = await Promise.all(
+        seedCategories.map(c => supabase.from(c.tbl).select('*'))
+      );
+
+      const newCategoryMaps: Record<string, Record<string, string>> = {};
+
+      seedCategories.forEach((c, index) => {
+        const res = results[index];
+        const catMap: Record<string, string> = {};
+
+        if (res.data) {
+          res.data.forEach((row: any) => {
+            const name = 
+              row.name || 
+              row.ship_name || 
+              row.structure_name || 
+              row.technology_name || 
+              row.tech_name || 
+              row.astrobot_name || 
+              row.bot_name || 
+              row.tool_name || 
+              row.license_name || 
+              row.consumable_name || 
+              row.blueprint_name || 
+              row.badge_name || 
+              row.insignia_name || 
+              row.defense_name || 
+              row.title;
+
+            if (name) {
+              const keys = [
+                row.id, row.ship_id, row.structure_id, row.building_id,
+                row.technology_id, row.tech_id, row.astrobot_id, row.bot_id,
+                row.tool_id, row.license_id, row.consumable_id, row.blueprint_id,
+                row.badge_id, row.insignia_id, row.defense_id
+              ];
+              keys.forEach(k => {
+                if (k !== undefined && k !== null && String(k).trim() !== '') {
+                  catMap[String(k)] = String(name);
+                }
+              });
+            }
+          });
+        }
+        newCategoryMaps[c.cat] = catMap;
+      });
+
+      setCategorySeedMaps(newCategoryMaps);
+    } catch (e) {
+      console.error("Error cargando mapa de semillas por categoría:", e);
+    }
   };
 
   const fetchPlayers = async () => {
@@ -141,24 +214,30 @@ export const UserCRM: React.FC = () => {
         }
       };
 
-      const [shipsRes, structsRes, techsRes, astroRes, toolsRes, licsRes, consRes] = await Promise.all([
+      const [shipsRes, structsRes, defsRes, techsRes, astroRes, toolsRes, licsRes, consRes, blueRes, badgeRes] = await Promise.all([
         fetchAssetTable('user_ships'),
         fetchAssetTable('user_structures'),
+        fetchAssetTable('user_defenses'),
         fetchAssetTable('user_technologies'),
         fetchAssetTable('user_astrobots'),
         fetchAssetTable('user_tools'),
         fetchAssetTable('user_licenses'),
         fetchAssetTable('user_consumibles'),
+        fetchAssetTable('user_blueprints'),
+        fetchAssetTable('user_badges'),
       ]);
 
       setPlayerAssets({
         ships: shipsRes,
         structures: structsRes,
+        defenses: defsRes,
         technologies: techsRes,
         astrobots: astroRes,
         tools: toolsRes,
         licenses: licsRes,
-        consumibles: consRes
+        consumibles: consRes,
+        blueprints: blueRes,
+        badges: badgeRes
       });
     } catch (e) {
       console.error("Error sincronizando hangar relacional:", e);
@@ -169,6 +248,7 @@ export const UserCRM: React.FC = () => {
 
   useEffect(() => {
     fetchPlayers();
+    fetchCategorySeedMaps();
   }, []);
 
   useEffect(() => {
@@ -176,6 +256,10 @@ export const UserCRM: React.FC = () => {
       fetchPlayerAssets(selectedPlayer.id);
     }
   }, [selectedPlayer?.id]);
+
+  useEffect(() => {
+    setSelectedAssetIds([]);
+  }, [activeAssetTab, selectedPlayer?.id]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -186,13 +270,19 @@ export const UserCRM: React.FC = () => {
         const { data, error } = await supabase.from(config.seedTable).select('*');
         if (!error && data) {
           const mappedSeeds = data.map((row: any) => {
-            const actualId = row.id || row[config.idColumn] || '';
-            const actualName = row.name || row.title || row.ship_name || row.structure_name || actualId;
+            const actualId = row.id || row[config.idColumn] || row.structure_id || row.ship_id || row.tool_id || '';
+            const actualName = row.name || row.structure_name || row.ship_name || row.title || row.tool_name || `Asset #${actualId}`;
             return { id: String(actualId), name: String(actualName) };
           }).filter(item => item.id);
           setAllSeeds(mappedSeeds);
+          if (mappedSeeds.length > 0) {
+            setBlueprintId(mappedSeeds[0].id);
+          } else {
+            setBlueprintId('');
+          }
         } else {
           setAllSeeds([]);
+          setBlueprintId('');
         }
       } catch (e) {
         console.error(e);
@@ -201,7 +291,6 @@ export const UserCRM: React.FC = () => {
     fetchActiveSeedCatalog();
   }, [entityGroup, supabase]);
 
-  // INYECTOR MONETARIO DE BILLETERA REAL MEDIANTE RPC SEGURA (SOPORTA VALORES NEGATIVOS PARA RESTAR)
   const handleLiveAssetInjection = async () => {
     if (!selectedPlayer || injectAmount === 0 || !supabase) return;
 
@@ -219,7 +308,6 @@ export const UserCRM: React.FC = () => {
 
       const targetCurrency = currencyMap[injectType as string] || (injectType as string);
 
-      // Ejecución por RPC segura de Administración con Audit Log
       const { error } = await supabase.rpc('admin_inject_currency_secure', {
         p_target_user_id: selectedPlayer.id,
         p_currency: targetCurrency,
@@ -240,7 +328,7 @@ export const UserCRM: React.FC = () => {
 
   const handleLiveEntityInjection = async () => {
     if (!selectedPlayer || !blueprintId.trim()) {
-      alert("Por favor, introduce o selecciona una especificación válida.");
+      alert("Por favor, selecciona una especificación válida del catálogo.");
       return;
     }
     const config = categoryMap[entityGroup];
@@ -259,9 +347,8 @@ export const UserCRM: React.FC = () => {
       const { error } = await supabase.from(config.targetTable).insert([payload]);
       if (error) throw error;
 
-      alert(`🚀 TRANSMISIÓN COMPLETADA: Instancia de [${cleanId}] inyectada con éxito.`);
-      setBlueprintId('');
-      setShowSuggestions(false);
+      const selectedSeed = allSeeds.find(s => s.id === cleanId);
+      alert(`🚀 TRANSMISIÓN COMPLETADA: Instancia de [${selectedSeed?.name || cleanId}] inyectada con éxito.`);
       fetchPlayerAssets(selectedPlayer.id);
     } catch (e: any) {
       alert(`Fallo en la inyección: ${e.message}`);
@@ -270,7 +357,6 @@ export const UserCRM: React.FC = () => {
 
   const handleDeleteEntity = async (tableName: string, record: any) => {
     if (!supabase || !selectedPlayer) return;
-
     const recordId = typeof record === 'object' ? record.id : record;
 
     if (!recordId) {
@@ -288,6 +374,37 @@ export const UserCRM: React.FC = () => {
       fetchPlayerAssets(selectedPlayer.id);
     } catch (e: any) {
       alert(`Fallo al eliminar: ${e.message}`);
+    }
+  };
+
+  const handleBulkDeleteAssets = async () => {
+    if (!supabase || !selectedPlayer || selectedAssetIds.length === 0) return;
+
+    const targetTableMap: Record<string, string> = {
+      ships: 'user_ships',
+      structures: 'user_structures',
+      defenses: 'user_defenses',
+      technologies: 'user_technologies',
+      astrobots: 'user_astrobots',
+      tools: 'user_tools',
+      licenses: 'user_licenses',
+      consumibles: 'user_consumibles',
+      blueprints: 'user_blueprints',
+      badges: 'user_badges'
+    };
+    const currentTable = targetTableMap[activeAssetTab] || 'user_ships';
+
+    if (!window.confirm(`¿🚨 ADVERTENCIA MASTER: Estás seguro de eliminar permanentemente los ${selectedAssetIds.length} activos seleccionados?`)) return;
+
+    try {
+      const { error } = await supabase.from(currentTable).delete().in('id', selectedAssetIds);
+      if (error) throw error;
+
+      alert(`✅ ¡Operación en Lote Exitosa! ${selectedAssetIds.length} activos desintegrados.`);
+      setSelectedAssetIds([]);
+      fetchPlayerAssets(selectedPlayer.id);
+    } catch (e: any) {
+      alert(`Fallo en eliminación masiva: ${e.message}`);
     }
   };
 
@@ -320,14 +437,16 @@ export const UserCRM: React.FC = () => {
     setBulkSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
   };
 
+  const toggleSelectAsset = (assetRowId: string) => {
+    setSelectedAssetIds(prev => 
+      prev.includes(assetRowId) ? prev.filter(id => id !== assetRowId) : [...prev, assetRowId]
+    );
+  };
+
   const filteredPlayers = players.filter(p =>
     p.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const filteredSuggestions = allSeeds.filter(s =>
-    s.id.toLowerCase().includes(blueprintId.toLowerCase()) || s.name.toLowerCase().includes(blueprintId.toLowerCase())
-  ).slice(0, 5);
 
   const totalCommanders = players.length;
   const totalGDCirculating = players.reduce((acc, p) => acc + (p.gd_coins || 0), 0);
@@ -338,11 +457,14 @@ export const UserCRM: React.FC = () => {
     const targetTableMap: Record<string, string> = {
       ships: 'user_ships',
       structures: 'user_structures',
+      defenses: 'user_defenses',
       technologies: 'user_technologies',
       astrobots: 'user_astrobots',
       tools: 'user_tools',
       licenses: 'user_licenses',
-      consumibles: 'user_consumibles'
+      consumibles: 'user_consumibles',
+      blueprints: 'user_blueprints',
+      badges: 'user_badges'
     };
     const currentTable = targetTableMap[activeAssetTab] || 'user_ships';
 
@@ -354,21 +476,99 @@ export const UserCRM: React.FC = () => {
       );
     }
 
+    const isAllAssetsSelected = assetList.length > 0 && selectedAssetIds.length === assetList.length;
+
+    const toggleSelectAllAssets = () => {
+      if (isAllAssetsSelected) {
+        setSelectedAssetIds([]);
+      } else {
+        setSelectedAssetIds(assetList.map((item: any) => item.id));
+      }
+    };
+
+    // Mapa específico de la pestaña activa para evitar cruce entre categorías
+    const currentSeedMap = categorySeedMaps[activeAssetTab] || {};
+
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
-        {assetList.map((item: any) => (
-          <div key={item.id} className="p-2.5 bg-zinc-950 border border-zinc-900 rounded-lg flex justify-between items-center">
-            <span className="font-bold text-white block truncate max-w-[180px]">
-              {item.custom_name || item.name_ship || item.name || item.title || item.ship_id || item.building_id || item.tool_id || item.id}
-            </span>
-            <button 
-              onClick={() => handleDeleteEntity(currentTable, item)} 
-              className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer"
+      <div className="space-y-2">
+        {/* ACCIONES EN LOTE */}
+        <div className="flex items-center justify-between bg-zinc-950 p-2 rounded border border-zinc-900 text-[10px]">
+          <button 
+            onClick={toggleSelectAllAssets}
+            className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+          >
+            {isAllAssetsSelected ? <CheckSquare size={13} className="text-cyan-400" /> : <Square size={13} />}
+            <span className="font-bold uppercase">Seleccionar Todos ({assetList.length})</span>
+          </button>
+
+          {selectedAssetIds.length > 0 && (
+            <button
+              onClick={handleBulkDeleteAssets}
+              className="px-2.5 py-1 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 font-bold rounded flex items-center gap-1 transition-all cursor-pointer"
             >
-              <Trash2 size={12} />
+              <Trash2 size={11} /> Eliminar Seleccionados ({selectedAssetIds.length})
             </button>
-          </div>
-        ))}
+          )}
+        </div>
+
+        {/* LISTADO CON MAPEO BÚSQUEDA AISLADO */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
+          {assetList.map((item: any) => {
+            const isSelected = selectedAssetIds.includes(item.id);
+            
+            const assetKey = 
+              item.ship_id || 
+              item.building_id || 
+              item.structure_id || 
+              item.defense_id ||
+              item.technology_id || 
+              item.astrobot_id || 
+              item.tool_id || 
+              item.license_id || 
+              item.consumable_id || 
+              item.blueprint_id || 
+              item.badge_id || 
+              item.id;
+
+            const assetDisplayName = 
+              item.custom_name || 
+              currentSeedMap[String(assetKey)] || 
+              currentSeedMap[String(item.id)] || 
+              item.ship_name || 
+              item.astrobot_name ||
+              item.name || 
+              item.structure_name || 
+              item.title || 
+              `Activo: ${assetKey}`;
+
+            return (
+              <div 
+                key={item.id} 
+                onClick={() => toggleSelectAsset(item.id)}
+                className={`p-2.5 bg-zinc-950 border rounded-lg flex justify-between items-center cursor-pointer transition-all ${
+                  isSelected ? 'border-cyan-500 bg-cyan-950/20' : 'border-zinc-900 hover:border-zinc-800'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <span className="text-zinc-500">
+                    {isSelected ? <CheckSquare size={13} className="text-cyan-400" /> : <Square size={13} />}
+                  </span>
+                  <span className="font-bold text-white block truncate max-w-[170px]">
+                    {assetDisplayName}
+                  </span>
+                </div>
+                
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleDeleteEntity(currentTable, item); }} 
+                  className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer"
+                  title="Eliminar activo individual"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -466,7 +666,7 @@ export const UserCRM: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* VISTA EN VIVO DE RECURSOS CON GD_COIN REAL */}
+                  {/* RECURSOS */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
                       <span className="text-[8.5px] text-zinc-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Database size={11} /> Recursos Core de Extracción</span>
@@ -514,26 +714,30 @@ export const UserCRM: React.FC = () => {
                         🛸 EQUIPAMIENTO E INVENTARIO EN VIVO DEL PILOTO
                       </span>
                       <button
-                        onClick={() => { fetchPlayerAssets(selectedPlayer.id); setAssetSearchTerm(''); }}
+                        onClick={() => { fetchPlayerAssets(selectedPlayer.id); }}
                         className="text-zinc-500 hover:text-white flex items-center gap-1 text-[10px] bg-zinc-950 px-2 py-1 border border-zinc-900 rounded cursor-pointer"
                       >
                         <RefreshCw size={10} className={loadingAssets ? "animate-spin text-cyan-400" : ""} /> Recargar Hangar
                       </button>
                     </div>
 
+                    {/* LAS 10 PESTAÑAS DE CATEGORÍAS COMPLETAS */}
                     <div className="flex flex-wrap gap-1 bg-black/40 p-1 rounded-lg border border-zinc-900/60 select-none">
                       {[
                         { id: 'ships', label: '🚀 Naves', count: playerAssets.ships.length, color: 'border-cyan-500 text-cyan-400 bg-cyan-950/10' },
                         { id: 'structures', label: '🏢 Estructuras', count: playerAssets.structures.length, color: 'border-amber-500 text-amber-400 bg-amber-950/10' },
+                        { id: 'defenses', label: '🛡️ Defensas', count: playerAssets.defenses.length, color: 'border-red-500 text-red-400 bg-red-950/10' },
                         { id: 'technologies', label: '🔬 Tecnologías', count: playerAssets.technologies.length, color: 'border-purple-500 text-purple-400 bg-purple-950/10' },
                         { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'border-emerald-500 text-emerald-400 bg-emerald-500/10' },
                         { id: 'tools', label: '🔧 Tools', count: playerAssets.tools.length, color: 'border-blue-500 text-blue-400 bg-blue-500/10' },
                         { id: 'licenses', label: '📜 Licencias', count: playerAssets.licenses.length, color: 'border-yellow-500 text-yellow-400 bg-yellow-500/10' },
-                        { id: 'consumibles', label: '🧪 Consumibles', count: playerAssets.consumibles.length, color: 'border-pink-500 text-pink-400 bg-pink-500/10' }
+                        { id: 'consumibles', label: '🧪 Consumibles', count: playerAssets.consumibles.length, color: 'border-pink-500 text-pink-400 bg-pink-500/10' },
+                        { id: 'blueprints', label: '🗺️ Blueprints', count: playerAssets.blueprints.length, color: 'border-indigo-500 text-indigo-400 bg-indigo-500/10' },
+                        { id: 'badges', label: '🏅 Insignias', count: playerAssets.badges.length, color: 'border-teal-500 text-teal-400 bg-teal-500/10' }
                       ].map(tab => (
                         <button
                           key={tab.id}
-                          onClick={() => { setActiveAssetTab(tab.id); setAssetSearchTerm(''); }}
+                          onClick={() => { setActiveAssetTab(tab.id); }}
                           className={`px-3 py-1.5 font-bold uppercase text-[9.5px] tracking-wider rounded transition-all border cursor-pointer ${
                             activeAssetTab === tab.id
                               ? `${tab.color} border-zinc-800`
@@ -550,7 +754,7 @@ export const UserCRM: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* INYECTOR / DEDUCTOR MAESTRO (VALORES POSITIVOS SUMAN, VALORES NEGATIVOS RESTAN) */}
+                  {/* INYECTOR MANUAL BILLETERA */}
                   <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3">
                     <span className="text-[9px] text-amber-400 font-bold uppercase block tracking-wider flex items-center gap-1">
                       <ShieldAlert size={12} className="text-amber-400" /> INYECTOR Y DEDUCTOR MANUAL DE BILLETERA (+ PARA SUMAR, - PARA RESTAR)
@@ -577,29 +781,34 @@ export const UserCRM: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* INYECTOR ENTIDADES */}
                   <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3 relative">
                     <span className="text-[9px] text-cyan-400 font-bold uppercase block tracking-wider flex items-center gap-1">
-                      🚀 INYECTOR DE INSTANCIAS Y ENTIDADES (BLUEPRINTS CON PREDICTOR)
+                      🚀 INYECTOR DE INSTANCIAS Y ENTIDADES (DESPLEGANDO NOMBRES OFICIALES)
                     </span>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-start">
-                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={entityGroup} onChange={e => { setEntityGroup(e.target.value); setBlueprintId(''); }}>
+                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={entityGroup} onChange={e => { setEntityGroup(e.target.value); }}>
                         {Object.entries(categoryMap).map(([key, value]) => (
                           <option key={key} value={key}>{value.label}</option>
                         ))}
                       </select>
 
-                      <div className="md:col-span-2 relative">
-                        <input type="text" placeholder="Escribe para buscar en el catálogo semilla..." className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] uppercase" value={blueprintId} onFocus={() => setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} onChange={e => { setBlueprintId(e.target.value); setShowSuggestions(true); }} />
-                        {showSuggestions && blueprintId && filteredSuggestions.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-zinc-950 border border-zinc-800 rounded-md shadow-2xl z-50 max-h-48 overflow-y-auto divide-y divide-zinc-900/80 text-[11px]">
-                            {filteredSuggestions.map(s => (
-                              <div key={s.id} className="p-2 hover:bg-cyan-950/40 hover:text-cyan-400 cursor-pointer flex justify-between items-center" onMouseDown={() => { setBlueprintId(s.id); setShowSuggestions(false); }}>
-                                <span className="font-bold text-zinc-200">{s.name}</span>
-                                <span className="text-[9px] text-zinc-500 bg-black/40 px-1 rounded select-all">{s.id}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <div className="md:col-span-2">
+                        <select 
+                          className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-200 outline-none text-[11px] uppercase cursor-pointer"
+                          value={blueprintId}
+                          onChange={e => setBlueprintId(e.target.value)}
+                        >
+                          {allSeeds.length === 0 ? (
+                            <option value="">(Sin activos registrados en esta categoría)</option>
+                          ) : (
+                            allSeeds.map(s => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))
+                          )}
+                        </select>
                       </div>
 
                       <div className="flex gap-1.5">
