@@ -55,9 +55,23 @@ interface SkillRecord {
   allowed_resources?: string[];
 }
 
+// 🎯 STATS ESTANDARIZADOS PARA CADA PESTAÑA DEL BACKOFFICE
 const STAT_PRESETS: Record<AssetTabId, string[]> = {
   ships: ['attack_standard', 'attack_laser', 'attack_ionic', 'attack_plasma', 'attack_graviton', 'shield', 'defense', 'resistance', 'speed_boost', 'cargo_capacity', 'fleet_space'],
-  structures: ['metal_production', 'crystal_production', 'deuterium_production', 'energy_consumption', 'building_speed', 'storage_capacity'],
+  structures: [
+    'metal_production',
+    'crystal_production',
+    'deuterium_production',
+    'dark_matter_production',
+    'metal_storage',
+    'crystal_storage',
+    'deuterium_storage',
+    'dark_matter_storage',
+    'mine_boost',
+    'energy_production',
+    'energy_required',
+    'building_speed'
+  ],
   technologies: ['research_speed', 'fleet_speed_boost', 'weapon_technology_boost', 'shield_technology_boost', 'armor_technology_boost', 'resource_efficiency'],
   defenses: ['defense_resistance', 'shield', 'defense', 'interception_rate', 'counter_attack_damage'],
   astrobots: ['automation_efficiency', 'repair_rate', 'energy_efficiency', 'salvage_yield'],
@@ -67,7 +81,7 @@ const STAT_PRESETS: Record<AssetTabId, string[]> = {
 };
 
 export const SkillManager: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<AssetTabId>('ships');
+  const [activeTab, setActiveTab] = useState<AssetTabId>('structures');
   const [skills, setSkills] = useState<SkillRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,17 +99,17 @@ export const SkillManager: React.FC = () => {
     rarity: 'Common', 
     tier_level: 1,
     display_suffix: 'I', 
-    stat_affected: STAT_PRESETS[activeTab][0] || 'attack_standard', 
-    modifier_value: 0.05,
+    stat_affected: STAT_PRESETS[activeTab][0] || 'metal_production', 
+    modifier_value: 500,
     math_operator: 'add', 
     target_entity: activeTab,
     license_group: null, 
     duration_type: 'permanent', 
     duration_value: null,
     outcome_config: null, 
-    sub_type: 'Combat', 
-    astrobot_role: 'Attack',
-    source_type: 'Consumable', 
+    sub_type: 'Production', 
+    astrobot_role: 'Support',
+    source_type: 'Structure', 
     scope_type: 'Global Account',
     allowed_resources: ['metal', 'crystal', 'deuterium'],
   });
@@ -160,8 +174,8 @@ export const SkillManager: React.FC = () => {
       const payload = {
         ...formDataToSave,
         asset_tab: activeTab,
-        skill_code: formDataToSave.skill_code.trim(),
-        base_name: formDataToSave.base_name.trim(),
+        skill_code: formDataToSave.skill_code.trim().toUpperCase(),
+        base_name: formDataToSave.base_name.trim().toUpperCase(),
         tier_level: Number(formDataToSave.tier_level || 1),
         rarity: formDataToSave.rarity || 'Common',
         modifier_value: Number(formDataToSave.modifier_value || 0),
@@ -212,7 +226,7 @@ export const SkillManager: React.FC = () => {
     setError(null);
     const cloned: SkillRecord = {
       ...skill,
-      skill_code: `${skill.skill_code}_copy_${Date.now().toString(36)}`,
+      skill_code: `${skill.skill_code}_COPY_${Date.now().toString(36).toUpperCase()}`,
       base_name: `${skill.base_name} (Copia)`
     };
     try {
@@ -518,7 +532,7 @@ export const SkillManager: React.FC = () => {
           )}
         </div>
 
-        {/* COLUMNA DERECHA: FORMULARIO MUTABLE CONTEXTUAL */}
+        {/* COLUMNA DERECHA: FORMULARIO DE ALTA Y EDICIÓN */}
         <div className="bg-[#090d16] border border-slate-850 rounded-xl p-5 shadow-2xl space-y-4">
           {isFormOpen ? (
             <div className="space-y-4 animate-fadeIn">
@@ -549,7 +563,7 @@ export const SkillManager: React.FC = () => {
                     value={formData.skill_code ?? ''}
                     onChange={e => setField('skill_code', e.target.value)}
                     disabled={!!selectedSkill}
-                    placeholder="ej: attack_boost_kinetic_t1"
+                    placeholder="ej: STRUCT_MINE_METAL_T1"
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-xs font-mono text-cyan-300 placeholder-slate-600 focus:outline-none focus:border-amber-500 disabled:opacity-40 uppercase"
                   />
                 </div>
@@ -560,7 +574,7 @@ export const SkillManager: React.FC = () => {
                     type="text"
                     value={formData.base_name ?? ''}
                     onChange={e => setField('base_name', e.target.value)}
-                    placeholder="ej: Attack Boost Kinetic"
+                    placeholder="ej: Mina de Metal I"
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 uppercase"
                   />
                 </div>
@@ -639,9 +653,9 @@ export const SkillManager: React.FC = () => {
                       onChange={e => setField('math_operator', e.target.value)}
                       className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-cyan-300 font-bold cursor-pointer"
                     >
-                      <option value="add">add (Suma / Decimal %)</option>
-                      <option value="multiply">multiply (Multiplicador)</option>
-                      <option value="override">override (Fijo)</option>
+                      <option value="add">add (Suma / Cantidad Fija)</option>
+                      <option value="multiply">multiply (Multiplicador Porcentual %)</option>
+                      <option value="override">override (Fijo / Reemplazo)</option>
                     </select>
                   </div>
 
@@ -654,7 +668,7 @@ export const SkillManager: React.FC = () => {
                       onChange={e => setField('modifier_value', Number(e.target.value))}
                       className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-emerald-400 font-black"
                     />
-                    <span className="text-[8px] text-slate-500 block mt-0.5">Ej: 0.05 = +5% de incremento</span>
+                    <span className="text-[8px] text-slate-500 block mt-0.5">Ej: 500 = +500/hr, 0.15 = +15%</span>
                   </div>
                 </div>
 
@@ -735,7 +749,7 @@ export const SkillManager: React.FC = () => {
                       type="text"
                       value={formData.sub_type ?? ''}
                       onChange={e => setField('sub_type', e.target.value)}
-                      placeholder="Combat, Mining, Hybrid..."
+                      placeholder="Production, Storage, Energy..."
                       className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded text-xs text-white"
                     />
                   </div>
@@ -757,7 +771,7 @@ export const SkillManager: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setIsFormOpen(false); setSelectedSkill(null); }}
-                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 font-bold text-xs uppercase rounded-xl transition-colors cursor-pointer border border-slate-800"
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 font-bold text-xs uppercase rounded-xl transition-colors cursor-pointer border border-slate-850"
                 >
                   Cancelar
                 </button>
