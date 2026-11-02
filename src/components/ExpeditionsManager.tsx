@@ -317,9 +317,6 @@ export const ExpeditionsManager: React.FC = () => {
         const { data: expRes1, error: err1 } = await supabase.from('active_expeditions').select('*');
         if (!err1 && expRes1) {
           expData = expRes1;
-        } else {
-          const { data: expRes2 } = await supabase.from('expeditions_active').select('*');
-          if (expRes2) expData = expRes2;
         }
       } catch (eExp) {}
 
@@ -394,9 +391,6 @@ export const ExpeditionsManager: React.FC = () => {
         const { data: gcData, error: gcErr } = await supabase.from('seed_galaxy_clusters').select('*').order('name', { ascending: true });
         if (!gcErr && gcData && gcData.length > 0) {
           clustersData = gcData;
-        } else {
-          const { data: gcDataAlt } = await supabase.from('galaxy_clusters').select('*').order('name', { ascending: true });
-          if (gcDataAlt) clustersData = gcDataAlt;
         }
       } catch (e) {}
 
@@ -456,9 +450,6 @@ export const ExpeditionsManager: React.FC = () => {
         const { data: g1, error: err1 } = await supabase.from('seed_galaxies').select('*').eq('cluster_id', parentGcId);
         if (!err1 && g1 && g1.length > 0) {
           list = g1;
-        } else {
-          const { data: g2 } = await supabase.from('galaxies').select('*').eq('cluster_id', parentGcId);
-          if (g2) list = g2;
         }
         setDbGalaxies(list);
         if (list.length > 0) setParentGalaxyId(String(list[0].id));
@@ -478,9 +469,6 @@ export const ExpeditionsManager: React.FC = () => {
         const { data: sc1, error: err1 } = await supabase.from('seed_star_clusters').select('*').eq('galaxy_id', parentGalaxyId);
         if (!err1 && sc1 && sc1.length > 0) {
           list = sc1;
-        } else {
-          const { data: sc2 } = await supabase.from('star_clusters').select('*').eq('galaxy_id', parentGalaxyId);
-          if (sc2) list = sc2;
         }
         setDbStarClusters(list);
         if (list.length > 0) setParentScId(String(list[0].id));
@@ -500,9 +488,6 @@ export const ExpeditionsManager: React.FC = () => {
         const { data: ss1, error: err1 } = await supabase.from('seed_star_systems').select('*').eq('sc_id', parentScId);
         if (!err1 && ss1 && ss1.length > 0) {
           list = ss1;
-        } else {
-          const { data: ss2 } = await supabase.from('star_systems').select('*').eq('sc_id', parentScId);
-          if (ss2) list = ss2;
         }
         setDbStarSystems(list);
         if (list.length > 0) setParentSystemId(String(list[0].id));
@@ -522,9 +507,6 @@ export const ExpeditionsManager: React.FC = () => {
         const { data: loc1, error: err1 } = await supabase.from('seed_locations').select('*').eq('system_id', parentSystemId).order('planet_star_number', { ascending: true });
         if (!err1 && loc1 && loc1.length > 0) {
           list = loc1;
-        } else {
-          const { data: loc2 } = await supabase.from('locations').select('*').eq('system_id', parentSystemId);
-          if (loc2) list = loc2;
         }
         setLocations(list);
       } catch (e) {

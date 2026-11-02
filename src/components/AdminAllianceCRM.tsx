@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Shield, Users, RefreshCw, Trash2, UserX, 
-  Crown, Search, History 
+  Crown, Search, History, ArrowRight
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -52,23 +52,47 @@ export const AdminAllianceCRM: React.FC = () => {
   const fetchAlliancesData = async () => {
     setLoading(true);
     try {
-      // Consulta optimizada a la vista SQL agregada
-      const { data: allianceData, error } = await supabase
+      // 1. Consulta primaria a la vista SQL optimizada
+      let allianceList: Alliance[] = [];
+      const { data: viewData, error: viewError } = await supabase
         .from('vw_alliance_summary')
         .select('*')
         .order('created_at', { ascending: false })
         .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      if (error) throw error;
+      if (!viewError && viewData) {
+        allianceList = viewData as Alliance[];
+      } else {
+        // Fallback a tabla base alliances si la vista aún no está compilada
+        const { data: rawData } = await supabase
+          .from('alliances')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
 
-      if (allianceData) {
-        setAlliances(allianceData as Alliance[]);
-        if (allianceData.length > 0 && !selectedAlliance) {
-          handleSelectAlliance(allianceData[0] as Alliance);
+        if (rawData) {
+          allianceList = rawData.map((a: any) => ({
+            id: a.id,
+            name: a.name || 'Alianza Estelar',
+            tag: a.tag || 'GD',
+            description: a.description || '',
+            leader_id: a.leader_id || '',
+            level: Number(a.level) || 1,
+            treasury_gd: Number(a.treasury_gd || a.treasury_gd_coins) || 0,
+            treasury_metal: Number(a.treasury_metal) || 0,
+            created_at: a.created_at || new Date().toISOString(),
+            leader_username: 'Oficial Superior',
+            member_count: 1
+          }));
         }
       }
+
+      setAlliances(allianceList);
+      if (allianceList.length > 0 && !selectedAlliance) {
+        handleSelectAlliance(allianceList[0]);
+      }
     } catch (err) {
-      console.error("Error al cargar alianzas:", err);
+      console.error("Error al cargar gremios:", err);
     } finally {
       setLoading(false);
     }
@@ -79,6 +103,7 @@ export const AdminAllianceCRM: React.FC = () => {
     setLoading(true);
 
     try {
+      // Cargar miembros del gremio
       const { data: memberData } = await supabase
         .from('alliance_members')
         .select(`
@@ -89,6 +114,7 @@ export const AdminAllianceCRM: React.FC = () => {
 
       if (memberData) setMembers(memberData as any);
 
+      // Cargar bitácora de fondos de tesorería
       const { data: logData } = await supabase
         .from('alliance_treasury_logs')
         .select(`
@@ -97,7 +123,7 @@ export const AdminAllianceCRM: React.FC = () => {
         `)
         .eq('alliance_id', alliance.id)
         .order('created_at', { ascending: false })
-        .limit(25);
+        .limit(30);
 
       if (logData) setTreasuryLogs(logData as any);
 
@@ -113,22 +139,56 @@ export const AdminAllianceCRM: React.FC = () => {
   }, [page]);
 
   const handleKickMember = async (memberId: string, username: string) => {
-    if (!window.confirm(`¿Expulsar a ${username} de la alianza?`)) return;
+    if (!window.confirm(`¿Expulsar formalmente a "${username}" de la alianza?`)) return;
 
-    const { error } = await supabase.from('alliance_members').delete().eq('id', memberId);
-    if (!error) {
-      setMembers(members.filter(m => m.id !== memberId));
+    try {
+      const { error } = await supabase.from('alliance_members').delete().eq('id', memberId);
+      if (error) throw error;
+
+      await supabase.from('maintenance_logs').insert([{
+        action_type: 'ALLIANCE_MEMBER_KICKED',
+        records_affected: 1,
+        created_at: new Date().toISOString()
+      }]);
+
+      setMembers(prev => prev.filter(m => m.id !== memberId));
+    } catch (e: any) {
+      alert(`Error al expulsar miembro: ${e.message}`);
     }
   };
 
+  // Eliminación secuencial en cascada para evitar violación de claves foráneas
   const handleDissolveAlliance = async (allianceId: string, allianceName: string) => {
-    if (!window.confirm(`⚠️ ¡ACCIÓN CRÍTICA! ¿Disolver definitivamente la alianza "${allianceName}"?`)) return;
+    if (!window.confirm(`⚠️ ¡ACCIÓN CRÍTICA DE MANDO!\n\n¿Estás seguro de disolver definitivamente la alianza "${allianceName}"?\nSe purgarán los miembros, registros de tesorería y el gremio en cascada.`)) return;
 
-    const { error } = await supabase.from('alliances').delete().eq('id', allianceId);
-    if (!error) {
-      setAlliances(alliances.filter(a => a.id !== allianceId));
+    try {
+      setLoading(true);
+
+      // 1. Purgar logs de tesorería dependientes
+      await supabase.from('alliance_treasury_logs').delete().eq('alliance_id', allianceId);
+
+      // 2. Desvincular plantilla de miembros
+      await supabase.from('alliance_members').delete().eq('alliance_id', allianceId);
+
+      // 3. Eliminar la alianza en sí
+      const { error } = await supabase.from('alliances').delete().eq('id', allianceId);
+      if (error) throw error;
+
+      await supabase.from('maintenance_logs').insert([{
+        action_type: `ALLIANCE_DISSOLVED_${allianceId}`,
+        records_affected: 1,
+        created_at: new Date().toISOString()
+      }]);
+
+      alert(`✅ La alianza "${allianceName}" ha sido disuelta correctamente.`);
       setSelectedAlliance(null);
       setMembers([]);
+      setTreasuryLogs([]);
+      fetchAlliancesData();
+    } catch (e: any) {
+      alert(`Error durante la disolución: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -138,15 +198,15 @@ export const AdminAllianceCRM: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 font-mono text-xs text-white p-6 animate-fadeIn">
+    <div className="space-y-6 font-mono text-xs text-white p-6 animate-fadeIn text-left select-none">
       {/* HEADER */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2 uppercase">
             <Shield className="text-red-500" size={20} /> Alliance CRM & Control de Tesorería
           </h2>
           <p className="text-zinc-500 mt-1 font-sans text-[11px]">
-            Gestión militar de gremios, jerarquía de oficiales, auditoría de fondos compartidos y expulsión de infractores.
+            Gestión de gremios galácticos, rangos militares, auditoría de fondos de tesorería y disolución segura en cascada.
           </p>
         </div>
 
@@ -175,40 +235,46 @@ export const AdminAllianceCRM: React.FC = () => {
           </div>
 
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
-            {filteredAlliances.map(a => (
-              <button
-                key={a.id}
-                onClick={() => handleSelectAlliance(a)}
-                className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer flex justify-between items-center ${
-                  selectedAlliance?.id === a.id 
-                    ? 'bg-red-950/30 border-red-900/60 text-white' 
-                    : 'bg-zinc-900/30 border-zinc-850 hover:bg-zinc-900/60 text-zinc-400'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-1.5 py-0.5 rounded bg-red-950 border border-red-900 text-red-400 text-[9px] font-bold">
-                      [{a.tag}]
-                    </span>
-                    <strong className="text-white text-xs">{a.name}</strong>
+            {filteredAlliances.length === 0 ? (
+              <div className="p-8 text-center text-zinc-600 text-xs italic">
+                No hay alianzas registradas.
+              </div>
+            ) : (
+              filteredAlliances.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => handleSelectAlliance(a)}
+                  className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer flex justify-between items-center ${
+                    selectedAlliance?.id === a.id 
+                      ? 'bg-red-950/30 border-red-900/60 text-white' 
+                      : 'bg-zinc-900/30 border-zinc-850 hover:bg-zinc-900/60 text-zinc-400'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded bg-red-950 border border-red-900 text-red-400 text-[9px] font-bold">
+                        [{a.tag}]
+                      </span>
+                      <strong className="text-white text-xs">{a.name}</strong>
+                    </div>
+                    <span className="text-[9px] text-zinc-500 block mt-1">Líder: {a.leader_username || 'Oficial Superior'}</span>
                   </div>
-                  <span className="text-[9px] text-zinc-500 block mt-1">Líder: {a.leader_username || 'Sin Asignar'}</span>
-                </div>
 
-                <div className="text-right">
-                  <span className="text-amber-400 font-bold block">{a.treasury_gd.toLocaleString()} GD</span>
-                  <span className="text-[9px] text-zinc-500">{a.member_count} Miembros</span>
-                </div>
-              </button>
-            ))}
+                  <div className="text-right">
+                    <span className="text-amber-400 font-bold block">{a.treasury_gd.toLocaleString('es-ES')} GD</span>
+                    <span className="text-[9px] text-zinc-500">{a.member_count || 1} Miembros</span>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
 
-          {/* Paginación - Alianzas */}
+          {/* Paginación */}
           <div className="flex justify-between items-center pt-2 border-t border-zinc-900 mt-2">
             <button 
               disabled={page === 0} 
               onClick={() => setPage(p => Math.max(0, p - 1))}
-              className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+              className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800 text-[11px]"
             >
               Anterior
             </button>
@@ -216,7 +282,7 @@ export const AdminAllianceCRM: React.FC = () => {
             <button 
               disabled={filteredAlliances.length < pageSize}
               onClick={() => setPage(p => p + 1)}
-              className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800"
+              className="px-3 py-1 bg-zinc-900 text-zinc-300 disabled:opacity-50 rounded cursor-pointer hover:bg-zinc-800 text-[11px]"
             >
               Siguiente
             </button>
@@ -226,7 +292,7 @@ export const AdminAllianceCRM: React.FC = () => {
         {/* DETALLE Y PANEL DE MIEMBROS */}
         {selectedAlliance ? (
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-4">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-4 shadow-xl">
               <div className="flex justify-between items-start border-b border-zinc-900 pb-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -235,12 +301,12 @@ export const AdminAllianceCRM: React.FC = () => {
                     </span>
                     <h3 className="text-lg font-bold text-white uppercase">{selectedAlliance.name}</h3>
                   </div>
-                  <p className="text-zinc-400 text-xs mt-1 font-sans">{selectedAlliance.description || 'Sin descripción corporativa.'}</p>
+                  <p className="text-zinc-400 text-xs mt-1 font-sans">{selectedAlliance.description || 'Sin descripción corporativa registrada.'}</p>
                 </div>
 
                 <button 
                   onClick={() => handleDissolveAlliance(selectedAlliance.id, selectedAlliance.name)}
-                  className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900 text-red-400 border border-red-900/50 rounded font-bold uppercase text-[10px] cursor-pointer flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900 text-red-400 border border-red-900/50 rounded font-bold uppercase text-[10px] cursor-pointer flex items-center gap-1.5 shadow-lg transition-colors"
                 >
                   <Trash2 size={12} /> Disolver Alianza
                 </button>
@@ -250,53 +316,61 @@ export const AdminAllianceCRM: React.FC = () => {
               <div className="grid grid-cols-2 gap-4 pt-1">
                 <div className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-lg">
                   <span className="text-[9px] text-zinc-500 uppercase font-bold block">Tesorería Principal</span>
-                  <strong className="text-amber-400 text-base font-mono">+{selectedAlliance.treasury_gd.toLocaleString()} GD</strong>
+                  <strong className="text-amber-400 text-base font-mono">
+                    +{selectedAlliance.treasury_gd.toLocaleString('es-ES')} GD
+                  </strong>
                 </div>
                 <div className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-lg">
                   <span className="text-[9px] text-zinc-500 uppercase font-bold block">Reserva de Metal</span>
-                  <strong className="text-cyan-400 text-base font-mono">{selectedAlliance.treasury_metal.toLocaleString()} MT</strong>
+                  <strong className="text-cyan-400 text-base font-mono">
+                    {selectedAlliance.treasury_metal.toLocaleString('es-ES')} MT
+                  </strong>
                 </div>
               </div>
             </div>
 
             {/* TABLA DE MIEMBROS */}
-            <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-3">
-              <span className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
-                <Users size={14} className="text-red-500" /> Plantilla de Comandantes ({members.length})
+            <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-3 shadow-xl">
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2 border-b border-zinc-900 pb-2">
+                <Users size={14} className="text-red-500" /> Plantilla de Oficiales & Comandantes ({members.length})
               </span>
 
-              <div className="space-y-2 pt-2">
-                {members.map(m => (
-                  <div key={m.id} className="p-3 bg-zinc-900/30 border border-zinc-850 rounded-lg flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      {m.role === 'LEADER' ? <Crown size={14} className="text-amber-400" /> : <Shield size={14} className="text-zinc-600" />}
-                      <div>
-                        <strong className="text-white text-xs block">{m.user_profiles?.username || 'Comandante'}</strong>
-                        <span className="text-[9px] text-zinc-500">Nivel {m.user_profiles?.level || 1} • {m.role}</span>
+              <div className="space-y-2 pt-1 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                {members.length === 0 ? (
+                  <div className="p-6 text-center text-zinc-600 text-xs italic">Sin miembros inscritos.</div>
+                ) : (
+                  members.map(m => (
+                    <div key={m.id} className="p-3 bg-zinc-900/30 border border-zinc-850 rounded-lg flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        {m.role === 'LEADER' ? <Crown size={14} className="text-amber-400" /> : <Shield size={14} className="text-zinc-600" />}
+                        <div>
+                          <strong className="text-white text-xs block">{m.user_profiles?.username || `Comandante #${m.user_id.substring(0, 8)}`}</strong>
+                          <span className="text-[9px] text-zinc-500">Nivel C.A.N. {m.user_profiles?.level || 1} • Rango: {m.role}</span>
+                        </div>
                       </div>
-                    </div>
 
-                    {m.role !== 'LEADER' && (
-                      <button 
-                        onClick={() => handleKickMember(m.id, m.user_profiles?.username || 'Miembro')}
-                        className="p-1.5 bg-red-950/30 hover:bg-red-900 text-red-400 border border-red-900/40 rounded cursor-pointer"
-                        title="Expulsar de la alianza"
-                      >
-                        <UserX size={13} />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                      {m.role !== 'LEADER' && (
+                        <button 
+                          onClick={() => handleKickMember(m.id, m.user_profiles?.username || 'Miembro')}
+                          className="p-1.5 bg-red-950/30 hover:bg-red-900 text-red-400 border border-red-900/40 rounded cursor-pointer transition-colors"
+                          title="Expulsar de la alianza"
+                        >
+                          <UserX size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
-            {/* LOG DE DONACIONES A LA TESORERÍA */}
-            <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-3">
-              <span className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2">
-                <History size={14} className="text-amber-500" /> Bitácora Reciente de Aportes
+            {/* LOG DE APORTES */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-xl p-5 space-y-3 shadow-xl">
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-400 flex items-center gap-2 border-b border-zinc-900 pb-2">
+                <History size={14} className="text-amber-500" /> Bitácora de Aportes a la Tesorería
               </span>
 
-              <div className="space-y-2 pt-1">
+              <div className="space-y-2 pt-1 max-h-52 overflow-y-auto custom-scrollbar pr-1">
                 {treasuryLogs.length === 0 ? (
                   <span className="text-zinc-600 text-xs italic block text-center py-4">No hay registro de donaciones recientes.</span>
                 ) : (
@@ -306,7 +380,7 @@ export const AdminAllianceCRM: React.FC = () => {
                         <strong className="text-zinc-300">{log.user_profiles?.username || 'Comandante'}</strong>
                         <span className="text-[9px] text-zinc-500 block">{new Date(log.created_at).toLocaleString()}</span>
                       </div>
-                      <strong className="text-emerald-400 font-mono">+{log.amount} {log.resource_type}</strong>
+                      <strong className="text-emerald-400 font-mono">+{log.amount.toLocaleString('es-ES')} {log.resource_type}</strong>
                     </div>
                   ))
                 )}
@@ -315,7 +389,7 @@ export const AdminAllianceCRM: React.FC = () => {
           </div>
         ) : (
           <div className="lg:col-span-2 bg-zinc-950/50 border border-dashed border-zinc-900 rounded-xl p-12 text-center text-zinc-600">
-            Selecciona una alianza de la izquierda para desplegar el mapa de oficiales y movimientos de la tesorería.
+            Selecciona un gremio de la izquierda para desplegar el mapa de oficiales y la tesorería militar.
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { Trash2, Search, CheckSquare, Square } from 'lucide-react';
 
 type EntityType = 'GC' | 'GALAXY' | 'SC' | 'SS' | 'PLANET';
 
@@ -14,7 +15,7 @@ const TABLE_MAP: Record<EntityType, { table: string; label: string }> = {
   GALAXY: { table: 'seed_galaxies', label: 'Galaxias' },
   SC: { table: 'seed_star_clusters', label: 'Star Clusters' },
   SS: { table: 'seed_star_systems', label: 'Star Systems' },
-  PLANET: { table: 'seed_planets', label: 'Planetas' },
+  PLANET: { table: 'seed_locations', label: 'Planetas / Cuerpos' },
 };
 
 export const BulkSpaceEntityManager = ({
@@ -30,7 +31,6 @@ export const BulkSpaceEntityManager = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Filtrado por término de búsqueda
   const filteredEntities = useMemo(() => {
     return entities.filter(
       (e) =>
@@ -39,7 +39,6 @@ export const BulkSpaceEntityManager = ({
     );
   }, [entities, searchTerm]);
 
-  // Manejo de Checkbox "Seleccionar Todo"
   const isAllSelected =
     filteredEntities.length > 0 &&
     filteredEntities.every((e) => selectedIds.includes(e.id));
@@ -58,12 +57,11 @@ export const BulkSpaceEntityManager = ({
     );
   };
 
-  // Función de Borrado Masivo en Supabase
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
 
     const { label, table } = TABLE_MAP[currentTab];
-    const confirmMessage = `⚠️ ¿Confirmas la eliminación masiva de ${selectedIds.length} registro(s) de [${label}]?\n\nEsta acción eliminará en cascada todos los elementos dependientes de forma irreversible.`;
+    const confirmMessage = `⚠️ ¿Confirmas la eliminación masiva de ${selectedIds.length} registro(s) de [${label}]?\n\nEsta acción eliminará los elementos seleccionados permanentemente.`;
 
     if (!window.confirm(confirmMessage)) return;
 
@@ -73,13 +71,13 @@ export const BulkSpaceEntityManager = ({
       const { error } = await supabase
         .from(table)
         .delete()
-        .in('id', selectedIds); // ⚡ Una sola query para eliminar todo el lote
+        .in('id', selectedIds);
 
       if (error) throw error;
 
       alert(`✅ Se eliminaron ${selectedIds.length} elementos de ${label} con éxito.`);
       setSelectedIds([]);
-      onRefresh(); // Recargar datos de la interfaz
+      onRefresh();
     } catch (err: any) {
       alert(`❌ Error al eliminar en masa: ${err.message}`);
     } finally {
@@ -89,45 +87,44 @@ export const BulkSpaceEntityManager = ({
 
   return (
     <div className="bg-[#0b0e14] border border-[#1e2638] rounded-xl p-5 text-white font-mono shadow-2xl">
-      {/* HEADER CON BUSCADOR Y BOTONES DE ACCIÓN */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4 pb-4 border-b border-[#1e2638]">
-        {/* Input de Búsqueda */}
-        <div className="w-full md:w-1/3">
+        <div className="w-full md:w-1/3 relative">
+          <Search size={14} className="absolute left-3 top-3 text-zinc-500" />
           <input
             type="text"
-            placeholder={`🔍 Buscar en ${TABLE_MAP[currentTab].label}...`}
+            placeholder={`Buscar en ${TABLE_MAP[currentTab].label}...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-[#121824] border border-[#2a364f] text-sm text-gray-200 px-4 py-2.5 rounded-lg focus:outline-none focus:border-cyan-500 transition-all"
+            className="w-full bg-[#121824] border border-[#2a364f] text-xs text-gray-200 pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:border-cyan-500 transition-all uppercase"
           />
         </div>
 
-        {/* Acciones */}
         <div className="flex items-center gap-3 w-full md:w-auto justify-end">
           <button
             type="button"
             onClick={handleSelectAll}
-            className="px-4 py-2.5 bg-[#161d2d] hover:bg-[#202b42] border border-[#2e3d5c] text-xs font-bold text-cyan-400 rounded-lg transition-all flex items-center gap-2"
+            className="px-3.5 py-2 bg-[#161d2d] hover:bg-[#202b42] border border-[#2e3d5c] text-xs font-bold text-cyan-400 rounded-lg transition-all flex items-center gap-2 cursor-pointer"
           >
-            {isAllSelected ? '☑ DESMARCAR TODO' : '☐ SELECCIONAR TODO'}
+            {isAllSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+            {isAllSelected ? 'DESMARCAR TODO' : 'SELECCIONAR TODO'}
           </button>
 
           <button
             type="button"
             disabled={selectedIds.length === 0 || isDeleting}
             onClick={handleBulkDelete}
-            className={`px-5 py-2.5 text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 ${
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 ${
               selectedIds.length > 0 && !isDeleting
-                ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white shadow-lg shadow-red-950/60 cursor-pointer animate-pulse'
-                : 'bg-[#1a202c] text-gray-600 cursor-not-allowed border border-[#2d3748]'
+                ? 'bg-red-650 hover:bg-red-600 text-white shadow-lg cursor-pointer'
+                : 'bg-zinc-900 text-zinc-600 cursor-not-allowed border border-zinc-800'
             }`}
           >
-            🔥 {isDeleting ? 'ELIMINANDO...' : `ELIMINAR EN MASA (${selectedIds.length})`}
+            <Trash2 size={13} />
+            {isDeleting ? 'ELIMINANDO...' : `ELIMINAR EN MASA (${selectedIds.length})`}
           </button>
         </div>
       </div>
 
-      {/* REJILLA DE ELEMENTOS SELECCIONABLES */}
       <div className="max-h-72 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-2 custom-scrollbar">
         {filteredEntities.length === 0 ? (
           <div className="col-span-full text-center py-10 text-gray-500 text-xs">
@@ -142,17 +139,17 @@ export const BulkSpaceEntityManager = ({
                 onClick={() => handleToggleSelect(entity.id)}
                 className={`p-3 rounded-lg border cursor-pointer select-none transition-all flex items-center justify-between ${
                   isSelected
-                    ? 'bg-red-950/30 border-red-500 text-white shadow-md shadow-red-950/40'
-                    : 'bg-[#121824] border-[#1e2638] text-gray-300 hover:border-[#354668] hover:bg-[#161f30]'
+                    ? 'bg-red-950/30 border-red-500 text-white shadow-md'
+                    : 'bg-[#121824] border-[#1e2638] text-gray-300 hover:border-zinc-700'
                 }`}
               >
                 <div className="flex items-center gap-3 truncate">
-                  <span className={`text-base font-bold ${isSelected ? 'text-red-400' : 'text-gray-500'}`}>
-                    {isSelected ? '☒' : '☐'}
+                  <span className={isSelected ? 'text-red-400' : 'text-gray-500'}>
+                    {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
                   </span>
                   <div className="truncate">
                     <p className="text-xs font-bold truncate text-cyan-300">{entity.name}</p>
-                    <p className="text-[10px] text-gray-500 truncate">{entity.id}</p>
+                    <p className="text-[10px] text-gray-500 truncate font-mono">ID: {entity.id}</p>
                   </div>
                 </div>
               </div>
@@ -163,3 +160,5 @@ export const BulkSpaceEntityManager = ({
     </div>
   );
 };
+
+export default BulkSpaceEntityManager;

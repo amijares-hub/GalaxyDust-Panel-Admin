@@ -1,4 +1,4 @@
-import { getSupabaseClient } from './supabase'; // Puente directo a Postgres
+import { getSupabaseClient } from './supabase';
 
 export interface ForceReturnPayload {
   expedition_id: string;
@@ -57,181 +57,187 @@ export interface CombatReportPayload {
   raw_json: any;
 }
 
-// ─── REPARACIÓN DEL RADAR ANTI-CHEAT CON LA ECONOMÍA REAL ───
 export interface AntiCheatAnomaly {
   id: string;
   username: string;
   level: number;
-  gd_coins: number;      // Saneado: Moneda real de liquidez
-  phantom_coins: number; // Saneado: Moneda real de quema
-  metal: number;         // Saneado: Recurso core
-  crystal: number;       // Saneado: Recurso core
+  gd_coins: number;
+  phantom_coins: number;
+  metal: number;
+  crystal: number;
   flag: string;
 }
 
-const API_BASE_URL = 'http://localhost:8080/api/admin';
-
 const getClient = () => {
   const client = getSupabaseClient();
-  if (!client) throw new Error("Supabase client no inicializado");
+  if (!client) throw new Error("Cliente Supabase no inicializado.");
   return client;
 };
 
 export const adminApi = {
-  // Forzar retorno anticipado de flotas en vuelo exterior
+  // Retorno forzado e inmediato de expediciones en vuelo
   forceExpeditionReturn: async (payload: ForceReturnPayload) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/expeditions/force-return`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`Go API devolvió status ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn('Microservicio Go Offline. Ejecutando mitigación transaccional directa en la línea temporal...');
-      
-      const { data, error: sbError } = await getClient()
-        .from('user_expeditions')
+    const client = getClient();
+    const returnTime = payload.force_timestamp || new Date().toISOString();
+
+    const { data, error } = await client
+      .from('active_expeditions')
+      .update({ 
+        status: 'CLAIMED',
+        estimated_return_time: returnTime
+      })
+      .eq('id', payload.expedition_id)
+      .select();
+
+    if (error) {
+      // Fallback a tabla legacy si existiera
+      const { error: fallbackErr } = await client
+        .from('expeditions')
         .update({ 
-          phase: 'finished',
-          arrival_time: payload.force_timestamp,
-          return_time: payload.force_timestamp
+          status: 'finished',
+          arrives_at: returnTime
         })
         .eq('id', payload.expedition_id);
 
-      if (sbError) throw sbError;
-      return { status: 'fallback_success', data };
+      if (fallbackErr) throw fallbackErr;
     }
+
+    return { status: 'success', data };
   },
 
-  // Inyección de Eventos RNG Manuales desde el panel de mando
+  // Inyección directa de eventos de misión a la bitácora
   injectExpeditionEvent: async (payload: InjectEventPayload) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/expeditions/inject-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`Go API devolvió status ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn('Microservicio Go inalcanzable. Volcando telemetría cinemática directo a la tabla de logs...');
-      
-      const { data, error: logError } = await getClient()
-        .from('expedition_logs')
-        .insert({
-          user_id: payload.user_id,
-          expedition_id: payload.expedition_id,
-          event_type: payload.event_type,
-          title: payload.title,
-          message: payload.message,
-          damage_sustained: payload.damage_sustained,
-          rewards_looted: payload.rewards_looted
-        });
+    const client = getClient();
 
-      if (logError) throw logError;
-      return { status: 'fallback_success', data };
-    }
+    const { data, error } = await client
+      .from('expedition_logs')
+      .insert({
+        user_id: payload.user_id,
+        expedition_id: payload.expedition_id,
+        event_type: payload.event_type,
+        title: payload.title,
+        message: payload.message,
+        damage_sustained: payload.damage_sustained,
+        rewards_looted: payload.rewards_looted,
+        created_at: new Date().toISOString()
+      })
+      .select();
+
+    if (error) throw error;
+    return { status: 'success', data };
   },
 
-  // Generador de Promo Codes
+  // Creación y registro de Promo Codes
   createPromoCode: async (payload: PromoCodePayload) => {
-    try {
-      // Intento primario vía microservicio Deno/Go
-      const response = await fetch(`${API_BASE_URL}/promo/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn('Microservicio 8080 inaccesible. Ejecutando fallback directo a Supabase RPC...');
-      
-      // Fallback Transaccional directo a la Base de Datos para evitar bloqueos
-      const { data, error: sbError } = await getClient().rpc('admin_generate_promocode', {
-        p_code: payload.code,
+    const client = getClient();
+
+    const formattedCode = payload.code.toUpperCase().trim();
+    const insertData = {
+      code: formattedCode,
+      expires_at: payload.expires_at,
+      max_claims: Number(payload.max_claims) || 100,
+      claims_count: 0,
+      rewards: payload.rewards,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error } = await client
+      .from('promo_codes')
+      .insert([insertData])
+      .select();
+
+    if (error) {
+      // Intento por RPC si la tabla tuviese disparador de seguridad
+      const { data: rpcData, error: rpcErr } = await client.rpc('admin_generate_promocode', {
+        p_code: formattedCode,
         p_expires_at: payload.expires_at,
         p_max_claims: payload.max_claims,
         p_rewards: payload.rewards
       });
-      if (sbError) throw sbError;
-      return { status: 'success', data };
+
+      if (rpcErr) throw rpcErr;
+      return { status: 'success', data: rpcData };
     }
+
+    return { status: 'success', data };
   },
 
-  // Transferencia de Mando de Gremio
+  // Transferencia de liderazgo de Alianza
   mutateAllianceLeader: async (payload: MutateLeaderPayload) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/alliance/mutate-leader`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn('Microservicio Offline. Modificando líder en caliente vía Supabase Client...');
-      
-      const { error: sbError } = await getClient()
-        .from('sasori_fleets') // Tabla relacional de alianzas/hangares
-        .update({ user_id: payload.new_leader_id })
-        .eq('id', payload.alliance_id);
-      
-      if (sbError) throw sbError;
-      return { status: 'success', mutated: true };
-    }
+    const client = getClient();
+
+    // 1. Actualizar el líder en la tabla alliances
+    const { error: allianceErr } = await client
+      .from('alliances')
+      .update({ leader_id: payload.new_leader_id })
+      .eq('id', payload.alliance_id);
+
+    if (allianceErr) throw allianceErr;
+
+    // 2. Degradar a oficiales anteriores y promover al nuevo líder
+    await client
+      .from('alliance_members')
+      .update({ role: 'OFFICER' })
+      .eq('alliance_id', payload.alliance_id)
+      .eq('role', 'LEADER');
+
+    await client
+      .from('alliance_members')
+      .update({ role: 'LEADER' })
+      .eq('alliance_id', payload.alliance_id)
+      .eq('user_id', payload.new_leader_id);
+
+    return { status: 'success', mutated: true };
   },
 
-  // Heurística Anti-Cheat con Monedas Reales
+  // Escaneo heurístico en caliente de anomalías económicas
   getAntiCheatAnomalies: async (): Promise<AntiCheatAnomaly[]> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/security/anti-cheat-check`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn('Radar API Offline. Ejecutando escáner heurístico directo en user_profiles...');
-      
-      // Escaneo en caliente en Postgres buscando picos anómalos de inflación de monedas o recursos
-      const { data, error: sbError } = await getClient()
-        .from('user_profiles')
-        .select('id, username, can_level, gd_coins, phantom_coins, metal, crystal')
-        .or('gd_coins.gt.800000,metal.gt.4000000,crystal.gt.4000000') // Flags de alerta automática
-        .order('gd_coins', { ascending: false });
+    const client = getClient();
 
-      if (sbError) throw sbError;
+    const { data, error } = await client
+      .from('user_profiles')
+      .select('id, username, can_level, level, gd_coins, gd_coin, phantom_coins, phantom_coin, metal, crystal')
+      .or('gd_coins.gt.800000,gd_coin.gt.800000,metal.gt.50000000,crystal.gt.30000000')
+      .order('gd_coins', { ascending: false })
+      .limit(50);
 
-      return (data || []).map((row: any) => ({
+    if (error) throw error;
+
+    return (data || []).map((row: any) => {
+      const gd = Number(row.gd_coins || row.gd_coin || 0);
+      const metal = Number(row.metal || 0);
+      return {
         id: row.id,
-        username: row.username || 'Explorador Sospechoso',
-        level: row.can_level || 1,
-        gd_coins: row.gd_coins || 0,
-        phantom_coins: row.phantom_coins || 0,
-        metal: row.metal || 0,
-        crystal: row.crystal || 0,
-        flag: row.gd_coins > 800000 ? 'EXCESO_GD_COINS' : 'INFLACIÓN_BÓVEDA_SEED'
-      }));
-    }
+        username: row.username || `Piloto #${row.id}`,
+        level: Number(row.can_level || row.level || 1),
+        gd_coins: gd,
+        phantom_coins: Number(row.phantom_coins || row.phantom_coin || 0),
+        metal: metal,
+        crystal: Number(row.crystal || 0),
+        flag: gd > 800000 ? 'EXCESO_GD_COINS' : 'INFLACIÓN_METALES_ANÓMALA'
+      };
+    });
   },
 
-  // Caja Negra: Inyector de Reportes PvP
+  // Registro en caja negra de combates PvP
   injectBattleReport: async (payload: CombatReportPayload) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/security/battle-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      console.warn('Microservicio 8080 Offline. Volcando JSON de Caja Negra en Supabase battle_logs...');
-      
-      const { data, error: sbError } = await getClient()
+    const client = getClient();
+
+    const { data, error } = await client
+      .from('combat_logs')
+      .insert({
+        attacker_id: payload.attacker_id,
+        defender_id: payload.defender_id,
+        winner_id: payload.winner_id,
+        resources_stolen: payload.loot_stolen,
+        battle_log: payload.battle_log,
+        raw_json: payload.raw_json,
+        created_at: new Date().toISOString()
+      })
+      .select();
+
+    if (error) {
+      const { error: fallbackErr } = await client
         .from('battle_logs')
         .insert({
           attacker_id: payload.attacker_id,
@@ -241,8 +247,9 @@ export const adminApi = {
           raw_log: JSON.stringify(payload.raw_json)
         });
 
-      if (sbError) throw sbError;
-      return { status: 'success', injected: true };
+      if (fallbackErr) throw fallbackErr;
     }
+
+    return { status: 'success', injected: true, data };
   }
 };

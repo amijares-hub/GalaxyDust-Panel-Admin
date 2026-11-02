@@ -2,21 +2,32 @@ import React, { useEffect, useState } from 'react';
 import { getSupabaseClient } from '../lib/supabase';
 import { 
   Shield, Search, Users, Coins, Database, ShieldAlert, Zap, Layers, 
-  CheckSquare, Square, Eye, Trash2, RefreshCw, Ban
+  CheckSquare, Square, Eye, Trash2, RefreshCw, Ban, Package, Wrench,
+  Cpu, Rocket, Building, Layers as LayersIcon, Award, Sparkles, Ticket
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
+interface ExtendedUserProfile extends UserProfile {
+  legacy_id?: number;
+  banned_until?: string | null;
+}
+
 const categoryMap: Record<string, { targetTable: string, seedTable: string, idColumn: string, label: string }> = {
-  ships: { targetTable: 'user_ships', seedTable: 'seed_ships', idColumn: 'ship_id', label: '🚀 Nueva Nave (user_ships)' },
-  structures: { targetTable: 'user_structures', seedTable: 'seed_structures', idColumn: 'building_id', label: '🏢 Nueva Estructura (user_structures)' },
-  defenses: { targetTable: 'user_defenses', seedTable: 'seed_defenses', idColumn: 'defense_id', label: '🛡️ Nueva Defensa (user_defenses)' },
-  technologies: { targetTable: 'user_technologies', seedTable: 'seed_technologies', idColumn: 'technology_id', label: '🔬 Nueva Tecnología (user_technologies)' },
-  astrobots: { targetTable: 'user_astrobots', seedTable: 'seed_astrobots', idColumn: 'astrobot_id', label: '🤖 Nuevo Astrobot (user_astrobots)' },
-  licenses: { targetTable: 'user_licenses', seedTable: 'seed_licenses', idColumn: 'license_id', label: '📜 Nueva Licencia (user_licenses)' },
-  badges: { targetTable: 'user_badges', seedTable: 'seed_badges', idColumn: 'badge_id', label: '🏅 Nueva Insignia (user_badges)' },
-  consumibles: { targetTable: 'user_consumibles', seedTable: 'seed_consumables', idColumn: 'consumable_id', label: '🧪 Nuevo Consumible (user_consumibles)' },
-  blueprints: { targetTable: 'user_blueprints', seedTable: 'seed_blueprints', idColumn: 'blueprint_id', label: '🗺️ Nuevo Blueprint (user_blueprints)' },
-  tools: { targetTable: 'user_tools', seedTable: 'seed_tools', idColumn: 'tool_id', label: '🔧 Nueva Herramienta (user_tools)' },
+  ships: { targetTable: 'user_ships', seedTable: 'seed_ships', idColumn: 'ship_id', label: '🚀 Nave (user_ships)' },
+  structures: { targetTable: 'user_structures', seedTable: 'seed_structures', idColumn: 'structure_id', label: '🏢 Estructura (user_structures)' },
+  defenses: { targetTable: 'user_defenses', seedTable: 'seed_defenses', idColumn: 'defense_id', label: '🛡️ Defensa (user_defenses)' },
+  technologies: { targetTable: 'user_technologies', seedTable: 'seed_technologies', idColumn: 'technology_id', label: '🔬 Tecnología (user_technologies)' },
+  astrobots: { targetTable: 'user_astrobots', seedTable: 'seed_astrobots', idColumn: 'astrobot_id', label: '🤖 Astrobot (user_astrobots)' },
+  tools: { targetTable: 'user_tools', seedTable: 'seed_tools', idColumn: 'tool_id', label: '🔧 Herramienta (user_tools)' },
+  blueprints: { targetTable: 'user_blueprints', seedTable: 'seed_blueprints', idColumn: 'blueprint_id', label: '🗺️ Blueprint (user_blueprints)' },
+  badges: { targetTable: 'user_badges', seedTable: 'seed_badges', idColumn: 'badge_id', label: '🏅 Insignia (user_badges)' },
+  qmps: { targetTable: 'user_qmps', seedTable: 'seed_consumables', idColumn: 'id_qmp', label: '⚡ Módulo QMP (user_qmps)' },
+  repair_kits: { targetTable: 'user_repair_kits', seedTable: 'seed_consumables', idColumn: 'id_kit', label: '🧰 Kit de Reparación (user_repair_kits)' },
+  materialicers: { targetTable: 'user_materialicers', seedTable: 'seed_consumables', idColumn: 'id_materialicer', label: '🔮 Materializador (user_materialicers)' },
+  bags: { targetTable: 'user_bags', seedTable: 'seed_consumables', idColumn: 'id_bag', label: '🎒 Bolsa de Recursos (user_bags)' },
+  tickets: { targetTable: 'user_tickets', seedTable: 'seed_consumables', idColumn: 'id_ticket', label: '🎟️ Ticket de Acceso (user_tickets)' },
+  packs: { targetTable: 'user_packs', seedTable: 'seed_consumables', idColumn: 'id_pack', label: '📦 Pack Especial (user_packs)' },
+  essentials: { targetTable: 'user_essentials', seedTable: 'seed_consumables', idColumn: 'id_essential', label: '✨ Esencial (user_essentials)' }
 };
 
 type SubTab = 'crm_central' | 'general_dashboard';
@@ -24,35 +35,57 @@ type SubTab = 'crm_central' | 'general_dashboard';
 export const UserCRM: React.FC = () => {
   const supabase = getSupabaseClient();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('crm_central');
-  const [players, setPlayers] = useState<UserProfile[]>([]);
+  const [players, setPlayers] = useState<ExtendedUserProfile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  const [selectedPlayer, setSelectedPlayer] = useState<UserProfile | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<ExtendedUserProfile | null>(null);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
 
+  // Estado que almacena todas las categorías de activos reales
   const [playerAssets, setPlayerAssets] = useState<{ 
-    ships: any[], 
-    structures: any[], 
-    defenses: any[],
-    technologies: any[], 
-    astrobots: any[],
-    tools: any[],
-    licenses: any[],
-    consumibles: any[],
-    blueprints: any[],
-    badges: any[]
+    ships: any[];
+    structures: any[];
+    defenses: any[];
+    technologies: any[];
+    astrobots: any[];
+    tools: any[];
+    blueprints: any[];
+    badges: any[];
+    qmps: any[];
+    repair_kits: any[];
+    materialicers: any[];
+    bags: any[];
+    tickets: any[];
+    packs: any[];
+    essentials: any[];
   }>({
-    ships: [], structures: [], defenses: [], technologies: [], astrobots: [], tools: [], licenses: [], consumibles: [], blueprints: [], badges: []
+    ships: [],
+    structures: [],
+    defenses: [],
+    technologies: [],
+    astrobots: [],
+    tools: [],
+    blueprints: [],
+    badges: [],
+    qmps: [],
+    repair_kits: [],
+    materialicers: [],
+    bags: [],
+    tickets: [],
+    packs: [],
+    essentials: []
   });
-  const [loadingAssets, setLoadingAssets] = useState<boolean>(false);
 
+  const [loadingAssets, setLoadingAssets] = useState<boolean>(false);
   const [activeAssetTab, setActiveAssetTab] = useState<string>('ships');
 
+  // Ajuste de divisas
   const [injectAmount, setInjectAmount] = useState<number>(0);
-  const [injectType, setInjectType] = useState<keyof UserProfile>('gd_coins');
+  const [injectType, setInjectType] = useState<string>('gd_coins');
 
+  // Inyección de activos
   const [entityGroup, setEntityGroup] = useState<string>('ships');
   const [blueprintId, setBlueprintId] = useState<string>('');
   const [entityLevel, setEntityLevel] = useState<number>(1);
@@ -70,18 +103,26 @@ export const UserCRM: React.FC = () => {
     return 0;
   };
 
-  const mapProfileRow = (row: any): UserProfile => {
+  const mapProfileRow = (row: any): ExtendedUserProfile => {
     const uid = row.id || row.user_id || crypto.randomUUID();
+    const isBanned = Boolean(
+      (row.banned_until && new Date(row.banned_until).getTime() > Date.now()) ||
+      row.status === 'banned' ||
+      row.is_banned
+    );
+
     return {
       id: uid,
-      username: row.username || row.display_name || 'Explorador',
-      email: row.email || `UID: ${uid.substring(0, 8).toUpperCase()}`,
+      legacy_id: row.legacy_id ? Number(row.legacy_id) : undefined,
+      banned_until: row.banned_until || null,
+      username: row.username || row.display_name || (row.legacy_id ? `Comandante #${row.legacy_id}` : 'Explorador'),
+      email: row.email || (row.legacy_id ? `legacy_${row.legacy_id}@galaxydust.io` : `UID: ${uid.substring(0, 8)}`),
       role: row.role || (row.is_admin ? 'admin' : 'user'),
-      status: row.status || (row.is_banned ? 'banned' : 'active'),
+      status: isBanned ? 'banned' : 'active',
       avatarUrl: row.avatarUrl || row.avatar_url || row.avatar || '',
       created_at: row.created_at || new Date().toISOString(),
-      last_active: row.last_active || new Date().toISOString(),
-      inventory: row.inventory || [],
+      last_active: row.updated_at || row.created_at || new Date().toISOString(),
+      inventory: [],
       level: parseNum(row, 'level', 'can_level') || 1,
       can_level: parseNum(row, 'can_level', 'level') || 1,
       xp: parseNum(row, 'xp', 'can_xp', 'exp_points'),
@@ -104,7 +145,6 @@ export const UserCRM: React.FC = () => {
     };
   };
 
-  // Carga mapa aislado por categoría para evitar que blueprints sobreescriban a astrobots
   const fetchCategorySeedMaps = async () => {
     if (!supabase) return;
     const seedCategories = [
@@ -114,8 +154,6 @@ export const UserCRM: React.FC = () => {
       { cat: 'technologies', tbl: 'seed_technologies' },
       { cat: 'astrobots', tbl: 'seed_astrobots' },
       { cat: 'tools', tbl: 'seed_tools' },
-      { cat: 'licenses', tbl: 'seed_licenses' },
-      { cat: 'consumibles', tbl: 'seed_consumables' },
       { cat: 'blueprints', tbl: 'seed_blueprints' },
       { cat: 'badges', tbl: 'seed_badges' }
     ];
@@ -140,22 +178,17 @@ export const UserCRM: React.FC = () => {
               row.technology_name || 
               row.tech_name || 
               row.astrobot_name || 
-              row.bot_name || 
               row.tool_name || 
-              row.license_name || 
-              row.consumable_name || 
               row.blueprint_name || 
               row.badge_name || 
-              row.insignia_name || 
               row.defense_name || 
               row.title;
 
             if (name) {
               const keys = [
                 row.id, row.ship_id, row.structure_id, row.building_id,
-                row.technology_id, row.tech_id, row.astrobot_id, row.bot_id,
-                row.tool_id, row.license_id, row.consumable_id, row.blueprint_id,
-                row.badge_id, row.insignia_id, row.defense_id
+                row.technology_id, row.tech_id, row.astrobot_id,
+                row.tool_id, row.blueprint_id, row.badge_id, row.defense_id
               ];
               keys.forEach(k => {
                 if (k !== undefined && k !== null && String(k).trim() !== '') {
@@ -170,61 +203,114 @@ export const UserCRM: React.FC = () => {
 
       setCategorySeedMaps(newCategoryMaps);
     } catch (e) {
-      console.error("Error cargando mapa de semillas por categoría:", e);
+      console.error("Error al cargar mapa de semillas:", e);
     }
   };
 
+  // Paginación continua por lotes: supera el límite de 1.000 filas de PostgREST
   const fetchPlayers = async () => {
     if (!supabase) return;
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('user_profiles').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      if (data) {
-        setPlayers(data.map(mapProfileRow));
+      let allUsers: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .order('legacy_id', { ascending: true, nullsFirst: false })
+          .range(from, from + step - 1);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allUsers = [...allUsers, ...data];
+          if (data.length < step) {
+            hasMore = false;
+          } else {
+            from += step;
+          }
+        } else {
+          hasMore = false;
+        }
       }
+
+      setPlayers(allUsers.map(mapProfileRow));
     } catch (e: any) {
-      console.error("Error al cargar jugadores en UserCRM:", e.message);
+      console.error("Error al consultar comandantes:", e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchPlayerAssets = async (userId: string) => {
-    if (!supabase) return;
+  // Función de búsqueda dual: recupera registros tanto por id_user (legacy) como por user_id (UUID)
+  const fetchAssetTable = async (tableName: string, userUuid: string, legacyId?: number) => {
+    if (!supabase) return [];
+    try {
+      let combined: any[] = [];
+
+      // 1. Consulta por id_user (datos históricos migrados)
+      if (legacyId) {
+        const { data: legacyData, error: errLegacy } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('id_user', legacyId);
+
+        if (!errLegacy && legacyData) {
+          combined = [...legacyData];
+        }
+      }
+
+      // 2. Consulta por user_id (datos generados en cliente moderno)
+      if (userUuid) {
+        const { data: uuidData, error: errUuid } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq('user_id', userUuid);
+
+        if (!errUuid && uuidData) {
+          const existingIds = new Set(combined.map(item => item.id));
+          uuidData.forEach(item => {
+            if (!existingIds.has(item.id)) {
+              combined.push(item);
+            }
+          });
+        }
+      }
+
+      return combined;
+    } catch {
+      return [];
+    }
+  };
+
+  const fetchPlayerAssets = async (player: ExtendedUserProfile) => {
+    if (!supabase || !player) return;
     try {
       setLoadingAssets(true);
 
-      const { data: freshProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (freshProfile) {
-        setSelectedPlayer(mapProfileRow(freshProfile));
-      }
-
-      const fetchAssetTable = async (tableName: string) => {
-        try {
-          const { data } = await supabase.from(tableName).select('*').eq('user_id', userId);
-          return data || [];
-        } catch {
-          return [];
-        }
-      };
-
-      const [shipsRes, structsRes, defsRes, techsRes, astroRes, toolsRes, licsRes, consRes, blueRes, badgeRes] = await Promise.all([
-        fetchAssetTable('user_ships'),
-        fetchAssetTable('user_structures'),
-        fetchAssetTable('user_defenses'),
-        fetchAssetTable('user_technologies'),
-        fetchAssetTable('user_astrobots'),
-        fetchAssetTable('user_tools'),
-        fetchAssetTable('user_licenses'),
-        fetchAssetTable('user_consumibles'),
-        fetchAssetTable('user_blueprints'),
-        fetchAssetTable('user_badges'),
+      const [
+        shipsRes, structsRes, defsRes, techsRes, astroRes, toolsRes, blueRes, badgeRes,
+        qmpsRes, kitsRes, matRes, bagsRes, ticketsRes, packsRes, essentialsRes
+      ] = await Promise.all([
+        fetchAssetTable('user_ships', player.id, player.legacy_id),
+        fetchAssetTable('user_structures', player.id, player.legacy_id),
+        fetchAssetTable('user_defenses', player.id, player.legacy_id),
+        fetchAssetTable('user_technologies', player.id, player.legacy_id),
+        fetchAssetTable('user_astrobots', player.id, player.legacy_id),
+        fetchAssetTable('user_tools', player.id, player.legacy_id),
+        fetchAssetTable('user_blueprints', player.id, player.legacy_id),
+        fetchAssetTable('user_badges', player.id, player.legacy_id),
+        fetchAssetTable('user_qmps', player.id, player.legacy_id),
+        fetchAssetTable('user_repair_kits', player.id, player.legacy_id),
+        fetchAssetTable('user_materialicers', player.id, player.legacy_id),
+        fetchAssetTable('user_bags', player.id, player.legacy_id),
+        fetchAssetTable('user_tickets', player.id, player.legacy_id),
+        fetchAssetTable('user_packs', player.id, player.legacy_id),
+        fetchAssetTable('user_essentials', player.id, player.legacy_id)
       ]);
 
       setPlayerAssets({
@@ -234,13 +320,18 @@ export const UserCRM: React.FC = () => {
         technologies: techsRes,
         astrobots: astroRes,
         tools: toolsRes,
-        licenses: licsRes,
-        consumibles: consRes,
         blueprints: blueRes,
-        badges: badgeRes
+        badges: badgeRes,
+        qmps: qmpsRes,
+        repair_kits: kitsRes,
+        materialicers: matRes,
+        bags: bagsRes,
+        tickets: ticketsRes,
+        packs: packsRes,
+        essentials: essentialsRes
       });
     } catch (e) {
-      console.error("Error sincronizando hangar relacional:", e);
+      console.error("Error al sincronizar inventario del comandante:", e);
     } finally {
       setLoadingAssets(false);
     }
@@ -253,7 +344,7 @@ export const UserCRM: React.FC = () => {
 
   useEffect(() => {
     if (selectedPlayer) {
-      fetchPlayerAssets(selectedPlayer.id);
+      fetchPlayerAssets(selectedPlayer);
     }
   }, [selectedPlayer?.id]);
 
@@ -297,38 +388,66 @@ export const UserCRM: React.FC = () => {
     try {
       const currencyMap: Record<string, string> = {
         gd_coins: 'gd_coin',
-        gd_coin: 'gd_coin',
         phantom_coins: 'phantom_coin',
-        phantom_coin: 'phantom_coin',
         dark_matter: 'dark_matter',
         deuterium: 'deuterium',
         metal: 'metal',
         crystal: 'crystal'
       };
 
-      const targetCurrency = currencyMap[injectType as string] || (injectType as string);
+      const targetCurrency = currencyMap[injectType] || injectType;
 
-      const { error } = await supabase.rpc('admin_inject_currency_secure', {
-        p_target_user_id: selectedPlayer.id,
-        p_currency: targetCurrency,
-        p_amount: Number(injectAmount),
-        p_reason: `Ajuste manual desde UserCRM por Administrador`
-      });
+      let rpcSucceeded = false;
+      try {
+        const { error } = await supabase.rpc('admin_inject_currency_secure', {
+          p_target_user_id: selectedPlayer.id,
+          p_currency: targetCurrency,
+          p_amount: Number(injectAmount),
+          p_reason: `Ajuste manual desde UserCRM por Administrador`
+        });
+        if (!error) rpcSucceeded = true;
+      } catch {
+        rpcSucceeded = false;
+      }
 
-      if (error) throw error;
+      // Fallback directo a user_profiles si la RPC no existe
+      if (!rpcSucceeded) {
+        const currentVal = Number((selectedPlayer as any)[injectType] || 0);
+        const newVal = Math.max(0, currentVal + Number(injectAmount));
+        const updatePayload: any = { [injectType]: newVal, updated_at: new Date().toISOString() };
 
-      alert(`⚡ Ajuste de Billetera Exitoso: ${injectAmount > 0 ? '+' : ''}${injectAmount} en ${String(injectType)}`);
-      
-      await fetchPlayerAssets(selectedPlayer.id);
-      await fetchPlayers();
+        if (injectType === 'metal') updatePayload.metal_balance = newVal;
+        if (injectType === 'crystal') updatePayload.crystal_balance = newVal;
+        if (injectType === 'deuterium') updatePayload.deuterium_balance = newVal;
+        if (injectType === 'dark_matter') updatePayload.dark_matter_balance = newVal;
+        if (injectType === 'gd_coins') {
+          updatePayload.gd_coin = newVal;
+          updatePayload.gd_balance = newVal;
+        }
+        if (injectType === 'phantom_coins') {
+          updatePayload.phantom_coin = newVal;
+          updatePayload.phantom_coins_balance = newVal;
+        }
+
+        const { error: directErr } = await supabase
+          .from('user_profiles')
+          .update(updatePayload)
+          .eq('id', selectedPlayer.id);
+
+        if (directErr) throw directErr;
+      }
+
+      alert(`⚡ Balance actualizado: ${injectAmount > 0 ? '+' : ''}${injectAmount} en ${injectType}`);
+      fetchPlayers();
+      if (selectedPlayer) fetchPlayerAssets(selectedPlayer);
     } catch (e: any) {
-      alert(`Error en inyección: ${e.message}`);
+      alert(`Error al inyectar recurso: ${e.message}`);
     }
   };
 
   const handleLiveEntityInjection = async () => {
     if (!selectedPlayer || !blueprintId.trim()) {
-      alert("Por favor, selecciona una especificación válida del catálogo.");
+      alert("Selecciona un activo válido del catálogo.");
       return;
     }
     const config = categoryMap[entityGroup];
@@ -336,22 +455,77 @@ export const UserCRM: React.FC = () => {
 
     try {
       const cleanId = blueprintId.trim();
+      const numId = parseInt(cleanId, 10);
       const lvl = Number(entityLevel || 1);
 
-      const payload = {
+      const payload: any = {
         user_id: selectedPlayer.id,
-        [config.idColumn]: cleanId,
-        level: lvl
+        [config.idColumn]: isNaN(numId) ? cleanId : numId,
+        level: lvl,
+        created_at: new Date().toISOString()
       };
+
+      if (selectedPlayer.legacy_id) {
+        payload.id_user = selectedPlayer.legacy_id;
+      }
+
+      // Parámetros por categoría
+      if (entityGroup === 'ships') {
+        payload.id_ship = isNaN(numId) ? null : numId;
+        payload.name_ship = allSeeds.find(s => s.id === cleanId)?.name || 'Nave';
+        payload.health = 1000;
+        payload.total_health = 1000;
+        payload.percentage_health = 100;
+      } else if (entityGroup === 'structures') {
+        payload.id_structure = isNaN(numId) ? null : numId;
+        payload.building_id = cleanId;
+        payload.structure_id = cleanId;
+        payload.lvl = lvl;
+        payload.current_level = lvl;
+      } else if (entityGroup === 'defenses') {
+        payload.id_defense = isNaN(numId) ? null : numId;
+        payload.defense_id = cleanId;
+        payload.health = 100;
+        payload.total_health = 100;
+        payload.percentage_health = 100;
+      } else if (entityGroup === 'technologies') {
+        payload.id_technology = isNaN(numId) ? null : numId;
+        payload.technology_id = cleanId;
+        payload.lvl = lvl;
+        payload.current_level = lvl;
+      } else if (entityGroup === 'repair_kits') {
+        payload.id_kit = isNaN(numId) ? 1 : numId;
+        payload.quantity = lvl;
+      } else if (entityGroup === 'qmps') {
+        payload.id_qmp = isNaN(numId) ? 1 : numId;
+        payload.uses = 10;
+      } else if (entityGroup === 'materialicers') {
+        payload.id_materialicer = isNaN(numId) ? 1 : numId;
+        payload.uses = 1;
+      } else if (entityGroup === 'bags') {
+        payload.id_bag = isNaN(numId) ? 1 : numId;
+        payload.is_sell = 0;
+      } else if (entityGroup === 'tickets') {
+        payload.id_ticket = isNaN(numId) ? 1 : numId;
+        payload.is_sell = 0;
+      } else if (entityGroup === 'packs') {
+        payload.id_pack = isNaN(numId) ? 1 : numId;
+        payload.status = 0;
+      } else if (entityGroup === 'essentials') {
+        payload.id_essential = isNaN(numId) ? 1 : numId;
+      } else if (entityGroup === 'blueprints') {
+        payload.id_blueprint = isNaN(numId) ? null : numId;
+        payload.blueprint_id = cleanId;
+        payload.uses = 5;
+      }
 
       const { error } = await supabase.from(config.targetTable).insert([payload]);
       if (error) throw error;
 
-      const selectedSeed = allSeeds.find(s => s.id === cleanId);
-      alert(`🚀 TRANSMISIÓN COMPLETADA: Instancia de [${selectedSeed?.name || cleanId}] inyectada con éxito.`);
-      fetchPlayerAssets(selectedPlayer.id);
+      alert(`🚀 Activo inyectado con éxito en ${config.targetTable}.`);
+      fetchPlayerAssets(selectedPlayer);
     } catch (e: any) {
-      alert(`Fallo en la inyección: ${e.message}`);
+      alert(`Error al inyectar activo: ${e.message}`);
     }
   };
 
@@ -360,20 +534,20 @@ export const UserCRM: React.FC = () => {
     const recordId = typeof record === 'object' ? record.id : record;
 
     if (!recordId) {
-      alert("🚨 No se encontró un identificador válido para eliminar este registro.");
+      alert("No se localizó un identificador válido para este elemento.");
       return;
     }
 
-    if (!window.confirm("¿🚨 ADVERTENCIA MASTER: Estás seguro de desintegrar permanentemente este asset del inventario del jugador?")) return;
+    if (!window.confirm("¿Confirmas la eliminación permanente de este elemento?")) return;
 
     try {
       const { error } = await supabase.from(tableName).delete().eq('id', recordId);
       if (error) throw error;
 
-      alert("¡Asset desintegrado del servidor con éxito!");
-      fetchPlayerAssets(selectedPlayer.id);
+      alert("Elemento eliminado correctamente.");
+      fetchPlayerAssets(selectedPlayer);
     } catch (e: any) {
-      alert(`Fallo al eliminar: ${e.message}`);
+      alert(`Error al eliminar: ${e.message}`);
     }
   };
 
@@ -387,44 +561,59 @@ export const UserCRM: React.FC = () => {
       technologies: 'user_technologies',
       astrobots: 'user_astrobots',
       tools: 'user_tools',
-      licenses: 'user_licenses',
-      consumibles: 'user_consumibles',
       blueprints: 'user_blueprints',
-      badges: 'user_badges'
+      badges: 'user_badges',
+      qmps: 'user_qmps',
+      repair_kits: 'user_repair_kits',
+      materialicers: 'user_materialicers',
+      bags: 'user_bags',
+      tickets: 'user_tickets',
+      packs: 'user_packs',
+      essentials: 'user_essentials'
     };
+
     const currentTable = targetTableMap[activeAssetTab] || 'user_ships';
 
-    if (!window.confirm(`¿🚨 ADVERTENCIA MASTER: Estás seguro de eliminar permanentemente los ${selectedAssetIds.length} activos seleccionados?`)) return;
+    if (!window.confirm(`¿Eliminar los ${selectedAssetIds.length} elementos seleccionados de ${currentTable}?`)) return;
 
     try {
       const { error } = await supabase.from(currentTable).delete().in('id', selectedAssetIds);
       if (error) throw error;
 
-      alert(`✅ ¡Operación en Lote Exitosa! ${selectedAssetIds.length} activos desintegrados.`);
+      alert(`Se eliminaron ${selectedAssetIds.length} elementos.`);
       setSelectedAssetIds([]);
-      fetchPlayerAssets(selectedPlayer.id);
+      fetchPlayerAssets(selectedPlayer);
     } catch (e: any) {
-      alert(`Fallo en eliminación masiva: ${e.message}`);
+      alert(`Error en eliminación múltiple: ${e.message}`);
     }
   };
 
   const handleToggleBan = async () => {
     if (!selectedPlayer || !supabase) return;
-    const newStatus = selectedPlayer.status === 'banned' ? 'active' : 'banned';
-    if (!window.confirm(`¿Confirmas ${newStatus === 'banned' ? 'BANEAR' : 'DESBANEAR'} al comandante ${selectedPlayer.username}?`)) return;
+    const isCurrentlyBanned = selectedPlayer.status === 'banned';
+    const newStatus = isCurrentlyBanned ? 'active' : 'banned';
+    const bannedUntil = isCurrentlyBanned ? null : new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+
+    if (!window.confirm(`¿Deseas ${isCurrentlyBanned ? 'DESBANEAR' : 'BANEAR'} al comandante ${selectedPlayer.username}?`)) return;
 
     try {
       const { error } = await supabase
         .from('user_profiles')
-        .update({ status: newStatus, is_banned: newStatus === 'banned' })
+        .update({
+          status: newStatus,
+          is_banned: !isCurrentlyBanned,
+          banned_until: bannedUntil,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', selectedPlayer.id);
 
       if (error) throw error;
-      alert(`✅ Piloto ${selectedPlayer.username} marcado como ${newStatus.toUpperCase()}`);
-      setSelectedPlayer(prev => prev ? { ...prev, status: newStatus } : null);
+
+      alert(`Comandante ${selectedPlayer.username}: ${newStatus.toUpperCase()}`);
+      setSelectedPlayer(prev => prev ? { ...prev, status: newStatus, banned_until: bannedUntil } : null);
       fetchPlayers();
     } catch (e: any) {
-      alert(`Error en sanción: ${e.message}`);
+      alert(`Error al actualizar estado: ${e.message}`);
     }
   };
 
@@ -445,7 +634,8 @@ export const UserCRM: React.FC = () => {
 
   const filteredPlayers = players.filter(p =>
     p.id.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.username.toLowerCase().includes(searchTerm.toLowerCase())
+    p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.legacy_id && String(p.legacy_id).includes(searchTerm))
   );
 
   const totalCommanders = players.length;
@@ -464,13 +654,20 @@ export const UserCRM: React.FC = () => {
       licenses: 'user_licenses',
       consumibles: 'user_consumibles',
       blueprints: 'user_blueprints',
-      badges: 'user_badges'
+      badges: 'user_badges',
+      qmps: 'user_qmps',
+      repair_kits: 'user_repair_kits',
+      materialicers: 'user_materialicers',
+      bags: 'user_bags',
+      tickets: 'user_tickets',
+      packs: 'user_packs',
+      essentials: 'user_essentials'
     };
     const currentTable = targetTableMap[activeAssetTab] || 'user_ships';
 
     if (assetList.length === 0) {
       return (
-        <div className="p-4 text-center text-zinc-600 text-[10px] uppercase italic font-mono">
+        <div className="p-6 text-center text-zinc-600 text-[10px] uppercase italic font-mono border border-dashed border-zinc-900 rounded-lg">
           Sin registros en [{activeAssetTab.toUpperCase()}] para este piloto.
         </div>
       );
@@ -486,12 +683,10 @@ export const UserCRM: React.FC = () => {
       }
     };
 
-    // Mapa específico de la pestaña activa para evitar cruce entre categorías
     const currentSeedMap = categorySeedMaps[activeAssetTab] || {};
 
     return (
       <div className="space-y-2">
-        {/* ACCIONES EN LOTE */}
         <div className="flex items-center justify-between bg-zinc-950 p-2 rounded border border-zinc-900 text-[10px]">
           <button 
             onClick={toggleSelectAllAssets}
@@ -511,35 +706,47 @@ export const UserCRM: React.FC = () => {
           )}
         </div>
 
-        {/* LISTADO CON MAPEO BÚSQUEDA AISLADO */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
           {assetList.map((item: any) => {
             const isSelected = selectedAssetIds.includes(item.id);
             
             const assetKey = 
-              item.ship_id || 
-              item.building_id || 
-              item.structure_id || 
-              item.defense_id ||
-              item.technology_id || 
-              item.astrobot_id || 
-              item.tool_id || 
-              item.license_id || 
-              item.consumable_id || 
-              item.blueprint_id || 
-              item.badge_id || 
+              item.ship_id || item.id_ship ||
+              item.building_id || item.structure_id || item.id_structure ||
+              item.defense_id || item.id_defense ||
+              item.technology_id || item.id_technology ||
+              item.astrobot_id || item.id_astrobot ||
+              item.tool_id || item.id_tool ||
+              item.blueprint_id || item.id_blueprint ||
+              item.badge_id || item.id_badge ||
+              item.id_qmp || item.id_kit || item.id_materialicer ||
+              item.id_bag || item.id_ticket || item.id_pack || item.id_essential ||
               item.id;
 
             const assetDisplayName = 
               item.custom_name || 
-              currentSeedMap[String(assetKey)] || 
-              currentSeedMap[String(item.id)] || 
-              item.ship_name || 
-              item.astrobot_name ||
+              item.name_ship || 
+              item.name_defense ||
               item.name || 
-              item.structure_name || 
-              item.title || 
-              `Activo: ${assetKey}`;
+              currentSeedMap[String(assetKey)] || 
+              currentSeedMap[String(item.id)] ||
+              (activeAssetTab === 'qmps' ? `Módulo QMP #${item.id_qmp || item.id}` :
+               activeAssetTab === 'repair_kits' ? `Kit de Reparación T${item.id_kit || item.id}` :
+               activeAssetTab === 'materialicers' ? `Materializador #${item.id_materialicer || item.id}` :
+               activeAssetTab === 'bags' ? `Bolsa de Suministros #${item.id_bag || item.id}` :
+               activeAssetTab === 'tickets' ? `Ticket de Acceso #${item.id_ticket || item.id}` :
+               activeAssetTab === 'packs' ? `Pack Reclamable #${item.id_pack || item.id}` :
+               activeAssetTab === 'essentials' ? `Ítem Esencial #${item.id_essential || item.id}` :
+               `Activo #${assetKey}`);
+
+            // Badges informativas de cada tipo de activo
+            const infoDetail = 
+              item.quantity !== undefined ? `Cant: ${item.quantity}` :
+              item.uses !== undefined ? `Usos: ${item.uses}` :
+              item.health !== undefined ? `HP: ${item.health}/${item.total_health || item.health}` :
+              item.lvl !== undefined ? `Lvl ${item.lvl}` :
+              item.current_level !== undefined ? `Lvl ${item.current_level}` :
+              item.level !== undefined ? `Lvl ${item.level}` : null;
 
             return (
               <div 
@@ -550,18 +757,25 @@ export const UserCRM: React.FC = () => {
                 }`}
               >
                 <div className="flex items-center gap-2 truncate pr-2">
-                  <span className="text-zinc-500">
+                  <span className="text-zinc-500 shrink-0">
                     {isSelected ? <CheckSquare size={13} className="text-cyan-400" /> : <Square size={13} />}
                   </span>
-                  <span className="font-bold text-white block truncate max-w-[170px]">
-                    {assetDisplayName}
-                  </span>
+                  <div className="truncate">
+                    <span className="font-bold text-white block truncate max-w-[170px]" title={assetDisplayName}>
+                      {assetDisplayName}
+                    </span>
+                    {infoDetail && (
+                      <span className="text-[9px] text-cyan-400 font-mono block">
+                        {infoDetail}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleDeleteEntity(currentTable, item); }} 
-                  className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer"
-                  title="Eliminar activo individual"
+                  className="text-zinc-600 hover:text-red-400 p-1.5 rounded hover:bg-zinc-900 transition-colors cursor-pointer shrink-0"
+                  title="Eliminar elemento"
                 >
                   <Trash2 size={12} />
                 </button>
@@ -575,7 +789,7 @@ export const UserCRM: React.FC = () => {
 
   return (
     <div className="space-y-6 font-mono text-xs text-left text-white select-none">
-
+      {/* Pestañas de Vista */}
       <div className="flex border-b border-zinc-800 gap-2 select-none">
         <button onClick={() => setActiveSubTab('crm_central')} className={`px-4 py-2.5 font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer ${activeSubTab === 'crm_central' ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}>
           🛰️ CRM Central de Pilotos
@@ -587,17 +801,25 @@ export const UserCRM: React.FC = () => {
 
       {activeSubTab === 'crm_central' && (
         <div className="space-y-4">
-
+          {/* Barra de Filtro */}
           <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl space-y-3">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <span className="text-zinc-500 text-[10px] uppercase font-bold">Consola Táctica Perimetral</span>
-              <input type="text" placeholder="Filtrar por UID o Nombre..." className="bg-zinc-900 border border-zinc-800 text-zinc-200 px-3 py-1.5 rounded text-xs outline-none focus:border-cyan-500 w-full md:w-64 uppercase" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <span className="text-zinc-500 text-[10px] uppercase font-bold">
+                Consola Táctica • Total {players.length} Comandantes
+              </span>
+              <input 
+                type="text" 
+                placeholder="Filtrar por UID, Legacy ID o Nombre..." 
+                className="bg-zinc-900 border border-zinc-800 text-zinc-200 px-3 py-1.5 rounded text-xs outline-none focus:border-cyan-500 w-full md:w-72 uppercase" 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
-
-            <div className="xl:col-span-1 bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden">
+            {/* Lista de Jugadores */}
+            <div className="xl:col-span-1 bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden max-h-[750px] flex flex-col">
               <table className="min-w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-900 bg-zinc-900/40 text-zinc-500 text-[10px] font-bold">
@@ -606,13 +828,17 @@ export const UserCRM: React.FC = () => {
                         {bulkSelectedIds.length === filteredPlayers.length ? <CheckSquare size={14} className="text-cyan-400" /> : <Square size={14} />}
                       </button>
                     </th>
-                    <th className="p-3">PILOTO / EMAIL</th>
+                    <th className="p-3">PILOTO / LEGACY</th>
                     <th className="p-3 text-right">MONITOR</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-900 text-zinc-300 text-[11px]">
+                <tbody className="divide-y divide-zinc-900 text-zinc-300 text-[11px] overflow-y-auto">
                   {filteredPlayers.map(p => (
-                    <tr key={p.id} className={`hover:bg-zinc-900/30 cursor-pointer ${selectedPlayer?.id === p.id ? 'bg-zinc-900/40 border-l-2 border-cyan-500' : ''}`} onClick={() => setSelectedPlayer(p)}>
+                    <tr 
+                      key={p.id} 
+                      className={`hover:bg-zinc-900/30 cursor-pointer ${selectedPlayer?.id === p.id ? 'bg-zinc-900/40 border-l-2 border-cyan-500' : ''}`} 
+                      onClick={() => setSelectedPlayer(p)}
+                    >
                       <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
                         <button onClick={() => toggleSelectRow(p.id)} className="text-zinc-600 hover:text-white cursor-pointer">
                           {bulkSelectedIds.includes(p.id) ? <CheckSquare size={14} className="text-cyan-400" /> : <Square size={14} />}
@@ -623,10 +849,14 @@ export const UserCRM: React.FC = () => {
                           <span className="truncate">{p.username}</span>
                           {p.status === 'banned' && <span className="px-1 bg-red-950 text-red-400 text-[7.5px] border border-red-800 rounded">BAN</span>}
                         </div>
-                        <div className="text-[9px] text-zinc-500 tracking-tight font-mono truncate max-w-[155px]">{p.email || p.id}</div>
+                        <div className="text-[9px] text-zinc-500 tracking-tight font-mono truncate max-w-[155px]">
+                          {p.legacy_id ? `Legacy ID: #${p.legacy_id}` : p.email}
+                        </div>
                       </td>
                       <td className="p-3 text-right">
-                        <button className="px-2 py-1 bg-zinc-900 border border-zinc-800 rounded font-bold text-cyan-400 hover:bg-zinc-850 flex items-center gap-1 ml-auto text-[10px] cursor-pointer"><Eye size={11} /> Auditar</button>
+                        <button className="px-2 py-1 bg-zinc-900 border border-zinc-800 rounded font-bold text-cyan-400 hover:bg-zinc-850 flex items-center gap-1 ml-auto text-[10px] cursor-pointer">
+                          <Eye size={11} /> Auditar
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -634,10 +864,11 @@ export const UserCRM: React.FC = () => {
               </table>
             </div>
 
+            {/* Panel de Auditoría e Inventario Detallado */}
             <div className="xl:col-span-2 space-y-4">
               {selectedPlayer ? (
                 <div className="bg-zinc-950 p-4 border border-zinc-900 rounded-xl space-y-5 shadow-xl animate-fadeIn">
-
+                  {/* Cabecera del Piloto */}
                   <div className="border-b border-zinc-900 pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <div>
                       <div className="flex items-center gap-2">
@@ -648,7 +879,9 @@ export const UserCRM: React.FC = () => {
                           {selectedPlayer.status}
                         </span>
                       </div>
-                      <span className="text-[9px] text-zinc-500 font-mono">UUID: {selectedPlayer.id}</span>
+                      <span className="text-[9px] text-zinc-500 font-mono">
+                        UUID: {selectedPlayer.id} {selectedPlayer.legacy_id ? `• Legacy ID: #${selectedPlayer.legacy_id}` : ''}
+                      </span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -666,128 +899,137 @@ export const UserCRM: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* RECURSOS */}
+                  {/* Bóveda y Recursos */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
-                      <span className="text-[8.5px] text-zinc-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Database size={11} /> Recursos Core de Extracción</span>
+                      <span className="text-[8.5px] text-zinc-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1">
+                        <Database size={11} /> Recursos Core de Extracción
+                      </span>
                       <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div><span className="text-zinc-500 block text-[8px]">METAL:</span> <span className="text-zinc-200 font-bold">{selectedPlayer.metal.toLocaleString()}</span></div>
-                        <div><span className="text-cyan-500 block text-[8px]">CRYSTAL:</span> <span className="text-cyan-400 font-bold">{selectedPlayer.crystal.toLocaleString()}</span></div>
-                        <div><span className="text-amber-500 block text-[8px]">DEUTERIUM:</span> <span className="text-amber-400 font-bold">{selectedPlayer.deuterium.toLocaleString()}</span></div>
-                        <div><span className="text-purple-500 block text-[8px]">DARK_MATTER:</span> <span className="text-purple-400 font-bold">{selectedPlayer.dark_matter.toLocaleString()}</span></div>
+                        <div><span className="text-zinc-500 block text-[8px]">METAL:</span> <span className="text-zinc-200 font-bold">{selectedPlayer.metal.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</span></div>
+                        <div><span className="text-cyan-500 block text-[8px]">CRISTAL:</span> <span className="text-cyan-400 font-bold">{selectedPlayer.crystal.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</span></div>
+                        <div><span className="text-amber-500 block text-[8px]">DEUTERIO:</span> <span className="text-amber-400 font-bold">{selectedPlayer.deuterium.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</span></div>
+                        <div><span className="text-purple-500 block text-[8px]">MATERIA OSCURA:</span> <span className="text-purple-400 font-bold">{selectedPlayer.dark_matter.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</span></div>
                       </div>
                     </div>
 
                     <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
-                      <span className="text-[8.5px] text-yellow-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Coins size={11} /> Divisas del Ledger (Billetera Real)</span>
+                      <span className="text-[8.5px] text-yellow-500 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1">
+                        <Coins size={11} /> Balances de Divisas
+                      </span>
                       <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div><span className="text-yellow-500 block text-[8px]">GD_COIN (USD 1:1):</span> <span className="text-yellow-400 font-bold">${selectedPlayer.gd_coins.toLocaleString()}</span></div>
-                        <div><span className="text-emerald-500 block text-[8px]">PHANTOM_COIN:</span> <span className="text-emerald-400 font-bold">{selectedPlayer.phantom_coins.toLocaleString()}</span></div>
-                      </div>
-                    </div>
-
-                    <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
-                      <span className="text-[8.5px] text-cyan-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Layers size={11} /> Aleaciones Estructurales Semilla</span>
-                      <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div><span className="text-zinc-500 block text-[8px]">OMNIPLATE:</span> <span className="text-zinc-300">{selectedPlayer.omniplate}</span></div>
-                        <div><span className="text-zinc-500 block text-[8px]">ORICHALTRON:</span> <span className="text-zinc-300">{selectedPlayer.orichaltron}</span></div>
-                        <div><span className="text-zinc-500 block text-[8px]">LUNAR_FIBER:</span> <span className="text-zinc-300">{selectedPlayer.lunar_fiber}</span></div>
-                        <div><span className="text-red-400 block text-[8px]">INFINITY_CORE:</span> <span className="text-red-400 font-bold">{selectedPlayer.infinity_core}</span></div>
-                      </div>
-                    </div>
-
-                    <div className="bg-black/50 p-3 rounded-lg border border-zinc-900 space-y-2">
-                      <span className="text-[8.5px] text-purple-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-1 flex items-center gap-1"><Zap size={11} /> Frecuencias Cuánticas</span>
-                      <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div><span className="text-purple-400 block text-[8px]">PRIMAL_TOKEN:</span> <span className="text-purple-300">{selectedPlayer.primal_token}</span></div>
-                        <div><span className="text-fuchsia-400 block text-[8px]">XENOPLASM:</span> <span className="text-fuchsia-300">{selectedPlayer.xenoplasm}</span></div>
-                        <div><span className="text-emerald-400 block text-[8px]">ORGANIUM:</span> <span className="text-emerald-300">{selectedPlayer.organium}</span></div>
-                        <div><span className="text-cyan-400 block text-[8px]">MANA / ENERGY:</span> <span className="text-cyan-300">{selectedPlayer.mana}</span></div>
+                        <div><span className="text-yellow-500 block text-[8px]">GD COIN (USD):</span> <span className="text-yellow-400 font-bold">${selectedPlayer.gd_coins.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</span></div>
+                        <div><span className="text-emerald-500 block text-[8px]">PHANTOM COIN:</span> <span className="text-emerald-400 font-bold">{selectedPlayer.phantom_coins.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}</span></div>
                       </div>
                     </div>
                   </div>
 
+                  {/* Panel de Inventario con las 15 Categorías Reales */}
                   <div className="bg-zinc-900/20 p-4 border border-zinc-900 rounded-xl space-y-4">
-
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-zinc-900 pb-2.5">
                       <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
-                        🛸 EQUIPAMIENTO E INVENTARIO EN VIVO DEL PILOTO
+                        🛸 INVENTARIO & ACTIVOS RELACIONALES DEL PILOTO
                       </span>
                       <button
-                        onClick={() => { fetchPlayerAssets(selectedPlayer.id); }}
+                        onClick={() => { fetchPlayerAssets(selectedPlayer); }}
                         className="text-zinc-500 hover:text-white flex items-center gap-1 text-[10px] bg-zinc-950 px-2 py-1 border border-zinc-900 rounded cursor-pointer"
                       >
-                        <RefreshCw size={10} className={loadingAssets ? "animate-spin text-cyan-400" : ""} /> Recargar Hangar
+                        <RefreshCw size={10} className={loadingAssets ? "animate-spin text-cyan-400" : ""} /> Sincronizar Activos
                       </button>
                     </div>
 
-                    {/* LAS 10 PESTAÑAS DE CATEGORÍAS COMPLETAS */}
-                    <div className="flex flex-wrap gap-1 bg-black/40 p-1 rounded-lg border border-zinc-900/60 select-none">
+                    {/* Selector de Pestañas de Activos */}
+                    <div className="flex flex-wrap gap-1 bg-black/40 p-1.5 rounded-lg border border-zinc-900/60 select-none">
                       {[
-                        { id: 'ships', label: '🚀 Naves', count: playerAssets.ships.length, color: 'border-cyan-500 text-cyan-400 bg-cyan-950/10' },
-                        { id: 'structures', label: '🏢 Estructuras', count: playerAssets.structures.length, color: 'border-amber-500 text-amber-400 bg-amber-950/10' },
-                        { id: 'defenses', label: '🛡️ Defensas', count: playerAssets.defenses.length, color: 'border-red-500 text-red-400 bg-red-950/10' },
-                        { id: 'technologies', label: '🔬 Tecnologías', count: playerAssets.technologies.length, color: 'border-purple-500 text-purple-400 bg-purple-950/10' },
-                        { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'border-emerald-500 text-emerald-400 bg-emerald-500/10' },
-                        { id: 'tools', label: '🔧 Tools', count: playerAssets.tools.length, color: 'border-blue-500 text-blue-400 bg-blue-500/10' },
-                        { id: 'licenses', label: '📜 Licencias', count: playerAssets.licenses.length, color: 'border-yellow-500 text-yellow-400 bg-yellow-500/10' },
-                        { id: 'consumibles', label: '🧪 Consumibles', count: playerAssets.consumibles.length, color: 'border-pink-500 text-pink-400 bg-pink-500/10' },
-                        { id: 'blueprints', label: '🗺️ Blueprints', count: playerAssets.blueprints.length, color: 'border-indigo-500 text-indigo-400 bg-indigo-500/10' },
-                        { id: 'badges', label: '🏅 Insignias', count: playerAssets.badges.length, color: 'border-teal-500 text-teal-400 bg-teal-500/10' }
+                        { id: 'ships', label: '🚀 Naves', count: playerAssets.ships.length, color: 'text-cyan-400 border-cyan-800' },
+                        { id: 'structures', label: '🏢 Estructuras', count: playerAssets.structures.length, color: 'text-amber-400 border-amber-800' },
+                        { id: 'defenses', label: '🛡️ Defensas', count: playerAssets.defenses.length, color: 'text-red-400 border-red-800' },
+                        { id: 'technologies', label: '🔬 Tecnologías', count: playerAssets.technologies.length, color: 'text-purple-400 border-purple-800' },
+                        { id: 'astrobots', label: '🤖 Astrobots', count: playerAssets.astrobots.length, color: 'text-emerald-400 border-emerald-800' },
+                        { id: 'tools', label: '🔧 Tools', count: playerAssets.tools.length, color: 'text-blue-400 border-blue-800' },
+                        { id: 'blueprints', label: '🗺️ Planos', count: playerAssets.blueprints.length, color: 'text-indigo-400 border-indigo-800' },
+                        { id: 'badges', label: '🏅 Insignias', count: playerAssets.badges.length, color: 'text-teal-400 border-teal-800' },
+                        { id: 'repair_kits', label: '🧰 Kits Reparación', count: playerAssets.repair_kits.length, color: 'text-yellow-400 border-yellow-800' },
+                        { id: 'qmps', label: '⚡ QMPs', count: playerAssets.qmps.length, color: 'text-cyan-300 border-cyan-700' },
+                        { id: 'materialicers', label: '🔮 Materialicers', count: playerAssets.materialicers.length, color: 'text-pink-400 border-pink-800' },
+                        { id: 'bags', label: '🎒 Bolsas', count: playerAssets.bags.length, color: 'text-orange-400 border-orange-800' },
+                        { id: 'tickets', label: '🎟️ Tickets', count: playerAssets.tickets.length, color: 'text-emerald-300 border-emerald-700' },
+                        { id: 'packs', label: '📦 Packs', count: playerAssets.packs.length, color: 'text-purple-300 border-purple-700' },
+                        { id: 'essentials', label: '✨ Esenciales', count: playerAssets.essentials.length, color: 'text-amber-300 border-amber-700' }
                       ].map(tab => (
                         <button
                           key={tab.id}
                           onClick={() => { setActiveAssetTab(tab.id); }}
-                          className={`px-3 py-1.5 font-bold uppercase text-[9.5px] tracking-wider rounded transition-all border cursor-pointer ${
+                          className={`px-2.5 py-1 font-bold uppercase text-[9px] tracking-wider rounded transition-all border cursor-pointer ${
                             activeAssetTab === tab.id
-                              ? `${tab.color} border-zinc-800`
-                              : 'border-transparent text-zinc-500 hover:text-zinc-400'
+                              ? `${tab.color} bg-zinc-900`
+                              : 'border-transparent text-zinc-500 hover:text-zinc-300'
                           }`}
                         >
-                          {tab.label} <span className="opacity-40 font-normal">({tab.count})</span>
+                          {tab.label} <span className="opacity-50">({tab.count})</span>
                         </button>
                       ))}
                     </div>
 
-                    <div className="max-h-60 overflow-y-auto pr-1 font-mono text-[11px]">
+                    {/* Listado de Activos Activo */}
+                    <div className="max-h-64 overflow-y-auto pr-1 font-mono text-[11px]">
                       {renderActiveAssetList()}
                     </div>
                   </div>
 
-                  {/* INYECTOR MANUAL BILLETERA */}
+                  {/* Inyector de Divisas */}
                   <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3">
                     <span className="text-[9px] text-amber-400 font-bold uppercase block tracking-wider flex items-center gap-1">
-                      <ShieldAlert size={12} className="text-amber-400" /> INYECTOR Y DEDUCTOR MANUAL DE BILLETERA (+ PARA SUMAR, - PARA RESTAR)
+                      <ShieldAlert size={12} className="text-amber-400" /> Inyector / Deductor de Balances (+ para sumar, - para restar)
                     </span>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={injectType as string} onChange={e => setInjectType(e.target.value as keyof UserProfile)}>
-                        <option value="gd_coins">GD COIN (REAL USD 1:1)</option>
-                        <option value="phantom_coins">Phantom Coin (phantom_coin)</option>
-                        <option value="dark_matter">Materia Oscura (dark_matter)</option>
-                        <option value="deuterium">Deuterio (deuterium)</option>
-                        <option value="metal">Metal (metal)</option>
-                        <option value="crystal">Cristal (crystal)</option>
-                        <option value="omniplate">Omniplate (omniplate)</option>
-                        <option value="orichaltron">Orichaltron (orichaltron)</option>
-                        <option value="lunar_fiber">Lunar Fiber (lunar_fiber)</option>
-                        <option value="infinity_core">Infinity Core (infinity_core)</option>
-                        <option value="primal_token">Primal Token (primal_token)</option>
-                        <option value="xenoplasm">Xenoplasm (xenoplasm)</option>
-                        <option value="organium">Organium (organium)</option>
-                        <option value="mana">Mana / Energy (mana)</option>
+                      <select 
+                        className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" 
+                        value={injectType} 
+                        onChange={e => setInjectType(e.target.value)}
+                      >
+                        <option value="gd_coins">GD Coin (USD Real)</option>
+                        <option value="phantom_coins">Phantom Coin</option>
+                        <option value="metal">Metal</option>
+                        <option value="crystal">Cristal</option>
+                        <option value="deuterium">Deuterio</option>
+                        <option value="dark_matter">Materia Oscura</option>
+                        <option value="omniplate">Omniplate</option>
+                        <option value="orichaltron">Orichaltron</option>
+                        <option value="lunar_fiber">Lunar Fiber</option>
+                        <option value="infinity_core">Infinity Core</option>
+                        <option value="primal_token">Primal Token</option>
+                        <option value="xenoplasm">Xenoplasm</option>
+                        <option value="organium">Organium</option>
+                        <option value="mana">Mana / Energía</option>
                       </select>
-                      <input type="number" placeholder="Monto (+50 o -100)..." className="bg-zinc-950 border border-zinc-800 p-2 rounded font-bold text-amber-400 outline-none text-[11px]" value={injectAmount || ''} onChange={e => setInjectAmount(Number(e.target.value))} />
-                      <button onClick={handleLiveAssetInjection} className="bg-amber-600 hover:bg-amber-500 text-white font-black uppercase rounded flex items-center justify-center gap-1.5 transition-all text-[10px] cursor-pointer shadow-lg"><Zap size={12} /> Ejecutar Ajuste de Billetera</button>
+                      <input 
+                        type="number" 
+                        placeholder="Monto (+500 o -200)..." 
+                        className="bg-zinc-950 border border-zinc-800 p-2 rounded font-bold text-amber-400 outline-none text-[11px]" 
+                        value={injectAmount || ''} 
+                        onChange={e => setInjectAmount(Number(e.target.value))} 
+                      />
+                      <button 
+                        onClick={handleLiveAssetInjection} 
+                        className="bg-amber-600 hover:bg-amber-500 text-white font-black uppercase rounded flex items-center justify-center gap-1.5 transition-all text-[10px] cursor-pointer shadow-lg"
+                      >
+                        <Zap size={12} /> Ejecutar Ajuste
+                      </button>
                     </div>
                   </div>
 
-                  {/* INYECTOR ENTIDADES */}
-                  <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3 relative">
+                  {/* Inyector de Instancias de Activos */}
+                  <div className="bg-zinc-900/30 p-3 border border-zinc-900 rounded-xl space-y-3">
                     <span className="text-[9px] text-cyan-400 font-bold uppercase block tracking-wider flex items-center gap-1">
-                      🚀 INYECTOR DE INSTANCIAS Y ENTIDADES (DESPLEGANDO NOMBRES OFICIALES)
+                      <Rocket size={12} /> Inyector de Instancias a Cuenta (Asignación Directa)
                     </span>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-start">
-                      <select className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" value={entityGroup} onChange={e => { setEntityGroup(e.target.value); }}>
+                      <select 
+                        className="bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 outline-none text-[11px] cursor-pointer" 
+                        value={entityGroup} 
+                        onChange={e => setEntityGroup(e.target.value)}
+                      >
                         {Object.entries(categoryMap).map(([key, value]) => (
                           <option key={key} value={key}>{value.label}</option>
                         ))}
@@ -800,37 +1042,48 @@ export const UserCRM: React.FC = () => {
                           onChange={e => setBlueprintId(e.target.value)}
                         >
                           {allSeeds.length === 0 ? (
-                            <option value="">(Sin activos registrados en esta categoría)</option>
+                            <option value="">(Sin especificaciones disponibles)</option>
                           ) : (
                             allSeeds.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
+                              <option key={s.id} value={s.id}>{s.name} [{s.id}]</option>
                             ))
                           )}
                         </select>
                       </div>
 
                       <div className="flex gap-1.5">
-                        <input type="number" min="1" placeholder="Lvl" className="w-14 bg-zinc-950 border border-zinc-800 p-2 rounded text-center font-bold text-white outline-none text-[11px]" value={entityLevel} onChange={e => setEntityLevel(Number(e.target.value))} />
-                        <button onClick={handleLiveEntityInjection} className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-black uppercase rounded text-[10px] tracking-wider transition-all cursor-pointer shadow-lg shadow-cyan-950/40">Inyectar Ítem</button>
+                        <input 
+                          type="number" 
+                          min={1} 
+                          placeholder="Lvl/Cant" 
+                          className="w-16 bg-zinc-950 border border-zinc-800 p-2 rounded text-center font-bold text-white outline-none text-[11px]" 
+                          value={entityLevel} 
+                          onChange={e => setEntityLevel(Number(e.target.value))} 
+                        />
+                        <button 
+                          onClick={handleLiveEntityInjection} 
+                          className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-black uppercase rounded text-[10px] tracking-wider transition-all cursor-pointer shadow-lg"
+                        >
+                          Inyectar
+                        </button>
                       </div>
                     </div>
                   </div>
-
                 </div>
               ) : (
                 <div className="h-full border border-zinc-900 border-dashed rounded-xl flex flex-col items-center justify-center p-12 text-center bg-zinc-950/20">
                   <Shield size={24} className="text-zinc-800 mb-3 animate-pulse" />
-                  <p className="text-zinc-600 max-w-xs text-xs font-mono">Selecciona un comandante de la lista izquierda para expandir su matriz completa de assets y desplegar la consola de inyección.</p>
+                  <p className="text-zinc-600 max-w-xs text-xs font-mono">
+                    Selecciona un comandante de la lista izquierda para expandir su matriz completa de inventarios, saldos y módulos activos.
+                  </p>
                 </div>
               )}
             </div>
-
           </div>
         </div>
       )}
 
+      {/* Vista de Métricas Globales */}
       {activeSubTab === 'general_dashboard' && (
         <div className="space-y-6 animate-fadeIn">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -844,23 +1097,22 @@ export const UserCRM: React.FC = () => {
 
             <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 shadow-lg flex items-center justify-between">
               <div>
-                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Masa Circulante GD Coins REAL (USD)</span>
-                <div className="text-2xl font-black text-yellow-500">${totalGDCirculating.toLocaleString()} <span className="text-xs text-zinc-600 font-normal">GD</span></div>
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Masa Circulante GD Coins (USD)</span>
+                <div className="text-2xl font-black text-yellow-500">${totalGDCirculating.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })} <span className="text-xs text-zinc-600 font-normal">GD</span></div>
               </div>
               <Coins size={20} className="text-yellow-500 opacity-60" />
             </div>
 
             <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 shadow-lg flex items-center justify-between">
               <div>
-                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Suma Total Metal en Bóvedas</span>
-                <div className="text-2xl font-black text-zinc-300">{totalMetalCirculating.toLocaleString()} <span className="text-xs text-zinc-600 font-normal">Kg</span></div>
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Suma Total de Metal</span>
+                <div className="text-2xl font-black text-zinc-300">{totalMetalCirculating.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 3 })} <span className="text-xs text-zinc-600 font-normal">Kg</span></div>
               </div>
               <Database size={20} className="text-zinc-400 opacity-60" />
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };

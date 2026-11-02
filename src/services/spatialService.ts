@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'; // Ajustado a la ruta correcta de tu cliente de Supabase
+import { supabase } from '../lib/supabase';
 
 export type EntityType = 'GC' | 'GALAXY' | 'SC' | 'SS' | 'PLANET';
 
@@ -9,7 +9,7 @@ export interface SpaceEntity {
   extraInfo?: string;
 }
 
-// Configuración de mapeo de tablas y llaves foráneas
+// Mapeo corregido: PLANET apunta a seed_locations con system_id
 export const ENTITY_CONFIG: Record<
   EntityType,
   { table: string; label: string; parentColumn?: string; parentTable?: string }
@@ -37,15 +37,15 @@ export const ENTITY_CONFIG: Record<
     parentTable: 'seed_star_clusters',
   },
   PLANET: {
-    table: 'seed_planets',
-    label: 'Planeta / Cuerpo',
-    parentColumn: 'star_system_id',
+    table: 'seed_locations',
+    label: 'Planeta / Cuerpo Celeste',
+    parentColumn: 'system_id',
     parentTable: 'seed_star_systems',
   },
 };
 
 /**
- * Obtiene el listado de entidades espaciales, opcionalmente filtrado por su contenedor padre.
+ * Obtiene el listado de entidades espaciales filtradas por su contenedor padre
  */
 export async function fetchEntities(
   entityType: EntityType,
@@ -66,14 +66,14 @@ export async function fetchEntities(
   }
 
   return (data || []).map((item: any) => ({
-    id: item.id,
-    name: item.name || item.name_code || `Nodo ${item.id.substring(0, 8)}`,
-    parentId: config.parentColumn ? item[config.parentColumn] : undefined,
+    id: String(item.id),
+    name: item.name || item.name_code || (item.planet_star_number ? `Cuerpo Nº ${item.planet_star_number}` : `Nodo ${item.id}`),
+    parentId: config.parentColumn ? String(item[config.parentColumn]) : undefined,
   }));
 }
 
 /**
- * Elimina de forma masiva en Supabase un conjunto de IDs en una sola consulta.
+ * Elimina de forma masiva en Supabase un conjunto de IDs en una sola consulta
  */
 export async function bulkDeleteEntities(
   entityType: EntityType,
@@ -88,7 +88,7 @@ export async function bulkDeleteEntities(
   const { error } = await supabase
     .from(config.table)
     .delete()
-    .in('id', ids); // Ejecuta el borrado en lote de un solo paso
+    .in('id', ids);
 
   if (error) {
     console.error(`Error en borrado masivo de ${config.label}:`, error.message);

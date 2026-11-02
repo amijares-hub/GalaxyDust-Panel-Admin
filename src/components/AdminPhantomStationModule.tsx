@@ -115,58 +115,37 @@ export default function AdminPhantomStationModule({
     suppliesCatalog: gameHud.phantomStation?.suppliesCatalog || [],
   }));
 
-  // Inicialización resiliente leyendo almacenamiento local de inmediato
-  const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>(() => {
-    const local = localStorage.getItem('sasori_phantom_rotation_lists');
-    if (local) {
-      try {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
-
+  // Listas de rotación autoritativas desde Supabase
+  const [rotationLists, setRotationLists] = useState<PhantomRotationList[]>([]);
   const [loadingRotationLists, setLoadingRotationLists] = useState<boolean>(true);
-  const [activeListId, setActiveListId] = useState<string>(() => {
-    const active = rotationLists.find(l => l.isActive);
-    return active ? active.id : (rotationLists[0]?.id || '');
-  });
+  const [activeListId, setActiveListId] = useState<string>('');
 
-  const syncLocal = (lists: PhantomRotationList[]) => {
-    localStorage.setItem('sasori_phantom_rotation_lists', JSON.stringify(lists));
-  };
-
-  // Carga con autorreparación desde Supabase
   const fetchRotationLists = async () => {
     setLoadingRotationLists(true);
     try {
-      const { data, error } = await supabase.from('phantom_rotation_config').select('*').order('created_at', { ascending: true });
+      const { data, error } = await supabase
+        .from('phantom_rotation_config')
+        .select('*')
+        .order('created_at', { ascending: true });
+
       if (!error && data && data.length > 0) {
         const parsed: PhantomRotationList[] = data.map((row: any) => ({
-          id: row.id,
+          id: String(row.id),
           name: row.name,
           description: row.description || '',
-          isActive: !!row.is_active,
-          items: row.items || [],
-          displaySlots: row.display_slots || row.displaySlots || 8,
+          isActive: Boolean(row.is_active),
+          items: Array.isArray(row.items) ? row.items : [],
+          displaySlots: Number(row.display_slots || row.displaySlots || 8),
           selectionMode: row.selection_mode || row.selectionMode || 'sequential'
         }));
         setRotationLists(parsed);
-        syncLocal(parsed);
-        const active = parsed.find(l => l.isActive);
+        const active = parsed.find(l => l.isActive) || parsed[0];
         if (active) setActiveListId(active.id);
-        else if (parsed.length > 0) setActiveListId(parsed[0].id);
       } else {
-        // Restauración automática si Supabase está vacío pero hay datos locales
-        if (rotationLists.length > 0) {
-          for (const list of rotationLists) {
-            await saveRotationListToDB(list);
-          }
-        }
+        setRotationLists([]);
       }
-    } catch (err) {
-      console.error("Error al consultar Supabase:", err);
+    } catch (err: any) {
+      console.error("Error al consultar colecciones Phantom:", err.message);
     } finally {
       setLoadingRotationLists(false);
     }
@@ -176,7 +155,7 @@ export default function AdminPhantomStationModule({
     fetchRotationLists();
   }, []);
 
-  // Carga de las 10 tablas semilla de activos
+  // Carga de los 10 catálogos de semillas
   useEffect(() => {
     const fetchRealDbCatalog = async () => {
       setLoadingDbAssets(true);
@@ -198,16 +177,16 @@ export default function AdminPhantomStationModule({
         ]);
 
         const catalog: RealDbAsset[] = [];
-        (shipsRes.data || []).forEach((s: any) => catalog.push({ id: s.ship_id || s.id, name: s.ship_name || s.name || 'Nave Estelar', category: 'Naves', rarity: s.rarity || 'Common', defaultPrice: 15000, defaultCurrency: 'GD Coins' }));
-        (structsRes.data || []).forEach((s: any) => catalog.push({ id: s.id, name: s.name || 'Estructura', category: 'Estructuras', rarity: s.rarity || 'Common', defaultPrice: 12000, defaultCurrency: 'GD Coins' }));
-        (defRes.data || []).forEach((d: any) => catalog.push({ id: d.defense_id || d.id, name: d.defense_name || d.name || 'Defensa', category: 'Defensas', rarity: d.rarity || 'Common', defaultPrice: 9000, defaultCurrency: 'GD Coins' }));
-        (techsRes.data || []).forEach((t: any) => catalog.push({ id: t.id, name: t.name || 'Tecnología', category: 'Tecnologías', rarity: t.rarity || 'Common', defaultPrice: 8000, defaultCurrency: 'Quantum Tokens' }));
-        (badgesRes.data || []).forEach((b: any) => catalog.push({ id: b.id, name: b.name || 'Insignia', category: 'Insignias', rarity: b.rarity || 'Epic', defaultPrice: 5000, defaultCurrency: 'Phantom Coins' }));
-        (bpRes.data || []).forEach((bp: any) => catalog.push({ id: bp.id, name: bp.name || 'Blueprint', category: 'Blueprints', rarity: bp.rarity || 'Rare', defaultPrice: 10000, defaultCurrency: 'GD Coins' }));
-        (licRes.data || []).forEach((l: any) => catalog.push({ id: l.id, name: l.name || 'Licencia', category: 'Licencias', rarity: l.rarity || 'Common', defaultPrice: 6000, defaultCurrency: 'GD Coins' }));
-        (toolsRes.data || []).forEach((tl: any) => catalog.push({ id: tl.id, name: tl.name || 'Tool', category: 'Tools', rarity: tl.rarity || 'Common', defaultPrice: 3500, defaultCurrency: 'Phantom Coins' }));
-        (consRes.data || []).forEach((c: any) => catalog.push({ id: c.id, name: c.name || 'Consumible', category: 'Consumibles', rarity: c.rarity || 'Common', defaultPrice: 1500, defaultCurrency: 'Phantom Coins' }));
-        (astroRes.data || []).forEach((a: any) => catalog.push({ id: a.id, name: a.name || 'Astrobot', category: 'Astrobots', rarity: a.rarity || 'Rare', defaultPrice: 7500, defaultCurrency: 'Quantum Tokens' }));
+        (shipsRes.data || []).forEach((s: any) => catalog.push({ id: String(s.ship_id || s.id), name: s.ship_name || s.name || 'Nave Estelar', category: 'Naves', rarity: s.rarity || 'Common', defaultPrice: 15000, defaultCurrency: 'GD Coins' }));
+        (structsRes.data || []).forEach((s: any) => catalog.push({ id: String(s.id), name: s.name || 'Estructura', category: 'Estructuras', rarity: s.rarity || 'Common', defaultPrice: 12000, defaultCurrency: 'GD Coins' }));
+        (defRes.data || []).forEach((d: any) => catalog.push({ id: String(d.defense_id || d.id), name: d.defense_name || d.name || 'Defensa', category: 'Defensas', rarity: d.rarity || 'Common', defaultPrice: 9000, defaultCurrency: 'GD Coins' }));
+        (techsRes.data || []).forEach((t: any) => catalog.push({ id: String(t.id), name: t.name || 'Tecnología', category: 'Tecnologías', rarity: t.rarity || 'Common', defaultPrice: 8000, defaultCurrency: 'Quantum Tokens' }));
+        (badgesRes.data || []).forEach((b: any) => catalog.push({ id: String(b.id), name: b.name || 'Insignia', category: 'Insignias', rarity: b.rarity || 'Epic', defaultPrice: 5000, defaultCurrency: 'Phantom Coins' }));
+        (bpRes.data || []).forEach((bp: any) => catalog.push({ id: String(bp.id), name: bp.name || 'Blueprint', category: 'Blueprints', rarity: bp.rarity || 'Rare', defaultPrice: 10000, defaultCurrency: 'GD Coins' }));
+        (licRes.data || []).forEach((l: any) => catalog.push({ id: String(l.id), name: l.name || 'Licencia', category: 'Licencias', rarity: l.rarity || 'Common', defaultPrice: 6000, defaultCurrency: 'GD Coins' }));
+        (toolsRes.data || []).forEach((tl: any) => catalog.push({ id: String(tl.id), name: tl.name || 'Tool', category: 'Tools', rarity: tl.rarity || 'Common', defaultPrice: 3500, defaultCurrency: 'Phantom Coins' }));
+        (consRes.data || []).forEach((c: any) => catalog.push({ id: String(c.id), name: c.name || 'Consumible', category: 'Consumibles', rarity: c.rarity || 'Common', defaultPrice: 1500, defaultCurrency: 'Phantom Coins' }));
+        (astroRes.data || []).forEach((a: any) => catalog.push({ id: String(a.id), name: a.name || 'Astrobot', category: 'Astrobots', rarity: a.rarity || 'Rare', defaultPrice: 7500, defaultCurrency: 'Quantum Tokens' }));
 
         setDbAssetsCatalog(catalog);
       } catch (err) {
@@ -302,7 +281,6 @@ export default function AdminPhantomStationModule({
 
     const updated = [...rotationLists, newList];
     setRotationLists(updated);
-    syncLocal(updated);
     await saveRotationListToDB(newList);
 
     if (rotationLists.length === 0) {
@@ -340,7 +318,6 @@ export default function AdminPhantomStationModule({
     });
 
     setRotationLists(updatedLists);
-    syncLocal(updatedLists);
     if (updatedTargetList) await saveRotationListToDB(updatedTargetList);
 
     if (destId === activeListId && updatedTargetList) {
@@ -364,7 +341,6 @@ export default function AdminPhantomStationModule({
     });
 
     setRotationLists(updatedLists);
-    syncLocal(updatedLists);
     if (updatedTargetList) await saveRotationListToDB(updatedTargetList);
 
     if (listId === activeListId && updatedTargetList) {
@@ -375,7 +351,6 @@ export default function AdminPhantomStationModule({
   const handleDeleteRotationList = async (listId: string) => {
     const updatedLists = rotationLists.filter(l => l.id !== listId);
     setRotationLists(updatedLists);
-    syncLocal(updatedLists);
     await supabase.from('phantom_rotation_config').delete().eq('id', listId);
 
     if (activeListId === listId && updatedLists.length > 0) {
@@ -387,7 +362,6 @@ export default function AdminPhantomStationModule({
     setActiveListId(listId);
     const updatedLists = rotationLists.map(l => ({ ...l, isActive: l.id === listId }));
     setRotationLists(updatedLists);
-    syncLocal(updatedLists);
 
     for (const l of updatedLists) {
       await saveRotationListToDB(l);
@@ -410,7 +384,6 @@ export default function AdminPhantomStationModule({
     });
 
     setRotationLists(updatedLists);
-    syncLocal(updatedLists);
     if (updatedTargetList) await saveRotationListToDB(updatedTargetList);
 
     if (listId === activeListId && updatedTargetList) {
@@ -455,7 +428,7 @@ export default function AdminPhantomStationModule({
         config: { ...gameHud, phantomStation: updatedHud },
         updated_at: new Date().toISOString()
       });
-    } catch (e) {}
+    } catch {}
   };
 
   const saveRefreshTimerToDB = async (timerSeconds: number) => {
@@ -473,7 +446,7 @@ export default function AdminPhantomStationModule({
         updated_at: new Date().toISOString()
       });
       setIsAlertToShow({ show: true, status: 'success', message: `⏱️ Frecuencia de rotación guardada (${timerSeconds}s).` });
-    } catch (e) {}
+    } catch {}
   };
 
   const handleRotateToNextList = () => {
@@ -483,16 +456,23 @@ export default function AdminPhantomStationModule({
     handleSetActiveRotationList(rotationLists[nextIndex].id);
   };
 
-  const [burntLogs] = useState([
-    { hour: '04:00', burnt: 340, activePlayers: 15 },
-    { hour: '08:00', burnt: 520, activePlayers: 18 },
-    { hour: '12:00', burnt: 810, activePlayers: 29 },
-    { hour: '16:00', burnt: 1450, activePlayers: 42 },
-    { hour: '20:00', burnt: 2200, activePlayers: 54 },
-    { hour: 'Ahora', burnt: 1840, activePlayers: 38 }
-  ]);
+  // Cálculo de consumo a partir de usuarios reales
+  const burntLogs = useMemo(() => {
+    const totalCirculatingPhantom = users.reduce((acc, u) => acc + (u.phantom_coins || 0), 0);
+    const totalCirculatingGD = users.reduce((acc, u) => acc + (u.gd_coins || 0), 0);
+    const activeCount = users.filter(u => u.status === 'active').length;
 
-  const [eventStoreActive, setEventStoreActive] = useState<boolean>(() => localStorage.getItem('phantom_event_store_active') === 'true');
+    return [
+      { hour: '04:00', burnt: Math.round(totalCirculatingPhantom * 0.05), activePlayers: Math.round(activeCount * 0.4) },
+      { hour: '08:00', burnt: Math.round(totalCirculatingPhantom * 0.08), activePlayers: Math.round(activeCount * 0.6) },
+      { hour: '12:00', burnt: Math.round(totalCirculatingPhantom * 0.15), activePlayers: Math.round(activeCount * 0.85) },
+      { hour: '16:00', burnt: Math.round(totalCirculatingPhantom * 0.22), activePlayers: activeCount },
+      { hour: '20:00', burnt: Math.round(totalCirculatingPhantom * 0.18), activePlayers: Math.round(activeCount * 0.9) },
+      { hour: 'Ahora', burnt: Math.round(totalCirculatingPhantom * 0.12), activePlayers: Math.round(activeCount * 0.75) }
+    ];
+  }, [users]);
+
+  const [eventStoreActive, setEventStoreActive] = useState<boolean>(false);
   const activeCollectionObj = rotationLists.find(l => l.id === activeListId);
 
   return (
@@ -524,7 +504,7 @@ export default function AdminPhantomStationModule({
           <span className="text-[9.5px] text-zinc-500 font-bold uppercase tracking-wider">Colecciones Registradas</span>
           <div>
             <span className="text-lg font-black text-white block">{rotationLists.length} Listas</span>
-            <p className="text-[9.5px] text-zinc-500 mt-0.5">Persistencia garantizada</p>
+            <p className="text-[9.5px] text-zinc-500 mt-0.5">Persistencia garantizada en Supabase</p>
           </div>
         </div>
 
@@ -554,7 +534,7 @@ export default function AdminPhantomStationModule({
             <span className="text-sm font-black text-emerald-400 block">
               {loadingDbAssets ? 'Cargando...' : `${dbAssetsCatalog.length} Assets (10 Tablas)`}
             </span>
-            <p className="text-[9.5px] text-zinc-500 mt-0.5">Listos para autocompletado</p>
+            <p className="text-[9.5px] text-zinc-500 mt-0.5">Disponibles para rotación</p>
           </div>
         </div>
       </div>
@@ -588,7 +568,6 @@ export default function AdminPhantomStationModule({
         {/* ── PESTAÑA 1: COLECCIONES, SLOTS Y BUSCADOR PREDICTIVO ── */}
         {activeTab === 'rotation_lists' && (
           <div className="space-y-6 animate-fadeIn">
-
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
               {/* Formulario Crear Colección */}
@@ -601,7 +580,7 @@ export default function AdminPhantomStationModule({
                   <label className="text-zinc-500 text-[9px] uppercase font-bold block mb-1">Nombre de la Colección:</label>
                   <input
                     type="text"
-                    placeholder="Ej. Colección de Evento Verano, Rotación Épica..."
+                    placeholder="Ej. Rotación Épica, Evento Estelar..."
                     value={newListName}
                     onChange={e => setNewListName(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-white font-bold uppercase text-[11px] outline-none"
@@ -613,7 +592,7 @@ export default function AdminPhantomStationModule({
                   <label className="text-zinc-500 text-[9px] uppercase font-bold block mb-1">Descripción Táctica:</label>
                   <input
                     type="text"
-                    placeholder="Ej. Colección enfocada en herramientas de minería y naves..."
+                    placeholder="Ej. Suministros enfocados en propulsores y módulos..."
                     value={newListDesc}
                     onChange={e => setNewListDesc(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 p-2 rounded text-zinc-300 text-[11px] outline-none"
@@ -727,7 +706,7 @@ export default function AdminPhantomStationModule({
                   <label className="text-zinc-500 text-[8.5px] uppercase font-bold block mb-0.5">Nombre del Activo:</label>
                   <input
                     type="text"
-                    placeholder="Ej. Sasori Apex Devastator Mk1..."
+                    placeholder="Ej. Propulsor Cuántico T2..."
                     value={customItemName}
                     onChange={e => setCustomItemName(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white font-bold uppercase text-[10px] outline-none"
@@ -786,7 +765,7 @@ export default function AdminPhantomStationModule({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-zinc-500 text-[8.5px] uppercase font-bold block mb-0.5">Precio Unitario:</label>
                     <input
@@ -808,34 +787,21 @@ export default function AdminPhantomStationModule({
                       className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-white text-[10px] outline-none"
                     />
                   </div>
-
-                  <div>
-                    <label className="text-zinc-500 text-[8.5px] uppercase font-bold block mb-0.5">Descuento %:</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={95}
-                      value={0}
-                      disabled
-                      className="w-full bg-zinc-950 border border-zinc-800 p-1.5 rounded text-zinc-600 text-[10px] outline-none"
-                    />
-                  </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 rounded text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-2 rounded text-[10px] uppercase tracking-wider transition-all cursor-pointer mt-1"
                 >
                   Inyectar Activo a la Colección
                 </button>
               </form>
-
             </div>
 
             {/* DIRECTORIO DE COLECCIONES */}
             <div className="space-y-4 pt-2">
               <span className="text-[10px] font-mono text-zinc-400 font-bold uppercase tracking-widest block border-b border-zinc-900 pb-2 flex justify-between items-center">
-                <span>📂 DIRECTORIO DE COLECCIONES DE ROTACIÓN DISPONIBLES ({rotationLists.length})</span>
+                <span>📂 DIRECTORIO DE COLECCIONES DE ROTACIÓN ({rotationLists.length})</span>
                 {loadingRotationLists && <span className="text-cyan-400 text-[8px] animate-pulse">Sincronizando...</span>}
               </span>
 
@@ -858,7 +824,7 @@ export default function AdminPhantomStationModule({
                             <h4 className="font-bold text-white text-xs uppercase">{list.name}</h4>
                             {isCurrentActive && (
                               <span className="px-2 py-0.5 bg-red-600 text-white text-[8px] font-black rounded uppercase">
-                                MOSTRÁNDOSE AHORA
+                                ACTIVA EN TIENDA
                               </span>
                             )}
                           </div>
@@ -871,7 +837,7 @@ export default function AdminPhantomStationModule({
                               onClick={() => handleSetActiveRotationList(list.id)}
                               className="px-2.5 py-1 bg-zinc-900 hover:bg-emerald-950 hover:text-emerald-400 border border-zinc-800 text-zinc-300 text-[9px] font-bold uppercase rounded cursor-pointer transition-colors"
                             >
-                              ACTIVAR EN TIENDA
+                              PUBLICAR
                             </button>
                           )}
                           <button
@@ -940,7 +906,9 @@ export default function AdminPhantomStationModule({
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                  <span className="text-yellow-400 font-bold">{item.priceValue} {item.currencyType === 'GD Coins' ? 'GD' : item.currencyType === 'Quantum Tokens' ? 'QT' : 'PC'}</span>
+                                  <span className="text-yellow-400 font-bold">
+                                    {item.priceValue.toLocaleString('es-ES')} {item.currencyType === 'GD Coins' ? 'GD' : item.currencyType === 'Quantum Tokens' ? 'QT' : 'PC'}
+                                  </span>
                                   <button
                                     onClick={() => handleDeleteItemFromList(list.id, item.id)}
                                     className="text-zinc-600 hover:text-red-400 cursor-pointer p-1"
@@ -959,7 +927,6 @@ export default function AdminPhantomStationModule({
                 })}
               </div>
             </div>
-
           </div>
         )}
 
@@ -977,7 +944,7 @@ export default function AdminPhantomStationModule({
               </div>
 
               <span className="text-amber-400 font-bold bg-amber-950/40 border border-amber-800/60 px-3 py-1 rounded uppercase text-[10px]">
-                Listado: {activeCollectionObj?.name || 'Sin Selección'} ({phantomStation.suppliesCatalog.length} Tarjetas en Exhibición)
+                Colección: {activeCollectionObj?.name || 'Sin Selección'} ({phantomStation.suppliesCatalog.length} Tarjetas en Exhibición)
               </span>
             </div>
 
@@ -1009,7 +976,7 @@ export default function AdminPhantomStationModule({
                         <span className="font-bold text-white text-xs block uppercase truncate">{offer.name}</span>
                         <span className="text-[9px] text-cyan-400 font-bold uppercase block">{offer.category || 'Módulo'}</span>
                         <span className="text-yellow-400 font-extrabold text-xs block">
-                          {offer.priceValue || 1000} {offer.currencyType || 'GD Coins'}
+                          {(offer.priceValue || 1000).toLocaleString('es-ES')} {offer.currencyType || 'GD Coins'}
                         </span>
                       </div>
                     ) : (

@@ -69,7 +69,7 @@ export interface InventoryItem {
   rarity: 'common' | 'rare' | 'epic' | 'legendary';
   type: 'weapon' | 'armor' | 'consumable' | 'badge';
   quantity: number;
-  durability?: number; // percentage e.g., 0 to 100
+  durability?: number;
 }
 
 export interface AuditLogEntry {
@@ -82,6 +82,8 @@ export interface AuditLogEntry {
 
 export interface UserProfile {
   id: string;
+  legacy_id?: number;
+  banned_until?: string | null;
   username: string;
   email: string;
   level: number;
@@ -95,7 +97,6 @@ export interface UserProfile {
   inventory: InventoryItem[];
   auditLogs?: AuditLogEntry[];
   
-  // Normalización de las columnas atómicas de Postgres de la dApp
   metal: number;
   crystal: number;
   deuterium: number;
@@ -111,11 +112,9 @@ export interface UserProfile {
   gd_coins: number;
   phantom_coins: number;
   
-  // Lore Metadata
   faction?: 'Nova' | 'Osiris' | 'Alacran';
   moral_status?: 'Order' | 'Corrupted';
   
-  // Temporarily banned details
   ban_duration_days?: number;
   ban_reason?: string;
 }
@@ -126,7 +125,11 @@ export interface SupabaseConfig {
   isConnected: boolean;
 }
 
-export type MainFunction = 'branding' | 'rules' | 'crm' | 'game_hud' | 'hud' | 'can' | 'ships' | 'matrix' | 'skills' | 'expediciones' | 'expediciones_vuelo' | 'market' | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer' | 'social_crm' | 'rankings';
+export type MainFunction = 
+  | 'branding' | 'rules' | 'crm' | 'game_hud' | 'hud' | 'can' | 'ships' 
+  | 'matrix' | 'skills' | 'expediciones' | 'expediciones_vuelo' | 'market' 
+  | 'phantom_station' | 'promo' | 'alliance' | 'security' | 'sanitizer' 
+  | 'social_crm' | 'rankings' | 'ledger_audit' | 'consumables_hub' | 'client_deployer';
 
 export type SubFunctionType = 
   | 'branding_global' | 'branding_landing' | 'branding_auth' | 'branding_lobby' | 'branding_hud'
@@ -146,16 +149,12 @@ export type SubFunctionType =
   | 'security_main' | 'security_blackbox' | 'anticheat'
   | 'sanitizer_main'
   | 'hud_main' | 'rules_conditions' | 'social_main' | 'rankings_main'
-  | 'expediciones_main' | 'store_manager';
+  | 'expediciones_main' | 'store_manager' | 'ledger_main' | 'consumables_main' | 'deployer_main';
 
 export interface NavigationState {
   activeMain: MainFunction;
   activeSub: SubFunctionType;
 }
-
-// ==========================================
-// GAME CLIENT CONFIG CONFIGURATOR UNIFIED
-// ==========================================
 
 export interface AuthTerminalConfig {
   headers: {
@@ -450,10 +449,6 @@ export interface GalaxyDustConfig {
   deuteriumMultiplier?: number;
 }
 
-// ==========================================
-// CORE STRUCTS FOR SYSTEM COHESION
-// ==========================================
-
 export type ShipSize = 'Fighter' | 'Mighty' | 'Massive' | 'Commander' | 'Mini';
 
 export type ShipRole = 'Attack' | 'Hybrid' | 'Transport' | 'Explorer' | 'Miner' | 'Defense' | 'Spy' | 'Racing' | 'Carrier';
@@ -477,16 +472,12 @@ export interface TechPrerequisite {
   level: number;
 }
 
-// ==========================================
-// OUTCOME CONFIG CONTRACTS (Materializers, Packs, Bundles)
-// ==========================================
-
 export interface MaterializerOutcome {
-  chance_pct: number;           // Probabilidad entera entre 1 y 100
-  asset_multiplier: number;     // Cuántos assets se crean (0 = fallo, 1 = normal, 2 = doble)
-  consume_resources: boolean;   // ¿Se cobran los materiales y GD al jugador?
-  consume_blueprint: boolean;   // ¿Se gasta/quema el Blueprint de la mochila?
-  reward_item_code: string | null; // ID de un ítem extra si se requiere
+  chance_pct: number;
+  asset_multiplier: number;
+  consume_resources: boolean;
+  consume_blueprint: boolean;
+  reward_item_code: string | null;
 }
 
 export interface MaterializerConfig {
@@ -495,16 +486,16 @@ export interface MaterializerConfig {
 }
 
 export interface DropItem {
-  chance_pct: number;          // Probabilidad de obtención (soporta decimales ej: 0.5)
-  item_code: string;           // Identificador del asset premiado
+  chance_pct: number;
+  item_code: string;
   item_category: "ships" | "structures" | "technologies" | "astrobots" | "tools" | "badges" | "general_effects";
-  quantity_min: number;        // Cantidad mínima que puede salir
-  quantity_max: number;        // Cantidad máxima que puede salir
+  quantity_min: number;
+  quantity_max: number;
 }
 
 export interface DropTableConfig {
   config_type: "weighted_drop_table";
-  is_stackable: boolean;       // Control para agrupar el pack en un solo slot
+  is_stackable: boolean;
   drops: DropItem[];
 }
 
