@@ -3,7 +3,8 @@ import { getSupabaseClient } from '../lib/supabase';
 import { 
   Shield, Search, Users, Coins, Database, ShieldAlert, Zap, Layers, 
   CheckSquare, Square, Eye, Trash2, RefreshCw, Ban, Package, Wrench,
-  Cpu, Rocket, Building, Layers as LayersIcon, Award, Sparkles, Ticket
+  Cpu, Rocket, Building, Layers as LayersIcon, Award, Sparkles, Ticket,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -32,6 +33,8 @@ const categoryMap: Record<string, { targetTable: string, seedTable: string, idCo
 
 type SubTab = 'crm_central' | 'general_dashboard';
 
+const ASSETS_PER_PAGE = 40;
+
 export const UserCRM: React.FC = () => {
   const supabase = getSupabaseClient();
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('crm_central');
@@ -42,6 +45,9 @@ export const UserCRM: React.FC = () => {
   const [selectedPlayer, setSelectedPlayer] = useState<ExtendedUserProfile | null>(null);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+
+  // Paginación interna para la lista de activos
+  const [assetPage, setAssetPage] = useState<number>(1);
 
   // Estado que almacena todas las categorías de activos reales
   const [playerAssets, setPlayerAssets] = useState<{ 
@@ -259,7 +265,9 @@ export const UserCRM: React.FC = () => {
           .select('*')
           .eq('id_user', legacyId);
 
-        if (!errLegacy && legacyData) {
+        if (errLegacy) {
+          console.warn(`[UserCRM] Fallo en lectura por id_user en ${tableName}:`, errLegacy.message);
+        } else if (legacyData) {
           combined = [...legacyData];
         }
       }
@@ -271,7 +279,9 @@ export const UserCRM: React.FC = () => {
           .select('*')
           .eq('user_id', userUuid);
 
-        if (!errUuid && uuidData) {
+        if (errUuid) {
+          console.warn(`[UserCRM] Fallo en lectura por user_id en ${tableName}:`, errUuid.message);
+        } else if (uuidData) {
           const existingIds = new Set(combined.map(item => item.id));
           uuidData.forEach(item => {
             if (!existingIds.has(item.id)) {
@@ -282,7 +292,8 @@ export const UserCRM: React.FC = () => {
       }
 
       return combined;
-    } catch {
+    } catch (err: any) {
+      console.error(`[UserCRM] Excepción en fetchAssetTable (${tableName}):`, err);
       return [];
     }
   };
@@ -344,12 +355,14 @@ export const UserCRM: React.FC = () => {
 
   useEffect(() => {
     if (selectedPlayer) {
+      setAssetPage(1);
       fetchPlayerAssets(selectedPlayer);
     }
   }, [selectedPlayer?.id]);
 
   useEffect(() => {
     setSelectedAssetIds([]);
+    setAssetPage(1);
   }, [activeAssetTab, selectedPlayer?.id]);
 
   useEffect(() => {
@@ -673,6 +686,10 @@ export const UserCRM: React.FC = () => {
       );
     }
 
+    const totalPages = Math.ceil(assetList.length / ASSETS_PER_PAGE);
+    const startIndex = (assetPage - 1) * ASSETS_PER_PAGE;
+    const paginatedSlice = assetList.slice(startIndex, startIndex + ASSETS_PER_PAGE);
+
     const isAllAssetsSelected = assetList.length > 0 && selectedAssetIds.length === assetList.length;
 
     const toggleSelectAllAssets = () => {
@@ -707,7 +724,7 @@ export const UserCRM: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
-          {assetList.map((item: any) => {
+          {paginatedSlice.map((item: any) => {
             const isSelected = selectedAssetIds.includes(item.id);
             
             const assetKey = 
@@ -783,6 +800,34 @@ export const UserCRM: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Paginador Táctico Inferior */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between pt-2 border-t border-zinc-900 text-[10px] text-zinc-400 font-mono">
+            <span>
+              Mostrando {startIndex + 1} - {Math.min(startIndex + ASSETS_PER_PAGE, assetList.length)} de {assetList.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={assetPage === 1}
+                onClick={() => setAssetPage(p => Math.max(1, p - 1))}
+                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 border border-zinc-800 rounded flex items-center gap-0.5 text-cyan-400 cursor-pointer"
+              >
+                <ChevronLeft size={11} /> Anterior
+              </button>
+              <span className="font-bold text-white px-1">
+                Pág. {assetPage} / {totalPages}
+              </span>
+              <button
+                disabled={assetPage >= totalPages}
+                onClick={() => setAssetPage(p => Math.min(totalPages, p + 1))}
+                className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 border border-zinc-800 rounded flex items-center gap-0.5 text-cyan-400 cursor-pointer"
+              >
+                Siguiente <ChevronRight size={11} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -972,7 +1017,7 @@ export const UserCRM: React.FC = () => {
                     </div>
 
                     {/* Listado de Activos Activo */}
-                    <div className="max-h-64 overflow-y-auto pr-1 font-mono text-[11px]">
+                    <div className="max-h-80 overflow-y-auto pr-1 font-mono text-[11px]">
                       {renderActiveAssetList()}
                     </div>
                   </div>
