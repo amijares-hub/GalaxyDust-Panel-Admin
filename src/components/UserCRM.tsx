@@ -161,7 +161,8 @@ export const UserCRM: React.FC = () => {
       { cat: 'astrobots', tbl: 'seed_astrobots' },
       { cat: 'tools', tbl: 'seed_tools' },
       { cat: 'blueprints', tbl: 'seed_blueprints' },
-      { cat: 'badges', tbl: 'seed_badges' }
+      { cat: 'badges', tbl: 'seed_badges' },
+      { cat: 'consumables', tbl: 'seed_consumables' }
     ];
 
     try {
@@ -194,11 +195,15 @@ export const UserCRM: React.FC = () => {
               const keys = [
                 row.id, row.ship_id, row.structure_id, row.building_id,
                 row.technology_id, row.tech_id, row.astrobot_id,
-                row.tool_id, row.blueprint_id, row.badge_id, row.defense_id
+                row.tool_id, row.blueprint_id, row.badge_id, row.defense_id,
+                row.id_ship, row.id_structure, row.id_badge, row.id_blueprint,
+                row.id_qmp, row.id_kit, row.id_materialicer, row.id_bag, row.id_ticket
               ];
               keys.forEach(k => {
                 if (k !== undefined && k !== null && String(k).trim() !== '') {
-                  catMap[String(k)] = String(name);
+                  const keyStr = String(k).trim();
+                  catMap[keyStr] = String(name);
+                  catMap[keyStr.toLowerCase()] = String(name);
                 }
               });
             }
@@ -252,7 +257,42 @@ export const UserCRM: React.FC = () => {
     }
   };
 
-  // Función de búsqueda dual: recupera registros tanto por id_user (legacy) como por user_id (UUID)
+  // Helper para traer todos los registros de una tabla superando el límite de 1000 filas
+  const fetchAllForColumn = async (tableName: string, colName: string, colValue: any) => {
+    if (!supabase || colValue === undefined || colValue === null) return [];
+    let results: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+      try {
+        const { data, error } = await supabase
+          .from(tableName)
+          .select('*')
+          .eq(colName, colValue)
+          .range(from, from + step - 1);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        results = [...results, ...data];
+        if (data.length < step) {
+          hasMore = false;
+        } else {
+          from += step;
+        }
+      } catch {
+        hasMore = false;
+        break;
+      }
+    }
+    return results;
+  };
+
+  // Búsqueda dual completa que recupera el 100% de los registros de la cuenta
   const fetchAssetTable = async (tableName: string, userUuid: string, legacyId?: number) => {
     if (!supabase) return [];
     try {
@@ -260,39 +300,23 @@ export const UserCRM: React.FC = () => {
 
       // 1. Consulta por id_user (datos históricos migrados)
       if (legacyId) {
-        const { data: legacyData, error: errLegacy } = await supabase
-          .from(tableName)
-          .select('*')
-          .eq('id_user', legacyId);
-
-        if (errLegacy) {
-          console.warn(`[UserCRM] Fallo en lectura por id_user en ${tableName}:`, errLegacy.message);
-        } else if (legacyData) {
-          combined = [...legacyData];
-        }
+        const legacyData = await fetchAllForColumn(tableName, 'id_user', legacyId);
+        combined = [...legacyData];
       }
 
       // 2. Consulta por user_id (datos generados en cliente moderno)
       if (userUuid) {
-        const { data: uuidData, error: errUuid } = await supabase
-          .from(tableName)
-          .select('*')
-          .eq('user_id', userUuid);
-
-        if (errUuid) {
-          console.warn(`[UserCRM] Fallo en lectura por user_id en ${tableName}:`, errUuid.message);
-        } else if (uuidData) {
-          const existingIds = new Set(combined.map(item => item.id));
-          uuidData.forEach(item => {
-            if (!existingIds.has(item.id)) {
-              combined.push(item);
-            }
-          });
-        }
+        const uuidData = await fetchAllForColumn(tableName, 'user_id', userUuid);
+        const existingIds = new Set(combined.map(item => item.id));
+        uuidData.forEach(item => {
+          if (!existingIds.has(item.id)) {
+            combined.push(item);
+          }
+        });
       }
 
       return combined;
-    } catch (err: any) {
+    } catch (err) {
       console.error(`[UserCRM] Excepción en fetchAssetTable (${tableName}):`, err);
       return [];
     }
@@ -423,7 +447,6 @@ export const UserCRM: React.FC = () => {
         rpcSucceeded = false;
       }
 
-      // Fallback directo a user_profiles si la RPC no existe
       if (!rpcSucceeded) {
         const currentVal = Number((selectedPlayer as any)[injectType] || 0);
         const newVal = Math.max(0, currentVal + Number(injectAmount));
@@ -482,7 +505,6 @@ export const UserCRM: React.FC = () => {
         payload.id_user = selectedPlayer.legacy_id;
       }
 
-      // Parámetros por categoría
       if (entityGroup === 'ships') {
         payload.id_ship = isNaN(numId) ? null : numId;
         payload.name_ship = allSeeds.find(s => s.id === cleanId)?.name || 'Nave';
@@ -655,6 +677,93 @@ export const UserCRM: React.FC = () => {
   const totalGDCirculating = players.reduce((acc, p) => acc + (p.gd_coins || 0), 0);
   const totalMetalCirculating = players.reduce((acc, p) => acc + (p.metal || 0), 0);
 
+  // Motor centralizado de nombres de activos
+  const resolveAssetDisplayName = (item: any, currentSeedMap: Record<string, string>, activeTab: string): string => {
+    const keysToTry = [
+      item.ship_id,
+      item.id_ship,
+      item.building_id,
+      item.structure_id,
+      item.id_structure,
+      item.defense_id,
+      item.id_defense,
+      item.technology_id,
+      item.id_technology,
+      item.astrobot_id,
+      item.id_astrobot,
+      item.tool_id,
+      item.id_tool,
+      item.blueprint_id,
+      item.id_blueprint,
+      item.badge_id,
+      item.id_badge,
+      item.id_qmp,
+      item.id_kit,
+      item.id_materialicer,
+      item.id_bag,
+      item.id_ticket,
+      item.id_pack,
+      item.id_essential,
+      item.id
+    ].filter(k => k !== undefined && k !== null && String(k).trim() !== '');
+
+    let catalogName: string | undefined;
+    for (const k of keysToTry) {
+      const strK = String(k).trim();
+      const found = currentSeedMap[strK] || currentSeedMap[strK.toLowerCase()];
+      if (found) {
+        catalogName = found;
+        break;
+      }
+    }
+
+    const customName = typeof item.custom_name === 'string' ? item.custom_name.trim() : '';
+    const nameShip = typeof item.name_ship === 'string' ? item.name_ship.trim() : '';
+    const nameDef = typeof item.name_defense === 'string' ? item.name_defense.trim() : '';
+    const generalName = typeof item.name === 'string' ? item.name.trim() : '';
+
+    const rawName = customName || nameShip || nameDef || generalName;
+
+    const isNumeric = rawName !== '' && !isNaN(Number(rawName));
+    const isMeaningless = !rawName || rawName.toLowerCase() === 'nan' || rawName.toLowerCase() === 'null' || rawName.toLowerCase() === 'undefined';
+
+    // 1. Si existe en catálogo oficial
+    if (catalogName) {
+      if (!isMeaningless && !isNumeric && rawName.toLowerCase() !== catalogName.toLowerCase()) {
+        return `${catalogName} [${rawName}]`;
+      }
+      return catalogName;
+    }
+
+    // 2. Si no hay match en catálogo pero existe nombre descriptivo
+    if (!isMeaningless && !isNumeric) {
+      return rawName;
+    }
+
+    // 3. Fallbacks elegantes garantizados
+    const assetId = item.id_ship || item.ship_id || item.id_structure || item.id_defense || item.id_technology || item.id_astrobot || item.id_tool || item.id_blueprint || item.id_badge || item.id;
+
+    if (activeTab === 'ships') {
+      return isNumeric ? `Nave #${assetId} [Slot ${rawName}]` : `Nave #${assetId || 'Desconocida'}`;
+    }
+    if (activeTab === 'structures') return `Estructura #${item.structure_id || item.building_id || assetId}`;
+    if (activeTab === 'defenses') return `Defensa #${item.defense_id || assetId}`;
+    if (activeTab === 'technologies') return `Tecnología #${item.technology_id || assetId}`;
+    if (activeTab === 'astrobots') return `Astrobot #${item.astrobot_id || assetId}`;
+    if (activeTab === 'tools') return `Herramienta #${item.tool_id || assetId}`;
+    if (activeTab === 'blueprints') return `Blueprint #${item.blueprint_id || assetId}`;
+    if (activeTab === 'badges') return `Insignia #${item.badge_id || assetId}`;
+    if (activeTab === 'qmps') return `Módulo QMP #${item.id_qmp || item.id}`;
+    if (activeTab === 'repair_kits') return `Kit de Reparación T${item.id_kit || item.id}`;
+    if (activeTab === 'materialicers') return `Materializador #${item.id_materialicer || item.id}`;
+    if (activeTab === 'bags') return `Bolsa de Suministros #${item.id_bag || item.id}`;
+    if (activeTab === 'tickets') return `Ticket de Acceso #${item.id_ticket || item.id}`;
+    if (activeTab === 'packs') return `Pack Reclamable #${item.id_pack || item.id}`;
+    if (activeTab === 'essentials') return `Ítem Esencial #${item.id_essential || item.id}`;
+
+    return `Activo #${assetId}`;
+  };
+
   const renderActiveAssetList = () => {
     const assetList = (playerAssets as any)[activeAssetTab] || [];
     const targetTableMap: Record<string, string> = {
@@ -700,7 +809,7 @@ export const UserCRM: React.FC = () => {
       }
     };
 
-    const currentSeedMap = categorySeedMaps[activeAssetTab] || {};
+    const currentSeedMap = categorySeedMaps[activeAssetTab] || categorySeedMaps['consumables'] || {};
 
     return (
       <div className="space-y-2">
@@ -726,35 +835,7 @@ export const UserCRM: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono">
           {paginatedSlice.map((item: any) => {
             const isSelected = selectedAssetIds.includes(item.id);
-            
-            const assetKey = 
-              item.ship_id || item.id_ship ||
-              item.building_id || item.structure_id || item.id_structure ||
-              item.defense_id || item.id_defense ||
-              item.technology_id || item.id_technology ||
-              item.astrobot_id || item.id_astrobot ||
-              item.tool_id || item.id_tool ||
-              item.blueprint_id || item.id_blueprint ||
-              item.badge_id || item.id_badge ||
-              item.id_qmp || item.id_kit || item.id_materialicer ||
-              item.id_bag || item.id_ticket || item.id_pack || item.id_essential ||
-              item.id;
-
-            const assetDisplayName = 
-              item.custom_name || 
-              item.name_ship || 
-              item.name_defense ||
-              item.name || 
-              currentSeedMap[String(assetKey)] || 
-              currentSeedMap[String(item.id)] ||
-              (activeAssetTab === 'qmps' ? `Módulo QMP #${item.id_qmp || item.id}` :
-               activeAssetTab === 'repair_kits' ? `Kit de Reparación T${item.id_kit || item.id}` :
-               activeAssetTab === 'materialicers' ? `Materializador #${item.id_materialicer || item.id}` :
-               activeAssetTab === 'bags' ? `Bolsa de Suministros #${item.id_bag || item.id}` :
-               activeAssetTab === 'tickets' ? `Ticket de Acceso #${item.id_ticket || item.id}` :
-               activeAssetTab === 'packs' ? `Pack Reclamable #${item.id_pack || item.id}` :
-               activeAssetTab === 'essentials' ? `Ítem Esencial #${item.id_essential || item.id}` :
-               `Activo #${assetKey}`);
+            const assetDisplayName = resolveAssetDisplayName(item, currentSeedMap, activeAssetTab);
 
             // Badges informativas de cada tipo de activo
             const infoDetail = 
@@ -778,7 +859,7 @@ export const UserCRM: React.FC = () => {
                     {isSelected ? <CheckSquare size={13} className="text-cyan-400" /> : <Square size={13} />}
                   </span>
                   <div className="truncate">
-                    <span className="font-bold text-white block truncate max-w-[170px]" title={assetDisplayName}>
+                    <span className="font-bold text-white block truncate max-w-[210px]" title={assetDisplayName}>
                       {assetDisplayName}
                     </span>
                     {infoDetail && (
