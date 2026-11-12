@@ -10,7 +10,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
-  auth: { persistSession: false }
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
 });
 
 const STORAGE_KEY_CONFIG = 'saso_supabase_config';

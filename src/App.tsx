@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Database, Shield, Cpu, Users, ChevronDown, ChevronRight, CheckCircle,
   X, AlertTriangle, LayoutGrid, Clock, Wifi, WifiOff, Settings,
-  Orbit, Gift, Radio, Ghost, Menu, ShieldAlert, Trophy, Monitor, Coins, Package, Globe
+  Orbit, Gift, Radio, Ghost, Menu, ShieldAlert, Trophy, Monitor, Coins, Package, Globe, LogOut, Loader2
 } from 'lucide-react';
 
 import {
@@ -16,10 +16,13 @@ import {
 } from './data';
 
 import {
-  loadSupabaseConfig, supabaseService
+  loadSupabaseConfig, supabaseService, supabase
 } from './lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Componentes Administrativos Core
+import { AdminLogin } from './components/AdminLogin';
+import { AccessDenied } from './components/AccessDenied';
 import SupabaseConfigModal from './components/SupabaseConfigModal';
 import ConditionEditor from './components/ConditionEditor';
 import UserCRM from './components/UserCRM';
@@ -60,12 +63,79 @@ export default function App() {
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(() => loadSupabaseConfig());
   const [showConfigModal, setShowConfigModal] = useState(false);
 
+  // ESTADOS DE SEGURIDAD Y GUARDIA ADMINISTRATIVA
+  const [authStatus, setAuthStatus] = useState<'checking' | 'unauthenticated' | 'access_denied' | 'authorized'>('checking');
+  const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
+  const [deniedEmail, setDeniedEmail] = useState<string | null>(null);
+
   const [brand, setBrand] = useState<BrandConfig>(DEFAULT_BRAND);
   const [components, setComponents] = useState<WebComponent[]>(DEFAULT_COMPONENTS);
   const [rules, setRules] = useState<GameRule[]>(DEFAULT_RULES);
   const [users, setUsers] = useState<UserProfile[]>(DEFAULT_USERS);
   const [gameHud, setGameHud] = useState<GalaxyDustConfig>(DEFAULT_GALAXY_DUST_HUD);
   const [loading, setLoading] = useState(true);
+
+  // LISTA BLANCA ESTRICTA DE SUPERADMINISTRADORES
+  const SUPER_ADMIN_WHITELIST = ['amijares@sasorilabs.io'];
+
+  // Guardia de Autenticación y Autorización
+  const verifyAccessGuard = async (user: SupabaseUser | null) => {
+    if (!user) {
+      setCurrentUser(null);
+      setAuthStatus('unauthenticated');
+      return;
+    }
+
+    const email = user.email?.trim().toLowerCase();
+    const isEmailConfirmed = Boolean(user.email_confirmed_at);
+    const isWhitelisted = email ? SUPER_ADMIN_WHITELIST.includes(email) : false;
+
+    if (!isWhitelisted || !isEmailConfirmed) {
+      console.warn(`[SECURITY ALERT] Acceso no autorizado denegado para: ${email}. Revocando sesión...`);
+      setDeniedEmail(email || 'Usuario no identificado');
+      setAuthStatus('access_denied');
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Error cerrando sesión no autorizada:', err);
+      }
+      return;
+    }
+
+    // Usuario legítimo autorizado
+    setCurrentUser(user);
+    setAuthStatus('authorized');
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (isMounted) {
+          await verifyAccessGuard(session?.user || null);
+        }
+      } catch (err) {
+        console.error('Error verificando sesión de Supabase:', err);
+        if (isMounted) setAuthStatus('unauthenticated');
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (isMounted) {
+        await verifyAccessGuard(session?.user || null);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const [alert, setAlert] = useState<{ show: boolean; status: 'success' | 'error' | 'warning'; message: string }>({
     show: false,
@@ -89,6 +159,9 @@ export default function App() {
   };
 
   const fetchAllData = async () => {
+    // Si no está autorizado formalmente, ninguna consulta se ejecuta
+    if (authStatus !== 'authorized') return;
+
     setLoading(true);
     try {
       const [brandRes, compRes, rulesRes, usersRes, hudRes] = await Promise.all([
@@ -134,8 +207,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchAllData();
-  }, [supabaseConfig]);
+    if (authStatus === 'authorized') {
+      fetchAllData();
+    }
+  }, [authStatus, supabaseConfig]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -174,6 +249,51 @@ export default function App() {
     fetchAllData();
   };
 
+  // 1. Pantalla de carga mientras se evalúa el estado criptográfico de la sesión
+  if (authStatus === 'checking') {
+    return (
+      <div className="min-h-screen w-full bg-[#050506] flex flex-col items-center justify-center space-y-4 select-none font-sans">
+        <div className="relative">
+          <div className="w-12 h-12 border-2 border-red-500/20 border-t-red-500 rounded-full animate-spin" />
+          <Shield size={18} className="absolute inset-0 m-auto text-red-500 animate-pulse" />
+        </div>
+        <div className="text-center space-y-1">
+          <span className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-widest block">
+            Verificando Guardia de Acceso...
+          </span>
+          <span className="text-[10px] font-mono text-zinc-550 block">
+            Validando sesión y listas de control de acceso (ACL)
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Pantalla de Acceso Denegado estricto si el usuario autenticado no está en lista blanca
+  if (authStatus === 'access_denied') {
+    return (
+      <AccessDenied
+        attemptedEmail={deniedEmail}
+        onReset={() => {
+          setDeniedEmail(null);
+          setAuthStatus('unauthenticated');
+        }}
+      />
+    );
+  }
+
+  // 3. Pantalla de Login si no hay sesión activa en Supabase Auth
+  if (authStatus === 'unauthenticated' || !currentUser) {
+    return (
+      <AdminLogin
+        onLoginSuccess={() => {
+          // El listener onAuthStateChange disparará la verificación automática
+        }}
+      />
+    );
+  }
+
+  // 4. Renderizado EXCLUSIVO para superadministrador autorizado
   return (
     <div className="flex flex-col md:flex-row h-screen bg-[#050506] font-sans antialiased text-zinc-300 overflow-hidden">
 
@@ -237,10 +357,10 @@ export default function App() {
               )}
               <div className="min-w-0">
                 <span className="text-[9px] font-bold text-zinc-400 block tracking-wider uppercase">
-                  {supabaseConfig.isConnected ? 'Sincronizado' : 'Modo Local'}
+                  {supabaseConfig.isConnected ? 'Sincronizado' : 'Sin Conexión DB'}
                 </span>
                 <span className="text-[8px] text-zinc-550 block truncate font-mono">
-                  {supabaseConfig.isConnected ? supabaseConfig.url.replace('https://', '') : 'Local DB'}
+                  {supabaseConfig.isConnected ? supabaseConfig.url.replace('https://', '') : 'Desconectado'}
                 </span>
               </div>
             </div>
@@ -464,14 +584,28 @@ export default function App() {
 
         {/* PIE DE PÁGINA DEL MENÚ */}
         <div className="p-4 border-t border-zinc-900 bg-zinc-950/60">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded bg-zinc-900 border border-zinc-850 flex items-center justify-center font-extrabold text-xs text-red-500 shrink-0">
-              AD
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded bg-zinc-900 border border-zinc-850 flex items-center justify-center font-extrabold text-xs text-red-500 shrink-0">
+                {currentUser?.email ? currentUser.email.substring(0, 2).toUpperCase() : 'AD'}
+              </div>
+              <div className="min-w-0 flex flex-col">
+                <span className="text-[10.5px] font-semibold text-white truncate">
+                  {currentUser?.email || 'Administrador'}
+                </span>
+                <span className="text-[8.5px] text-zinc-550 font-mono">Super Administrator</span>
+              </div>
             </div>
-            <div className="min-w-0 flex flex-col">
-              <span className="text-[10.5px] font-semibold text-white truncate">amijares@sasorilabs.io</span>
-              <span className="text-[8.5px] text-zinc-550 font-mono">Super Administrator</span>
-            </div>
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                setAuthStatus('unauthenticated');
+              }}
+              className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 rounded transition-colors shrink-0 cursor-pointer"
+              title="Cerrar Sesión Segura"
+            >
+              <LogOut size={13} />
+            </button>
           </div>
 
           <div className="mt-2.5 flex items-center gap-1.5 p-1.5 bg-[#0a0a0c] border border-zinc-900 rounded text-[9px] text-zinc-500 font-mono">

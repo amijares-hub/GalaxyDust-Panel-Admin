@@ -237,7 +237,7 @@ ALTER TABLE public.active_expeditions REPLICA IDENTITY FULL;
                   ) : (
                     <Database size={14} className="text-red-500" />
                   )}
-                  <span>{url && anonKey ? 'Verificar & Acoplar Red' : 'Revertir a Modo Local'}</span>
+                  <span>{url && anonKey ? 'Verificar & Acoplar Red' : 'Desconectar Red'}</span>
                 </button>
               </div>
             </form>
