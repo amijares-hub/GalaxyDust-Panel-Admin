@@ -21,8 +21,9 @@ import {
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Componentes Administrativos Core
-import { AdminLogin } from './components/AdminLogin';
+import { AdminLogin, ALLOWED_ADMIN_EMAIL } from './components/AdminLogin';
 import { AccessDenied } from './components/AccessDenied';
+import { SessionChallengeModal } from './components/SessionChallengeModal';
 import SupabaseConfigModal from './components/SupabaseConfigModal';
 import ConditionEditor from './components/ConditionEditor';
 import UserCRM from './components/UserCRM';
@@ -67,6 +68,8 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState<'checking' | 'unauthenticated' | 'access_denied' | 'authorized'>('checking');
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
   const [deniedEmail, setDeniedEmail] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [showChallengeModal, setShowChallengeModal] = useState<boolean>(false);
 
   const [brand, setBrand] = useState<BrandConfig>(DEFAULT_BRAND);
   const [components, setComponents] = useState<WebComponent[]>(DEFAULT_COMPONENTS);
@@ -74,9 +77,6 @@ export default function App() {
   const [users, setUsers] = useState<UserProfile[]>(DEFAULT_USERS);
   const [gameHud, setGameHud] = useState<GalaxyDustConfig>(DEFAULT_GALAXY_DUST_HUD);
   const [loading, setLoading] = useState(true);
-
-  // LISTA BLANCA ESTRICTA DE SUPERADMINISTRADORES
-  const SUPER_ADMIN_WHITELIST = ['amijares@sasorilabs.io'];
 
   // Guardia de Autenticación y Autorización
   const verifyAccessGuard = async (user: SupabaseUser | null) => {
@@ -88,14 +88,15 @@ export default function App() {
 
     const email = user.email?.trim().toLowerCase();
     const isEmailConfirmed = Boolean(user.email_confirmed_at);
-    const isWhitelisted = email ? SUPER_ADMIN_WHITELIST.includes(email) : false;
+    const isAllowedEmail = email === ALLOWED_ADMIN_EMAIL;
 
-    if (!isWhitelisted || !isEmailConfirmed) {
+    if (!isAllowedEmail || !isEmailConfirmed) {
       console.warn(`[SECURITY ALERT] Acceso no autorizado denegado para: ${email}. Revocando sesión...`);
       setDeniedEmail(email || 'Usuario no identificado');
       setAuthStatus('access_denied');
       try {
         await supabase.auth.signOut();
+        sessionStorage.removeItem('last_verified_at');
       } catch (err) {
         console.error('Error cerrando sesión no autorizada:', err);
       }
@@ -104,11 +105,34 @@ export default function App() {
 
     // Usuario legítimo autorizado
     setCurrentUser(user);
+    if (!sessionStorage.getItem('last_verified_at')) {
+      sessionStorage.setItem('last_verified_at', Date.now().toString());
+    }
     setAuthStatus('authorized');
   };
 
   useEffect(() => {
     let isMounted = true;
+
+    // 1. REGLA CRÍTICA: Anular enlaces mágicos, recuperaciones y tokens por URL
+    const urlHash = window.location.hash || '';
+    const urlSearch = window.location.search || '';
+    const dangerousTokensPattern = /(access_token|refresh_token|type=recovery|type=magiclink|code=)/i;
+
+    if (dangerousTokensPattern.test(urlHash) || dangerousTokensPattern.test(urlSearch)) {
+      console.warn('[SECURITY] Token o enlace mágico detectado en URL. Anulando de inmediato...');
+      // Limpiar URL sin recargar
+      window.history.replaceState({}, document.title, window.location.pathname);
+      sessionStorage.removeItem('last_verified_at');
+
+      supabase.auth.signOut().finally(() => {
+        if (isMounted) {
+          setDeniedEmail('Enlace mágico o token URL no autorizado.');
+          setAuthStatus('access_denied');
+        }
+      });
+      return;
+    }
 
     const initAuth = async () => {
       try {
@@ -137,6 +161,96 @@ export default function App() {
     };
   }, []);
 
+  // 2. REGLA CRÍTICA: Máximo 1 persona conectada a la vez (Verificación en tiempo real y foco)
+  useEffect(() => {
+    if (authStatus !== 'authorized') return;
+
+    let isTerminating = false;
+
+    const checkActiveSessionValidity = async () => {
+      if (isTerminating) return;
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+
+        if (error || !user || user.email?.trim().toLowerCase() !== ALLOWED_ADMIN_EMAIL) {
+          isTerminating = true;
+          console.warn('[SECURITY] Sesión invalidada en servidor o sesión iniciada en otro dispositivo.');
+          sessionStorage.removeItem('last_verified_at');
+          await supabase.auth.signOut();
+          setCurrentUser(null);
+          setAuthNotice('Se ha detectado un inicio de sesión en otro dispositivo. Esta sesión ha sido cerrada por seguridad.');
+          setAuthStatus('unauthenticated');
+        }
+      } catch (err) {
+        isTerminating = true;
+        console.error('[SECURITY] Error validando sesión única:', err);
+        sessionStorage.removeItem('last_verified_at');
+        await supabase.auth.signOut();
+        setCurrentUser(null);
+        setAuthNotice('Se ha detectado un inicio de sesión en otro dispositivo. Esta sesión ha sido cerrada por seguridad.');
+        setAuthStatus('unauthenticated');
+      }
+    };
+
+    // A. Verificación periódica cada 15 segundos
+    const sessionCheckInterval = setInterval(checkActiveSessionValidity, 15000);
+
+    // B. Verificación al recuperar el foco o visibilidad
+    const handleFocus = () => { checkActiveSessionValidity(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkActiveSessionValidity();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(sessionCheckInterval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [authStatus]);
+
+  // 3. REGLA CRÍTICA: Temporizador de 10 minutos para SessionChallengeModal
+  useEffect(() => {
+    if (authStatus !== 'authorized') return;
+
+    const challengeCheckTimer = setInterval(() => {
+      const storedLastVerified = sessionStorage.getItem('last_verified_at');
+      const lastVerified = storedLastVerified ? parseInt(storedLastVerified, 10) : Date.now();
+
+      // 10 minutos = 600,000 ms
+      if (Date.now() - lastVerified >= 600000) {
+        setShowChallengeModal(true);
+      }
+    }, 1000);
+
+    return () => clearInterval(challengeCheckTimer);
+  }, [authStatus]);
+
+  const handleChallengeFail = async (reason: string) => {
+    setShowChallengeModal(false);
+    sessionStorage.removeItem('last_verified_at');
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error(e);
+    }
+    setCurrentUser(null);
+    setAuthNotice(reason);
+    setAuthStatus('unauthenticated');
+  };
+
+  const handleChallengeSuccess = (newSession: any) => {
+    setShowChallengeModal(false);
+    sessionStorage.setItem('last_verified_at', Date.now().toString());
+    if (newSession?.user) {
+      setCurrentUser(newSession.user);
+    }
+  };
+
   const [alert, setAlert] = useState<{ show: boolean; status: 'success' | 'error' | 'warning'; message: string }>({
     show: false,
     status: 'success',
@@ -159,8 +273,8 @@ export default function App() {
   };
 
   const fetchAllData = async () => {
-    // Si no está autorizado formalmente, ninguna consulta se ejecuta
-    if (authStatus !== 'authorized') return;
+    // Si no está autorizado formalmente o el challenge modal está activo, ninguna consulta se ejecuta
+    if (authStatus !== 'authorized' || showChallengeModal) return;
 
     setLoading(true);
     try {
@@ -207,10 +321,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (authStatus === 'authorized') {
+    if (authStatus === 'authorized' && !showChallengeModal) {
       fetchAllData();
     }
-  }, [authStatus, supabaseConfig]);
+  }, [authStatus, supabaseConfig, showChallengeModal]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -286,8 +400,9 @@ export default function App() {
   if (authStatus === 'unauthenticated' || !currentUser) {
     return (
       <AdminLogin
+        authError={authNotice}
         onLoginSuccess={() => {
-          // El listener onAuthStateChange disparará la verificación automática
+          setAuthNotice(null);
         }}
       />
     );
@@ -822,6 +937,14 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* POP-UP DE VERIFICACIÓN DE CLAVE CADA 10 MINUTOS (60s / 1 INTENTO) */}
+      {showChallengeModal && (
+        <SessionChallengeModal
+          onSuccess={handleChallengeSuccess}
+          onFail={handleChallengeFail}
+        />
+      )}
 
       {/* BANNER FLOTANTE DE NOTIFICACIONES */}
       <AnimatePresence>

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, AlertTriangle, KeyRound, Loader2, ArrowRight } from 'lucide-react';
+import { Shield, Lock, Mail, AlertTriangle, Loader2, ArrowRight } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+
+export const ALLOWED_ADMIN_EMAIL = 'amijares@sasorilabs.io';
 
 interface AdminLoginProps {
   onLoginSuccess: () => void;
@@ -10,20 +12,29 @@ interface AdminLoginProps {
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, authError: initialError }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [useMagicLink, setUseMagicLink] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initialError || null);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanEmail || !password) {
+      setError('Por favor introduce correo y contraseña.');
+      return;
+    }
+
+    // Regla estricta: Único correo permitido
+    if (cleanEmail !== ALLOWED_ADMIN_EMAIL) {
+      setError('Acceso denegado: este correo no tiene privilegios de superadministrador.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
     try {
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password
       });
 
@@ -32,36 +43,11 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, authErro
       }
 
       if (data?.session) {
+        sessionStorage.setItem('last_verified_at', Date.now().toString());
         onLoginSuccess();
       }
     } catch (err: any) {
       setError(err?.message || 'Error al autenticar credenciales administrativas.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMagicLinkLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: {
-          emailRedirectTo: window.location.origin
-        }
-      });
-
-      if (otpError) {
-        throw otpError;
-      }
-
-      setMagicLinkSent(true);
-    } catch (err: any) {
-      setError(err?.message || 'Error al emitir enlace de autenticación segura.');
     } finally {
       setLoading(false);
     }
@@ -103,101 +89,74 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, authErro
           </div>
         )}
 
-        {magicLinkSent ? (
-          <div className="space-y-6 text-center py-4">
-            <div className="p-4 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs leading-relaxed">
-              <KeyRound size={24} className="mx-auto mb-2 text-emerald-400" />
-              <p className="font-semibold uppercase tracking-wider mb-1">Enlace de Acceso Emitido</p>
-              <p className="text-zinc-400">
-                Se ha enviado un enlace criptográfico a <strong className="text-white">{email}</strong>. Revisa tu bandeja y pulsa el enlace para iniciar sesión.
-              </p>
+        <form onSubmit={handlePasswordLogin} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-1.5">
+              Correo Electrónico de Administrador
+            </label>
+            <div className="relative">
+              <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin@sasorilabs.io"
+                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-650 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all font-mono"
+                autoComplete="email"
+              />
             </div>
-            <button
-              onClick={() => { setMagicLinkSent(false); setUseMagicLink(false); }}
-              className="text-xs text-zinc-400 hover:text-white transition-colors underline underline-offset-4"
-            >
-              Volver a autenticación con contraseña
-            </button>
           </div>
-        ) : (
-          <form onSubmit={useMagicLink ? handleMagicLinkLogin : handlePasswordLogin} className="space-y-4">
-            <div>
-              <label className="block text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-1.5">
-                Correo Electrónico de Administrador
-              </label>
-              <div className="relative">
-                <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@sasorilabs.io"
-                  className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-650 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all font-mono"
-                  autoComplete="email"
-                />
-              </div>
-            </div>
 
-            {!useMagicLink && (
-              <div>
-                <label className="block text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-1.5">
-                  Contraseña de Seguridad
-                </label>
-                <div className="relative">
-                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600" />
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••••••"
-                    className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-650 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all font-mono"
-                    autoComplete="current-password"
-                  />
-                </div>
-              </div>
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-widest text-zinc-400 mb-1.5">
+              Contraseña de Seguridad
+            </label>
+            <div className="relative">
+              <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600" />
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••••••"
+                className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-zinc-650 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all font-mono"
+                autoComplete="current-password"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 py-2.5 px-4 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-semibold tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-950/40"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span>Verificando Credenciales...</span>
+              </>
+            ) : (
+              <>
+                <span>Acceder al Backoffice</span>
+                <ArrowRight size={14} />
+              </>
             )}
+          </button>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 py-2.5 px-4 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-semibold tracking-wider uppercase transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-red-950/40"
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>Verificando Credenciales...</span>
-                </>
-              ) : (
-                <>
-                  <span>{useMagicLink ? 'Solicitar Magic Link' : 'Acceder al Backoffice'}</span>
-                  <ArrowRight size={14} />
-                </>
-              )}
-            </button>
-
-            <div className="pt-4 border-t border-zinc-900 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => { setUseMagicLink(!useMagicLink); setError(null); }}
-                className="text-[11px] text-zinc-500 hover:text-zinc-300 font-mono transition-colors"
-              >
-                {useMagicLink ? 'Usar contraseña' : 'Usar Magic Link (OTP)'}
-              </button>
-              <span className="text-[9px] text-zinc-650 font-mono">TLS 1.3 / Supabase Auth</span>
-            </div>
-          </form>
-        )}
+          <div className="pt-4 border-t border-zinc-900 flex items-center justify-between">
+            <span className="text-[10px] text-zinc-550 font-mono">Autenticación Exclusiva por Contraseña</span>
+            <span className="text-[9px] text-zinc-650 font-mono">TLS 1.3</span>
+          </div>
+        </form>
 
         {/* Footer Warning */}
         <div className="mt-8 text-center border-t border-zinc-900/60 pt-4">
           <p className="text-[10px] text-zinc-600 leading-normal">
-            Acceso exclusivo para personal autorizado de Sasorilabs. Todas las solicitudes e intentos de autenticación quedan registrados en auditoría de servidor.
+            Acceso exclusivo para el superadministrador de Sasorilabs. Los enlaces mágicos y tokens de recuperación están deshabilitados.
           </p>
         </div>
       </div>
     </div>
   );
 };
-
