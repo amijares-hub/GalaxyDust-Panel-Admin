@@ -43,7 +43,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, authErro
       }
 
       if (data?.session) {
-        sessionStorage.setItem('last_verified_at', Date.now().toString());
         onLoginSuccess();
       }
     } catch (err: any) {

@@ -18,7 +18,7 @@ import {
 import {
   loadSupabaseConfig, supabaseService, supabase
 } from './lib/supabase';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
 
 // Componentes Administrativos Core
 import { AdminLogin, ALLOWED_ADMIN_EMAIL } from './components/AdminLogin';
@@ -67,9 +67,19 @@ export default function App() {
   // ESTADOS DE SEGURIDAD Y GUARDIA ADMINISTRATIVA
   const [authStatus, setAuthStatus] = useState<'checking' | 'unauthenticated' | 'access_denied' | 'authorized'>('checking');
   const [currentUser, setCurrentUser] = useState<SupabaseUser | null>(null);
+  const [currentSession, setCurrentSession] = useState<SupabaseSession | null>(null);
   const [deniedEmail, setDeniedEmail] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [showChallengeModal, setShowChallengeModal] = useState<boolean>(false);
+
+  // Referencia en memoria para el temporizador de 10 minutos (cero persistencia en storage)
+  const lastVerifiedAtRef = React.useRef<number>(Date.now());
+  const activeSessionRef = React.useRef<SupabaseSession | null>(null);
+
+  // Mantener sincronizada la referencia activa de sesión
+  useEffect(() => {
+    activeSessionRef.current = currentSession;
+  }, [currentSession]);
 
   const [brand, setBrand] = useState<BrandConfig>(DEFAULT_BRAND);
   const [components, setComponents] = useState<WebComponent[]>(DEFAULT_COMPONENTS);
@@ -79,9 +89,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Guardia de Autenticación y Autorización
-  const verifyAccessGuard = async (user: SupabaseUser | null) => {
-    if (!user) {
+  const verifyAccessGuard = async (session: SupabaseSession | null) => {
+    const user = session?.user || null;
+    if (!user || !session) {
       setCurrentUser(null);
+      setCurrentSession(null);
       setAuthStatus('unauthenticated');
       return;
     }
@@ -96,7 +108,6 @@ export default function App() {
       setAuthStatus('access_denied');
       try {
         await supabase.auth.signOut();
-        sessionStorage.removeItem('last_verified_at');
       } catch (err) {
         console.error('Error cerrando sesión no autorizada:', err);
       }
@@ -105,14 +116,29 @@ export default function App() {
 
     // Usuario legítimo autorizado
     setCurrentUser(user);
-    if (!sessionStorage.getItem('last_verified_at')) {
-      sessionStorage.setItem('last_verified_at', Date.now().toString());
-    }
+    setCurrentSession(session);
+    lastVerifiedAtRef.current = Date.now();
     setAuthStatus('authorized');
   };
 
   useEffect(() => {
     let isMounted = true;
+
+    // 0. CERO PERSISTENCIA: Limpieza estricta de cualquier clave residual de Supabase en storage
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-')) {
+          localStorage.removeItem(key);
+        }
+      });
+      Object.keys(sessionStorage).forEach(key => {
+        if (key.startsWith('sb-') || key === 'last_verified_at') {
+          sessionStorage.removeItem(key);
+        }
+      });
+    } catch (e) {
+      console.error('Error limpiando storage residual:', e);
+    }
 
     // 1. REGLA CRÍTICA: Anular enlaces mágicos, recuperaciones y tokens por URL
     const urlHash = window.location.hash || '';
@@ -123,7 +149,6 @@ export default function App() {
       console.warn('[SECURITY] Token o enlace mágico detectado en URL. Anulando de inmediato...');
       // Limpiar URL sin recargar
       window.history.replaceState({}, document.title, window.location.pathname);
-      sessionStorage.removeItem('last_verified_at');
 
       supabase.auth.signOut().finally(() => {
         if (isMounted) {
@@ -139,7 +164,7 @@ export default function App() {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error) throw error;
         if (isMounted) {
-          await verifyAccessGuard(session?.user || null);
+          await verifyAccessGuard(session || null);
         }
       } catch (err) {
         console.error('Error verificando sesión de Supabase:', err);
@@ -151,7 +176,7 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (isMounted) {
-        await verifyAccessGuard(session?.user || null);
+        await verifyAccessGuard(session || null);
       }
     });
 
@@ -161,7 +186,45 @@ export default function App() {
     };
   }, []);
 
-  // 2. REGLA CRÍTICA: Máximo 1 persona conectada a la vez (Verificación en tiempo real y foco)
+  // 2. REGLA CRÍTICA: Revocación inmediata al cerrar pestaña, navegador o salir (keepalive: true)
+  useEffect(() => {
+    const handleTerminateSessionOnExit = () => {
+      const activeSession = activeSessionRef.current;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (activeSession?.access_token && supabaseUrl && anonKey) {
+        // Enviar baliza HTTP con keepalive para garantizar que el servidor Supabase destruya el token
+        try {
+          fetch(`${supabaseUrl}/auth/v1/logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': anonKey,
+              'Authorization': `Bearer ${activeSession.access_token}`
+            },
+            keepalive: true
+          }).catch(() => {});
+        } catch (e) {
+          // ignore keepalive failures on window destruction
+        }
+      }
+
+      try {
+        supabase.auth.signOut();
+      } catch (e) {}
+    };
+
+    window.addEventListener('pagehide', handleTerminateSessionOnExit);
+    window.addEventListener('beforeunload', handleTerminateSessionOnExit);
+
+    return () => {
+      window.removeEventListener('pagehide', handleTerminateSessionOnExit);
+      window.removeEventListener('beforeunload', handleTerminateSessionOnExit);
+    };
+  }, []);
+
+  // 3. REGLA CRÍTICA: Máximo 1 persona conectada a la vez (Verificación en tiempo real y foco)
   useEffect(() => {
     if (authStatus !== 'authorized') return;
 
@@ -175,18 +238,18 @@ export default function App() {
         if (error || !user || user.email?.trim().toLowerCase() !== ALLOWED_ADMIN_EMAIL) {
           isTerminating = true;
           console.warn('[SECURITY] Sesión invalidada en servidor o sesión iniciada en otro dispositivo.');
-          sessionStorage.removeItem('last_verified_at');
           await supabase.auth.signOut();
           setCurrentUser(null);
+          setCurrentSession(null);
           setAuthNotice('Se ha detectado un inicio de sesión en otro dispositivo. Esta sesión ha sido cerrada por seguridad.');
           setAuthStatus('unauthenticated');
         }
       } catch (err) {
         isTerminating = true;
         console.error('[SECURITY] Error validando sesión única:', err);
-        sessionStorage.removeItem('last_verified_at');
         await supabase.auth.signOut();
         setCurrentUser(null);
+        setCurrentSession(null);
         setAuthNotice('Se ha detectado un inicio de sesión en otro dispositivo. Esta sesión ha sido cerrada por seguridad.');
         setAuthStatus('unauthenticated');
       }
@@ -213,16 +276,14 @@ export default function App() {
     };
   }, [authStatus]);
 
-  // 3. REGLA CRÍTICA: Temporizador de 10 minutos para SessionChallengeModal
+  // 4. REGLA CRÍTICA: Temporizador de 10 minutos para SessionChallengeModal (600.000 ms continuos en RAM)
   useEffect(() => {
     if (authStatus !== 'authorized') return;
 
     const challengeCheckTimer = setInterval(() => {
-      const storedLastVerified = sessionStorage.getItem('last_verified_at');
-      const lastVerified = storedLastVerified ? parseInt(storedLastVerified, 10) : Date.now();
-
+      const elapsed = Date.now() - lastVerifiedAtRef.current;
       // 10 minutos = 600,000 ms
-      if (Date.now() - lastVerified >= 600000) {
+      if (elapsed >= 600000) {
         setShowChallengeModal(true);
       }
     }, 1000);
@@ -232,22 +293,23 @@ export default function App() {
 
   const handleChallengeFail = async (reason: string) => {
     setShowChallengeModal(false);
-    sessionStorage.removeItem('last_verified_at');
     try {
       await supabase.auth.signOut();
     } catch (e) {
       console.error(e);
     }
     setCurrentUser(null);
+    setCurrentSession(null);
     setAuthNotice(reason);
     setAuthStatus('unauthenticated');
   };
 
   const handleChallengeSuccess = (newSession: any) => {
     setShowChallengeModal(false);
-    sessionStorage.setItem('last_verified_at', Date.now().toString());
+    lastVerifiedAtRef.current = Date.now();
     if (newSession?.user) {
       setCurrentUser(newSession.user);
+      setCurrentSession(newSession);
     }
   };
 

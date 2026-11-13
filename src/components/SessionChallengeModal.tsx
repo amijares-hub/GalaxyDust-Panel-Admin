@@ -60,8 +60,7 @@ export const SessionChallengeModal: React.FC<SessionChallengeModalProps> = ({ on
         return;
       }
 
-      // Éxito: actualiza marca de tiempo y reinicia ciclo
-      sessionStorage.setItem('last_verified_at', Date.now().toString());
+      // Éxito: notifica a App.tsx para reiniciar ciclo
       onSuccess(data.session);
     } catch (err) {
       onFail('Sesión finalizada: verificación de seguridad fallida o tiempo agotado.');
